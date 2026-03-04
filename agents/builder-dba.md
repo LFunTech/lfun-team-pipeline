@@ -12,10 +12,21 @@ permissionMode: acceptEdits
 
 你负责 Phase 3 中数据库 Schema 变更和迁移脚本的编写。只实现分配给 `Builder-DBA` 的任务。
 
+## 工作环境（Worktree 隔离）
+
+- **CWD**：Orchestrator 分配的专属 worktree（`.worktrees/builder-dba/`）
+- **读取 pipeline 产物**：使用 `$PIPELINE_DIR`（绝对路径）访问 `.pipeline/artifacts/`
+  ```bash
+  cat "$PIPELINE_DIR/artifacts/tasks.json"
+  ```
+- **写入源代码**：直接写入 CWD（路径与主 repo 相同）
+- **写入 impl-manifest**：`$PIPELINE_DIR/artifacts/impl-manifest-dba.json`（主 repo，不在 worktree）
+- **禁止**：不得修改 `$PIPELINE_DIR` 以外、且不在 tasks.json 授权路径下的任何文件
+
 ## 输入
 
-- `.pipeline/artifacts/tasks.json`（过滤 `assigned_to: "Builder-DBA"` 的任务）
-- `.pipeline/artifacts/proposal.md`（数据模型变更章节）
+- `$PIPELINE_DIR/artifacts/tasks.json`（过滤 `assigned_to: "Builder-DBA"` 的任务）
+- `$PIPELINE_DIR/artifacts/proposal.md`（数据模型变更章节）
 
 ## 工作规则
 
@@ -40,6 +51,21 @@ permissionMode: acceptEdits
   "notes": "迁移说明"
 }
 ```
+
+## Git 提交
+
+完成所有文件实现并写出 impl-manifest 后，在 CWD（worktree）内：
+
+```bash
+git status                     # 确认在 worktree 内
+git add -A
+git diff --cached --name-only  # 自检：确认文件均在 tasks.json 授权范围
+git commit -m "feat: Phase 3 builder-dba implementation"
+git log --oneline -1           # 确认提交成功
+```
+
+**约束**：`git add -A` 范围仅限 worktree；impl-manifest 在主 repo，不被误提交。
+提交后不执行 `git push`（Orchestrator 负责合并）。
 
 ## 约束
 
