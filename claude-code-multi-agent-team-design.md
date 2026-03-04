@@ -2620,6 +2620,20 @@ project-root/
 
 31. **Changelog 一致性门禁（新活动）**：Phase 5.1 Changelog Consistency Checker 机械验证 CHANGELOG 中的 API 变更条目覆盖 api-change-report.json 的所有变更，防止遗漏或错误记录。
 
+**v5 新增改进要点：**
+
+32. **需求完整性前置门禁（新活动 Phase 0.5）**：Requirement Completeness Checker AutoStep 在进入 Gate A 前机械验证需求文档的必填 Section、关键项清零、假设格式合规，让 Auditor 聚焦内容审查。
+
+33. **契约语义校验（新活动 Phase 2.7，修复漏洞 K）**：Contract Semantic Validator AutoStep 使用 Spectral 和比对脚本，封堵"格式合法但语义错误"的 OpenAPI Schema，将发现点从 Phase 3.7 前移至 Phase 2.7，回退成本降至最低。
+
+34. **测试失败精确归因（新活动 Phase 4a.1，修复漏洞 L）**：Test Failure Mapper AutoStep 通过覆盖率数据将测试失败映射到责任 Builder，实现精确回退，避免多 Builder 场景下的无辜全体回退。
+
+35. **Phase 5 策略完整定义（修复漏洞 M）**：新增 `phase_5_mode` 字段，明确正常流程下 `api_changed: false` 时的 `changelog_only` 路径，消除状态机空白。
+
+36. **Gate B 假设处置结构化（修复漏洞 O）**：gate-b-review.json 新增 `assumption_dispositions`，假设的处置决策从自然语言 comments 升级为可机械流转的结构化记录。
+
+37. **Optimizer 直接回退（修复漏洞 P）**：perf-report.json 新增 `sla_violated` 字段，SLA 明确违规时 Orchestrator 无需等待 Gate D，直接触发 Phase 3 回退。
+
 ---
 
 ## 14. 设计审查记录
@@ -2649,6 +2663,12 @@ project-root/
 | 漏洞 H | attempt_counts 按 Phase 全局计数，多 Builder 独立失败时计数合并，可能误触发 Escalation | state.json 新增 builder_attempt_counts，每个 Builder 独立计数和 Escalation 判断 | v4 |
 | 漏洞 I | Contract Formalizer 用 LLM 从头生成 OpenAPI 格式，但路径/方法/错误码均已在 tasks.json 中，LLM 处理格式问题引入不必要的不稳定性 | Orchestrator 机械生成 OpenAPI 骨架模板，LLM 仅填充语义字段 | v4 |
 | 漏洞 J | Builder-Security 只产出代码变更，无安全决策记录，Inspector 无法知道哪些威胁已处理，可能重复审查或漏网 | Builder-Security 新增产物 security-checklist.json，记录已处理威胁和 known_gaps | v4 |
+| 漏洞 K | Phase 2.6 只验证 OpenAPI 格式合法性，无法检测字段类型错误、路径参数 required 遗漏等语义错误，Builder 基于错误 Schema 实现后 Phase 3.7 才发现 | 新增 Phase 2.7 Contract Semantic Validator（Spectral + 比对脚本） | v5 |
+| 漏洞 L | Phase 4a 测试失败后 test-report.json 无 Builder 责任映射，Orchestrator 只能全体回退，浪费无辜 Builder 的重做成本 | 新增 Phase 4a.1 Test Failure Mapper（AutoStep），精确映射责任 Builder | v5 |
+| 漏洞 M | 正常流程下 api_changed: false 时 Phase 5 的执行策略未定义（状态机空白路径） | 新增 phase_5_mode: changelog_only，明确只更新 CHANGELOG 的 partial 执行路径 | v5 |
+| 漏洞 N | 第 8 节目录结构 .pipeline/artifacts/ 出现两次，adr-draft.md 路径存在二义性 | 统一为单一 artifacts 目录，adr-draft.md 与其他产物并列 | v5 |
+| 漏洞 O | gate-b-review.json 无字段记录 Auditor-Biz 对未覆盖假设的处置决策，假设是否被接受仅存于自然语言 comments | 新增 assumption_dispositions 数组，支持 ACCEPTED / REQUIRE_PLANNER_COVERAGE 机械流转 | v5 |
+| 漏洞 P | Optimizer SLA 明确违规时无直接回退机制，需等待 Gate D 的主观审批，产生不必要延迟 | perf-report.json 新增 sla_violated 字段，Orchestrator 机械检测并直接触发 Phase 3 回退 | v5 |
 
 ### 14.2 漏洞 5 设计详记 — Hotfix Diff Scope 死锁
 
