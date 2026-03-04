@@ -932,6 +932,40 @@ Orchestrator 在启动 Inspector 前，自动验证：
 
 **流转规则：** 同 Gate A（含 rollback_to 最深规则和 Resolver 机制）。
 
+**假设处置记录（`assumption_dispositions`，v5 新增）：**
+
+当 Phase 2.1 Assumption Propagation Validator 存在 `uncovered` 假设时，Auditor-Biz 须在 `gate-b-review.json` 中对每条假设明确标注处置结果：
+
+```json
+{
+  "gate": "B",
+  "assumption_dispositions": [
+    {
+      "assumption": "第三方支付回调格式遵循标准 Webhook 格式",
+      "source": "requirement.md:行42",
+      "disposition": "ACCEPTED",
+      "auditor": "Auditor-Biz",
+      "note": "与支付供应商确认后可接受此假设"
+    },
+    {
+      "assumption": "用户量不超过 10 万",
+      "source": "requirement.md:行18",
+      "disposition": "REQUIRE_PLANNER_COVERAGE",
+      "auditor": "Auditor-Tech",
+      "note": "需要 Planner 在 tasks.json 中增加限流和分页任务"
+    }
+  ],
+  "results": [...],
+  "overall": "FAIL"
+}
+```
+
+`disposition` 枚举值：
+- `ACCEPTED`：接受假设，Builder 可直接基于此假设实现，无需 Planner 补充任务。
+- `REQUIRE_PLANNER_COVERAGE`：要求 Planner 在 tasks.json 中增加对应任务或 notes 引用。
+
+**追加流转规则（v5）：** 若任意假设的 `disposition: REQUIRE_PLANNER_COVERAGE` → Gate B FAIL，`rollback_to: phase-2`，Planner 补充覆盖任务后重新提交 Gate B 审核。若 `assumption-propagation-report.json` 中 `uncovered` 为空，`assumption_dispositions` 数组为空，不影响 Gate B 结论。
+
 ---
 
 ### Phase 2.5：契约形式化（Contract Formalization）【新增】
