@@ -55,7 +55,12 @@ permissionMode: acceptEdits
     "translator": false
   },
   "phase_5_mode": "full",
-  "new_test_files": []
+  "new_test_files": [],
+  "phase_3_base_sha": null,
+  "phase_3_worktrees": {},
+  "phase_3_branches": {},
+  "phase_3_main_branch": null,
+  "phase_3_merge_order": []
 }
 ```
 
@@ -141,20 +146,113 @@ output: .pipeline/artifacts/contract-semantic-report.json
 ```
 FAIL → rollback_to: phase-2.5
 
-### Phase 3 — 并行实现
+### Phase 3 — 并行实现（Worktree 隔离）
 
-激活条件角色（migrator、translator，如 state.json 中为 true）。
-按依赖顺序 spawn builders：
-1. DBA（无依赖）
-2. Backend（依赖 DBA Schema）
-3. Security（依赖 Backend）
-4. Frontend（依赖 Backend API）
-5. Infra（依赖 Security）
-6. Migrator（如激活，与 DBA 并行）
-7. Translator（如激活，与 Frontend 并行）
+#### Phase 3.0 — Worktree 初始化
 
-每个 Builder 输出 `.pipeline/artifacts/impl-manifest-<builder>.json`。
-全部完成后，Orchestrator 合并为 `.pipeline/artifacts/impl-manifest.json`。
+检查 `state.json.phase_3_base_sha` 是否为 null：
+- 非 null 且 `phase_3_worktrees` 非空 → 残余 worktree 清理（见"回滚清理"节）后重建
+- 执行初始化：
+
+1. 记录基准信息：
+   ```bash
+   MAIN_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+   BASE_SHA=$(git rev-parse HEAD)
+   ```
+   写入 state.json: `phase_3_main_branch`, `phase_3_base_sha`
+
+2. 确定激活 Builder + 合并顺序（写入 `phase_3_merge_order`）：
+   ```
+   [dba, migrator*, backend, security, frontend, translator*, infra]
+   ```
+   （带 * 的条件角色仅在 conditional_agents 为 true 时插入）
+
+3. 为每个激活 Builder 创建分支和 worktree：
+   ```bash
+   git checkout -b pipeline/phase-3/builder-<name> "$BASE_SHA"
+   git worktree add "$(pwd)/.worktrees/builder-<name>" pipeline/phase-3/builder-<name>
+   git checkout "$MAIN_BRANCH"
+   ```
+   写入 state.json: `phase_3_worktrees["<name>"]` = 绝对路径, `phase_3_branches["<name>"]` = 分支名
+
+4. `git worktree list` 确认所有 worktree 创建成功。
+
+#### Phase 3 — Builder 调度（按依赖波次）
+
+按以下波次 spawn，每波完成后才启动下一波：
+- 波次 1（并行）：DBA、Migrator（条件）
+- 波次 2：Backend
+- 波次 3（并行）：Security、Frontend
+- 波次 4（并行）：Infra（等 Security）、Translator（条件，等 Frontend）
+
+**spawn 消息格式**：
+```
+spawn: builder-<name>
+cwd: <phase_3_worktrees["name"]>（绝对路径）
+PIPELINE_DIR: <主repo绝对路径>/.pipeline
+BUILDER_NAME: <name>
+```
+Translator 额外传入：`FRONTEND_WORKTREE: <phase_3_worktrees["frontend"]>`
+
+**完成验证**（每个 Builder 完成后机械检查）：
+1. `$PIPELINE_DIR/artifacts/impl-manifest-<name>.json` 存在且非空
+2. `git log pipeline/phase-3/builder-<name> --oneline -1` 有 Phase 3 的 commit
+
+每个 Builder 输出 `$PIPELINE_DIR/artifacts/impl-manifest-<builder>.json`。
+全部完成后进入合并步骤。
+
+#### Phase 3 — 合并序列
+
+按 `phase_3_merge_order` 顺序执行：
+
+```bash
+git checkout "$MAIN_BRANCH"
+for BUILDER in merge_order:
+  BRANCH="pipeline/phase-3/builder-$BUILDER"
+  # 干跑检测
+  if ! git merge --no-commit --no-ff "$BRANCH" 2>/dev/null; then
+    git merge --abort 2>/dev/null || true
+    → ESCALATION：合并冲突，保留 .worktrees/builder-$BUILDER 供人工解决
+    → 输出人工恢复指令（见 CLAUDE.md），status: escalation，停止
+  fi
+  git merge --abort 2>/dev/null || true
+  git merge --no-ff "$BRANCH" -m "merge: Phase 3 builder-$BUILDER"
+```
+
+**合并成功后清理**：
+```bash
+for BUILDER in phase_3_worktrees:
+  git worktree remove ".worktrees/builder-$BUILDER" --force
+  git branch -d "pipeline/phase-3/builder-$BUILDER"
+  # 删除 state.json 对应 key
+rmdir .worktrees 2>/dev/null || true
+```
+
+**合并 impl-manifest**：
+读取 merge_order，按顺序将各 `impl-manifest-<builder>.json` 合并为：
+```json
+{
+  "merged_at": "<ISO-8601>",
+  "phase_3_base_sha": "<sha>",
+  "merge_order": ["dba", "backend", "..."],
+  "builders": [{ "...builder manifest..." }],
+  "files_changed": [ "...所有 files_changed 去重合并..." ]
+}
+```
+写入 `.pipeline/artifacts/impl-manifest.json`，进入 Phase 3.1。
+
+#### 回滚清理（rollback_to: phase-3 时）
+
+重进 Phase 3.0 前执行：
+```bash
+for BUILDER in phase_3_worktrees（若非空）:
+  git worktree remove ".worktrees/builder-$BUILDER" --force 2>/dev/null || true
+  git branch -D "pipeline/phase-3/builder-$BUILDER" 2>/dev/null || true
+rm -rf .worktrees 2>/dev/null || true
+# 重置 state.json
+phase_3_worktrees = {}; phase_3_branches = {}
+phase_3_base_sha = null; phase_3_main_branch = null
+```
 
 ### Phase 3.1 — Static Analyzer（AutoStep）
 ```
