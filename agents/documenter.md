@@ -29,8 +29,26 @@ permissionMode: acceptEdits
 
 1. **API 文档**（`full` 模式）：基于 contracts/ OpenAPI Schema 生成/更新 API 参考文档（Markdown）
 2. **CHANGELOG**：按 Keep a Changelog 规范添加本次变更条目
-   - `## [Unreleased]` 下添加 `### Added / Changed / Fixed` 条目
-   - 条目数必须 ≥ api-change-report.json 中 `changed_contracts` 数
+
+   **必须使用以下格式**（Changelog Checker 严格校验）：
+
+   ```markdown
+   ## [Unreleased]
+
+   ### Added
+   - 新增 XXX API（对应 api-change-report.json 中的变更契约）
+
+   ### Changed
+   - 修改 YYY 行为
+
+   ### Fixed
+   - 修复 ZZZ 问题
+   ```
+
+   **约束：**
+   - `## [Unreleased]` 节**必须存在**，即使当前无变更也保留空节头
+   - 不得将 Unreleased 内容合并到版本节（如 `## [1.0.0]`）
+   - `api-change-report.json` 中每个 `changed_contracts` 条目必须在此节有对应条目
 3. **ADR 最终化**：将 adr-draft.md 从"草稿"状态更新为"已接受"，补充实现后的验证结果
 4. **README 更新**（如有接口变更）
 
