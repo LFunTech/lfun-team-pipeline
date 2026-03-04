@@ -28,10 +28,14 @@ fi
 COVERAGE_PCT=0
 OVERALL="PASS"
 
-if [ -f "$COVERAGE_DIR/coverage.lcov" ]; then
-  COVERAGE_PCT=$(COVERAGE_DIR="$COVERAGE_DIR" python3 << 'PYEOF'
+LCOV_FILE=""
+[ -f "$COVERAGE_DIR/coverage.lcov" ] && LCOV_FILE="$COVERAGE_DIR/coverage.lcov"
+[ -z "$LCOV_FILE" ] && [ -f "$COVERAGE_DIR/lcov.info" ] && LCOV_FILE="$COVERAGE_DIR/lcov.info"
+
+if [ -n "$LCOV_FILE" ]; then
+  COVERAGE_PCT=$(LCOV_FILE="$LCOV_FILE" python3 << 'PYEOF'
 import os
-lcov_file = os.path.join(os.environ.get('COVERAGE_DIR', '.pipeline/artifacts/coverage'), 'coverage.lcov')
+lcov_file = os.environ.get('LCOV_FILE', '')
 try:
   total_lines = 0
   hit_lines = 0
@@ -59,7 +63,7 @@ except: print(0)
 fi
 
 BELOW_THRESHOLD=$(python3 -c "print('true' if $COVERAGE_PCT < $THRESHOLD else 'false')" 2>/dev/null || echo "true")
-[ "$BELOW_THRESHOLD" = "true" ] && OVERALL="FAIL"
+[ "$BELOW_THRESHOLD" = "true" ] && OVERALL="FAIL" || true
 
 cat > "$OUTPUT_FILE" << EOF
 {
