@@ -879,8 +879,40 @@ Orchestrator 在启动 Inspector 前，自动验证：
     "resolution": "采用 SSE 替代 WebSocket",
     "verdict": "PASS",
     "rollback_to": null,
-    "conditions": "Architect 需在 Proposal 中将 WebSocket 改为 SSE 方案"
+    "conditions": "Architect 需在 Proposal 中将 WebSocket 改为 SSE 方案",
+    "conditions_checklist": [
+      {
+        "target_agent": "Architect",
+        "target_phase": "phase-1",
+        "requirement": "将 Proposal 中的 WebSocket 替换为 SSE 方案，并更新影响面分析",
+        "verification_method": "grep",
+        "verification_pattern": "SSE|Server-Sent Events",
+        "verification_file": ".pipeline/artifacts/proposal.md"
+      }
+    ]
   }
+}
+```
+
+**conditions_checklist 验证产物：** `.pipeline/artifacts/resolver-conditions-check.json`（仅在 `conditions_checklist` 非空时生成）
+
+```json
+{
+  "gate": "A",
+  "resolver_conditions_check": true,
+  "timestamp": "2025-01-01T00:00:08Z",
+  "checks": [
+    {
+      "target_agent": "Architect",
+      "requirement": "将 Proposal 中的 WebSocket 替换为 SSE 方案",
+      "verification_method": "grep",
+      "verification_pattern": "SSE|Server-Sent Events",
+      "verification_file": ".pipeline/artifacts/proposal.md",
+      "result": "PASS",
+      "matched_lines": 3
+    }
+  ],
+  "overall": "PASS"
 }
 ```
 
