@@ -2462,7 +2462,9 @@ project-root/
   "required_skills": ["code-simplifier", "code-review"],
   "clarification_max_rounds": 5,
   "requirement_completeness": {
-    "required_sections": ["功能描述", "用户故事", "验收标准", "范围边界"],
+    "parent_section": "## 最终需求定义",
+    "required_sections": ["### 功能描述", "### 用户故事", "### 业务规则", "### 范围边界", "### 验收标准"],
+    "section_match_mode": "prefix",
     "min_words": 200,
     "abort_on_critical_unresolved": true
   },
@@ -2552,6 +2554,13 @@ project-root/
       "script": ".pipeline/autosteps/test-failure-mapper.sh",
       "timeout_seconds": 30
     }
+  },
+  "testing": {
+    "coverage_tool": "nyc",
+    "coverage_format": ["lcov", "json"],
+    "coverage_output_dir": ".pipeline/artifacts/coverage/",
+    "coverage_required": true,
+    "note": "Phase 4a 必须在覆盖率收集模式下运行（v6 新增），coverage.lcov 是 Phase 4a.1 的前置依赖"
   },
   "gates": {
     "gate-b": {
