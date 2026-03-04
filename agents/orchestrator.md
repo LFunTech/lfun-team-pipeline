@@ -169,9 +169,8 @@ FAIL → rollback_to: phase-2.5
 
 3. 为每个激活 Builder 创建分支和 worktree：
    ```bash
-   git checkout -b pipeline/phase-3/builder-<name> "$BASE_SHA"
-   git worktree add "$(pwd)/.worktrees/builder-<name>" pipeline/phase-3/builder-<name>
-   git checkout "$MAIN_BRANCH"
+   git worktree add -b pipeline/phase-3/builder-<name> \
+     "$(pwd)/.worktrees/builder-<name>" "$BASE_SHA"
    ```
    写入 state.json: `phase_3_worktrees["<name>"]` = 绝对路径, `phase_3_branches["<name>"]` = 分支名
 
@@ -228,18 +227,12 @@ for BUILDER in phase_3_worktrees:
 rmdir .worktrees 2>/dev/null || true
 ```
 
-**合并 impl-manifest**：
-读取 merge_order，按顺序将各 `impl-manifest-<builder>.json` 合并为：
-```json
-{
-  "merged_at": "<ISO-8601>",
-  "phase_3_base_sha": "<sha>",
-  "merge_order": ["dba", "backend", "..."],
-  "builders": [{ "...builder manifest..." }],
-  "files_changed": [ "...所有 files_changed 去重合并..." ]
-}
+**合并 impl-manifest**（AutoStep）：
 ```
-写入 `.pipeline/artifacts/impl-manifest.json`，进入 Phase 3.1。
+PIPELINE_DIR=.pipeline bash .pipeline/autosteps/impl-manifest-merger.sh
+```
+若 exit ≠ 0：ESCALATION，停止流水线
+进入 Phase 3.1。
 
 #### 回滚清理（rollback_to: phase-3 时）
 
@@ -295,9 +288,23 @@ Inspector 调用前，Orchestrator 在产物中机械设置 `simplifier_verified
 FAIL → rollback_to: phase-3（重新经过 3.1→3.2→3.3→3.5→3.6→Gate C）
 
 ### Phase 3.7 — Contract Compliance Checker（AutoStep）
+
+启动服务（后台）：
+  npm start &
+  SERVICE_PID=$!
+  等待就绪（最多 10s）：轮询 curl -sf http://localhost:3000/health，间隔 1s
+  若 10s 内未就绪：写入 WARN 报告跳过，kill $SERVICE_PID 2>/dev/null || true，继续
+
+运行 AutoStep：
 ```
-run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/contract-compliance-checker.sh
+SERVICE_BASE_URL=http://localhost:3000 \
+PIPELINE_DIR=.pipeline \
+bash .pipeline/autosteps/contract-compliance-checker.sh
 ```
+
+停止服务：
+  kill $SERVICE_PID 2>/dev/null || true
+
 FAIL → rollback_to: phase-3（对应 Builder）
 
 ### Phase 4a — Tester（功能测试）
