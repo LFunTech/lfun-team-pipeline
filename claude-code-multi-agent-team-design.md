@@ -2289,6 +2289,8 @@ PHASE_7 (ALERT)
   "current_phase": "phase-7",
   "current_agent": "Monitor",
   "mode": "normal",
+  "phase_5_mode": null,
+  "new_test_files": [],
   "hotfix": {
     "active": false,
     "scope_confidence": null,
@@ -2321,6 +2323,12 @@ PHASE_7 (ALERT)
   }
 }
 ```
+
+**state.json 新增字段语义（v6，修复漏洞 W）：**
+
+- `phase_5_mode`：值域 `null`（未到 Phase 5）/ `"full"` / `"changelog_only"` / `"skip"`。写入时机：AUTOSTEP_API_CHANGE_DETECTOR 完成后，Orchestrator 从 api-change-report.json 同步。读取方：Documenter（决定 Phase 5 执行内容）、Phase 5.1 Changelog Consistency Checker（判断是否运行）。
+
+- `new_test_files`：数组，存储本次 Pipeline Tester 新增的测试文件路径列表。写入时机：Phase 4a 完成后，Orchestrator 从 impl-manifest.json 同步。清空时机：Pipeline COMPLETED 毕业操作完成。读取方：Phase 3.3 Regression Guard、Phase 3.6 Post-Simplification Verifier（这些文件始终被排除在回归测试范围外，直到毕业）。
 
 **崩溃恢复：** Orchestrator 启动时检查 `state.json`，若 `current_phase` 处于 `in_progress` 状态，从 `last_checkpoint` 重新执行（AutoStep 幂等，Agent 重新运行）。
 
