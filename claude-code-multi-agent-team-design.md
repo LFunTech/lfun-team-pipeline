@@ -1070,6 +1070,70 @@ Orchestrator 机械生成路径、方法、错误码骨架，Contract Formalizer
 
 ---
 
+### Phase 2.7：契约语义校验（Contract Semantic Validator）【v5 新增 AutoStep】
+
+**类型：** AutoStep
+
+**触发时机：** Phase 2.6（Schema Completeness Validator）PASS 后，Phase 3 并行实现前。
+
+**工具栈（全部开源）：**
+- `@stoplight/spectral-core` + `@stoplight/spectral-openapi`：RESTful 语义规则校验
+- `@stoplight/spectral-owasp-rules`：API 安全基础规则校验
+- 自定义比对脚本：`tasks.json contracts[].definition` 字段 ↔ OpenAPI Schema `properties` 类型比对
+
+**执行内容：**
+
+1. **Spectral 规则校验**（`@stoplight/spectral-openapi` + `@stoplight/spectral-owasp-rules`）：
+   - 路径参数必须标记为 `required: true`
+   - 每个 operation 必须有 `operationId`
+   - 每个 operation 必须有 2xx 响应定义
+   - GET / HEAD / DELETE 不得有 `requestBody`
+   - API Key 不得在 query 参数中传递（OWASP）
+
+2. **tasks.json ↔ OpenAPI 字段比对脚本**：
+   - 提取 `tasks.json contracts[].definition.response` 中每个字段的名称和类型
+   - 与对应 `contracts/contract-N.openapi.json` 的 `properties` 逐字段比对
+   - 检测字段名不匹配或类型不一致（如 `integer` vs `string`）
+
+**产物：** `.pipeline/artifacts/contract-semantic-report.json`
+
+```json
+{
+  "autostep": "ContractSemanticValidator",
+  "timestamp": "2025-01-01T00:00:45Z",
+  "spectral_violations": [
+    {
+      "contract_id": "contract-1",
+      "file": "contracts/contract-1.openapi.json",
+      "rule": "oas3-path-params",
+      "message": "路径参数 'id' 未标记为 required",
+      "severity": "ERROR",
+      "line": 12
+    }
+  ],
+  "field_type_mismatches": [
+    {
+      "contract_id": "contract-1",
+      "field": "id",
+      "tasks_json_type": "integer",
+      "openapi_type": "string",
+      "severity": "ERROR"
+    }
+  ],
+  "warnings": [],
+  "overall": "FAIL"
+}
+```
+
+**流转规则：**
+- 任意 `severity: ERROR` → 回退 Phase 2.5（Contract Formalizer 基于报告修正 Schema）。
+- 仅有 `severity: WARN` → 不阻断，追加到 Gate C Inspector 的参考输入上下文。
+- 无任何问题 → 进入 Phase 3（并行实现）。
+
+> **这修复了 v4 遗留漏洞 K**：Phase 2.6 只验证 OpenAPI 格式合法性，无法检测"格式合法但语义错误"的 Schema。Contract Formalizer 的字段类型错误（如整数定义为 string）、路径参数 required 遗漏等，此前需等到 Phase 3.7 才能发现，彼时整个 Phase 3 实现已完成。新增本 AutoStep 将发现点前移，回退成本降至最低（仅 Phase 2.5 重做）。
+
+---
+
 ### Phase 3：并行代码实现
 
 **文件冲突处理协议：**
