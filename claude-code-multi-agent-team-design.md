@@ -48,6 +48,15 @@
 - 新增 Phase 2.7 Contract Semantic Validator（AutoStep）：封堵 Phase 2.6 无法检测的语义错误，使用 Spectral + 脚本，无 LLM
 - 新增 Phase 4a.1 Test Failure Mapper（AutoStep）：测试失败后精确映射责任 Builder，降低多 Builder 场景下的无辜回退成本
 
+**v6 核心改进（基于逻辑漏洞分析）：**
+- 修复漏洞 Q：Resolver conditions 字段升级为结构化 conditions_checklist，Orchestrator 在放行前机械验证每条条件是否满足，杜绝 Resolver 条件承诺成空话
+- 修复漏洞 R：Phase 4a.1 Test Failure Mapper 流转规则新增 confidence 维度，LOW confidence 映射触发保守全体回退，防止不确定归属导致无辜 Builder 被精确回退
+- 修复漏洞 S（高危）：Phase 0.5 Section 标题检查从 H2 修正为 H3（在 `## 最终需求定义` 下查找 `### 功能描述` 等子节），修复对所有合法 requirement.md 永远输出 FAIL 的严重错误
+- 修复漏洞 T：Gate D 产物 gate-d-review.json 补充结构化 rollback_to 字段，与 Gate A / Gate C 一致，Orchestrator 可机械解析回退目标
+- 修复漏洞 U：new_test_files 的 Regression Guard 排除规则扩展为覆盖所有 Phase 3 回退路径（不限于 Phase 4a FAIL），统一全生命周期语义
+- 修复漏洞 V：Phase 4a 产物列表新增 coverage.lcov（必须生成），消除 Phase 4a.1 对覆盖率数据的隐式依赖；config.json 新增 testing 配置块
+- 修复漏洞 W：state.json schema 补充 phase_5_mode 和 new_test_files 字段定义，明确写入时机，修复崩溃恢复时这两个关键字段丢失的问题
+
 ### 1.1 设计原则
 
 - **角色单一职责**：每个 Agent 只负责一个明确的职能，拥有语义化的名字，便于识别和追踪。
