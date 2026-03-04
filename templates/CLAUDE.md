@@ -31,6 +31,16 @@ ls -t .pipeline/artifacts/*.json | head -5
     ├── impl-manifest.json
     ├── gate-*.json
     └── ...
+
+.worktrees/              ← Phase 3 临时目录（自动创建和清理，勿手动修改）
+├── builder-dba/
+├── builder-backend/
+├── builder-frontend/
+├── builder-security/
+├── builder-infra/
+├── builder-migrator/    ← 仅条件激活时存在
+└── builder-translator/  ← 仅条件激活时存在
+（Phase 3 完成后自动删除）
 ```
 
 ## 阶段顺序参考
@@ -122,6 +132,22 @@ ls ~/.claude/plugins/ | grep -E "code-simplifier|code-review"
 ```
 
 如缺失，请参考 Claude Code Skill 安装文档。
+
+### Phase 3 Worktree 异常恢复
+
+如流水线在 Phase 3 中断，残留 worktree：
+
+```bash
+# 查看残余
+git worktree list
+
+# 重启 Orchestrator（自动检测并清理残余后重新 Phase 3）
+claude --agent orchestrator
+
+# 如自动清理失败，手动执行：
+git worktree remove .worktrees/builder-<name> --force
+git branch -D pipeline/phase-3/builder-<name>
+```
 
 ## 安装 Agents
 
