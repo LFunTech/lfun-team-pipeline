@@ -22,7 +22,7 @@ EOF
 fi
 
 ASSUMPTIONS=$(grep -oP '\[ASSUMED:[^\]]+\]' "$REQUIREMENT_FILE" 2>/dev/null || echo "")
-ASSUMED_COUNT=$(echo "$ASSUMPTIONS" | grep -c '\[ASSUMED:' 2>/dev/null || echo 0)
+ASSUMED_COUNT=$(echo "$ASSUMPTIONS" | grep -c '\[ASSUMED:' 2>/dev/null || true)
 
 TASKS_TEXT=$(python3 -c "
 import json
@@ -57,7 +57,7 @@ fi
 UNCOVERED_LIST+="]"
 UNCOVERED_COUNT=$((ASSUMED_COUNT - COVERED))
 OVERALL="PASS"
-[ "$UNCOVERED_COUNT" -gt 0 ] && OVERALL="WARN"
+[ "$UNCOVERED_COUNT" -gt 0 ] && OVERALL="WARN" || true
 
 cat > "$OUTPUT_FILE" << EOF
 {
