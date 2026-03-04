@@ -734,6 +734,55 @@ Orchestrator 在启动 Inspector 前，自动验证：
 
 ---
 
+### Phase 0.5：需求完整性校验（Requirement Completeness Checker）【v5 新增 AutoStep】
+
+**类型：** AutoStep
+
+**触发时机：** Phase 0（Clarifier）完成 requirement.md 后，Gate A 审核前。
+
+**执行内容：**
+
+1. **必填 Section 检查**：验证 requirement.md 包含以下 Section 标题且内容非空：
+   - `## 功能描述`
+   - `## 用户故事`
+   - `## 验收标准`
+   - `## 范围边界`
+
+2. **关键项检查**：确认 `[CRITICAL-UNRESOLVED]` 出现次数为 0。
+
+3. **假设格式检查**：所有 `[ASSUMED:...]` 条目符合正则 `\[ASSUMED:[^\]]+\]`，确保 Phase 2.1 的关键词提取不受格式异常干扰。
+
+4. **最小字数检查**：需求文档总字数 ≥ `config.json` 中 `requirement_completeness.min_words`（默认 200）。
+
+**产物：** `.pipeline/artifacts/requirement-completeness-report.json`
+
+```json
+{
+  "autostep": "RequirementCompletenessChecker",
+  "timestamp": "2025-01-01T00:00:05Z",
+  "sections_check": {
+    "功能描述": "PRESENT",
+    "用户故事": "PRESENT",
+    "验收标准": "PRESENT",
+    "范围边界": "MISSING"
+  },
+  "critical_unresolved_count": 0,
+  "assumed_items_count": 2,
+  "assumed_items_valid_format": true,
+  "word_count": 450,
+  "word_count_threshold": 200,
+  "overall": "FAIL"
+}
+```
+
+**流转规则：**
+- `overall: FAIL` → 回退 Phase 0（Clarifier 补充缺失内容），不进入 Gate A。
+- `overall: PASS` → 进入 Gate A，Auditor 无需再检查格式问题，专注内容审查。
+
+> **这修复了 v4 遗留漏洞**：需求文档的格式完整性此前依赖 Gate A Auditor 的主观检查，现升级为机械前置门禁，同时为 Phase 2.1 的假设关键词提取提供格式保障。
+
+---
+
 ### Gate A：方案校验
 
 **负责角色：** `Auditor-Biz`、`Auditor-Tech`、`Auditor-QA`、`Auditor-Ops`，以及 `Resolver`（矛盾时激活）
