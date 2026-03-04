@@ -786,11 +786,14 @@ Orchestrator 在启动 Inspector 前，自动验证：
 
 **执行内容：**
 
-1. **必填 Section 检查**：验证 requirement.md 包含以下 Section 标题且内容非空：
-   - `## 功能描述`
-   - `## 用户故事`
-   - `## 验收标准`
-   - `## 范围边界`
+1. **必填 Section 检查**：首先定位 `## 最终需求定义`（H2 标题），提取该节下所有内容（到下一个 H2 或文件末尾）；在提取内容中查找以下 H3 子节标题（使用前缀匹配，允许标题后有括号补充说明）：
+   - `### 功能描述`
+   - `### 用户故事`
+   - `### 业务规则`
+   - `### 范围边界`（前缀匹配，兼容"范围边界（包含 / 不包含）"）
+   - `### 验收标准`
+
+   以上 5 个 H3 子节全部存在且内容非空 → `sections_check.overall: PASS`；任意缺失 → `FAIL`，列出缺失项。`## 最终需求定义` 本身不存在时，所有子节均标记为 MISSING。
 
 2. **关键项检查**：确认 `[CRITICAL-UNRESOLVED]` 出现次数为 0。
 
@@ -805,10 +808,12 @@ Orchestrator 在启动 Inspector 前，自动验证：
   "autostep": "RequirementCompletenessChecker",
   "timestamp": "2025-01-01T00:00:05Z",
   "sections_check": {
+    "最终需求定义_section_found": true,
     "功能描述": "PRESENT",
     "用户故事": "PRESENT",
-    "验收标准": "PRESENT",
-    "范围边界": "MISSING"
+    "业务规则": "PRESENT",
+    "范围边界": "PRESENT",
+    "验收标准": "MISSING"
   },
   "critical_unresolved_count": 0,
   "assumed_items_count": 2,
