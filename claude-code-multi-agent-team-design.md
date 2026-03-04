@@ -175,9 +175,9 @@ AutoStep 由 Orchestrator 直接调用脚本/工具执行，**不涉及 LLM**，
 | **Assumption Propagation Validator** | Phase 2.1【v4 新增】 | 提取 requirement.md 中所有 `[ASSUMED:...]` 条目，检查 tasks.json 中是否每条假设均有对应任务或 notes 引用；无覆盖则 WARN/FAIL | requirement.md + tasks.json | `assumption-propagation-report.json` |
 | **Changelog Consistency Checker** | Phase 5.1【v4 新增】 | 校验 CHANGELOG 中 API 变更条目数 ≥ api-change-report.json 中 changed_contracts 数；校验 CHANGELOG 涉及模块覆盖 impl-manifest.json 中 files_changed 的主要路径 | CHANGELOG.md + api-change-report.json + impl-manifest.json | `changelog-check-report.json` |
 | **Pre-Deploy Readiness Check** | Phase 6.0【v4 新增】 | 部署前验证：环境变量完整性（对照 proposal.md 依赖清单）、数据迁移脚本存在性（if data_migration_required）、rollback_command 已在 deploy-plan 中定义 | proposal.md + state.json + deploy-plan.md | `deploy-readiness-report.json` |
-| **Requirement Completeness Checker** | **Phase 0.5【v5 新增】** | 验证 requirement.md 必填 Section 存在且非空、`[CRITICAL-UNRESOLVED]` 数量为 0、`[ASSUMED:...]` 格式合规、最小字数达标 | requirement.md | `requirement-completeness-report.json` |
-| **Contract Semantic Validator** | **Phase 2.7【v5 新增】** | Spectral 校验 RESTful 语义规则（路径参数 required、operationId、GET 无 requestBody）+ 自定义脚本比对 tasks.json definition 字段类型与 OpenAPI Schema 一致性 | contracts/ + tasks.json | `contract-semantic-report.json` |
-| **Test Failure Mapper** | **Phase 4a.1【v5 新增，FAIL 时触发】** | 解析 coverage.lcov 提取失败测试涉及的文件，与 impl-manifest.json 交叉映射到责任 Builder，输出 builders_to_rollback 精确回退列表 | test-report.json + coverage.lcov + impl-manifest.json | `failure-builder-map.json` |
+| **Requirement Completeness Checker** | Phase 0.5【v5 新增】 | 验证 requirement.md 必填 Section 存在且非空、`[CRITICAL-UNRESOLVED]` 数量为 0、`[ASSUMED:...]` 格式合规、最小字数达标 | requirement.md | `requirement-completeness-report.json` |
+| **Contract Semantic Validator** | Phase 2.7【v5 新增】 | Spectral 校验 RESTful 语义规则（路径参数 required、operationId、GET 无 requestBody）+ 自定义脚本比对 tasks.json definition 字段类型与 OpenAPI Schema 一致性 | contracts/ + tasks.json | `contract-semantic-report.json` |
+| **Test Failure Mapper** | Phase 4a.1【v5 新增，FAIL 时触发】 | 解析 coverage.lcov 提取失败测试涉及的文件，与 impl-manifest.json 交叉映射到责任 Builder，输出 builders_to_rollback 精确回退列表 | test-report.json + coverage.lcov + impl-manifest.json | `failure-builder-map.json` |
 
 ### 2.4 条件角色激活机制
 
