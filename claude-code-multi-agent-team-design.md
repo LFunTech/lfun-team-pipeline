@@ -2000,6 +2000,9 @@ IDLE
 PHASE_0_CLARIFICATION ◄──── 业务域澄清，最多 5 轮
   │ 关键项未解决 → ESCALATION
   ▼
+PHASE_0_5_REQUIREMENT_COMPLETENESS_CHECKER        ← AutoStep【v5 新增】
+  │ FAIL（缺失必填内容）→ 回退 Phase 0
+  ▼
 PHASE_1_PROPOSAL ◄──────────────────────────────┐
   │                                              │
   ▼                                              │
@@ -2021,6 +2024,10 @@ PHASE_2_5_CONTRACT_FORMALIZATION
   ▼
 PHASE_2_6_SCHEMA_COMPLETENESS_VALIDATOR           ← AutoStep【v3 新增】
   │ Schema 缺失或格式错误 → 回退 Phase 2.5
+  ▼
+PHASE_2_7_CONTRACT_SEMANTIC_VALIDATOR             ← AutoStep【v5 新增，修复漏洞 K】
+  │ ERROR → 回退 Phase 2.5（语义错误）
+  │ WARN  → 不阻断，追加到 Gate C 参考输入
   ▼
 PHASE_3_IMPLEMENTATION ◄──────────────────────────┐
   │ 文件冲突 → 按层次串行化                         │
@@ -2050,22 +2057,27 @@ PHASE_3_7_CONTRACT_COMPLIANCE_CHECKER             ← AutoStep【v3 新增】
   │ Schema 不合规 → 回退 Phase 3（对应 Builder）
   ▼
 PHASE_4A_FUNCTIONAL_TESTING
-  │ FAIL → 回退（含 3.1→3.6→Gate C→3.7，保留 new_test_files 标记）
-  ▼
+  ├─ PASS → PHASE_4_2_TEST_COVERAGE_ENFORCER
+  └─ FAIL → PHASE_4A_1_TEST_FAILURE_MAPPER       ← AutoStep【v5 新增，修复漏洞 L】
+               ├─ MAPPED      → 只回退 builders_to_rollback 中的 Builder（精确回退）
+               └─ PARTIAL_MAPPED → 回退所有 Builder（降级，保留 new_test_files 标记）
 PHASE_4_2_TEST_COVERAGE_ENFORCER                  ← AutoStep【v3 新增】
   │ 覆盖率不足 → 回退 Phase 4a
   ▼
 PHASE_4B_PERFORMANCE_TESTING (条件，串行)
-  │
-  ▼
+  ├─ sla_violated: true  → 直接回退 Phase 3   ← v5 修复漏洞 P
+  └─ sla_violated: false → GATE_D_QA_REVIEW
 GATE_D_QA_REVIEW
   │ rollback_to 范围限制: phase-4a / phase-3 / phase-2（不得超过 phase-2）
   ├─ PASS ──▶ AUTOSTEP_API_CHANGE_DETECTOR
   └─ FAIL ──▶ (rollback_to)
 
 AUTOSTEP_API_CHANGE_DETECTOR
-  │ api_changed: true  → PHASE_5_DOCUMENTATION（必须）
-  │ api_changed: false + hotfix → SKIP_PHASE_5 → PHASE_6_0
+  │ 写入 phase_5_mode:                                    ← v5 修复漏洞 M
+  │   api_changed: true  + normal  → full    → PHASE_5（完整）
+  │   api_changed: false + normal  → changelog_only → PHASE_5（仅 CHANGELOG）
+  │   api_changed: true  + hotfix  → full    → PHASE_5（完整）
+  │   api_changed: false + hotfix  → skip    → PHASE_6_0（跳过 Phase 5）
   ▼
 PHASE_5_DOCUMENTATION (含 ADR最终化，基于 adr-draft.md)
   │
