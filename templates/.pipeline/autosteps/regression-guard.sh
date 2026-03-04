@@ -43,7 +43,7 @@ TEST_EXIT=$?
 set -e
 
 OVERALL="PASS"
-[ "$TEST_EXIT" -ne 0 ] && OVERALL="FAIL"
+[ "$TEST_EXIT" -ne 0 ] && OVERALL="FAIL" || true
 
 ESCAPED_OUTPUT=$(echo "$TEST_OUTPUT" | head -50 | python3 -c "
 import sys, json
