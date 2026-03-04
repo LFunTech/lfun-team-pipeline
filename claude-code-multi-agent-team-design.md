@@ -411,6 +411,13 @@ Orchestrator 在启动 Inspector 前，自动验证：
                             │ 输出: requirement.md
                             ▼
   ┌───────────────────────────────────────────────────────────────┐
+  │ Phase 0.5: Requirement Completeness Checker                   │ ← AutoStep【v5 新增】
+  │ 验证 requirement.md 必填字段完整性                              │
+  │ FAIL → 回退 Phase 0                                           │
+  └─────────────────────────┬─────────────────────────────────────┘
+                            │ 输出: requirement-completeness-report.json
+                            ▼
+  ┌───────────────────────────────────────────────────────────────┐
   │ Phase 1: Architect（方案设计）                                  │
   │ 技术域澄清，处理 [技术待确认] 项；有权向用户提问技术问题             │
   └─────────────────────────┬─────────────────────────────────────┘
@@ -455,6 +462,13 @@ Orchestrator 在启动 Inspector 前，自动验证：
   │ 失败 → 回退 Phase 2.5（不进入 Phase 3 实现）                    │
   └─────────────────────────┬─────────────────────────────────────┘
                             │ 输出: schema-validation-report.json
+                            ▼
+  ┌───────────────────────────────────────────────────────────────┐
+  │ Phase 2.7: Contract Semantic Validator                        │ ← AutoStep【v5 新增】
+  │ Spectral + 字段类型比对脚本                                     │
+  │ ERROR → 回退 Phase 2.5                                        │
+  └─────────────────────────┬─────────────────────────────────────┘
+                            │ 输出: contract-semantic-report.json
                             ▼
   ┌─────────────────────────────────────────────────────────────────┐
   │ Phase 3: 并行实现                                                │
@@ -534,7 +548,7 @@ Orchestrator 在启动 Inspector 前，自动验证：
                 │ "本次新增"，3.3 回归不纳入      │
                 └────────────┬─────────────────┘
                              │ 输出: test-report.json
-                             │ FAIL → 回退（含 Phase 3.1→3.6→Gate C→3.7）
+                             │ FAIL → Phase 4a.1 Test Failure Mapper → 精确/全体回退 Phase 3
                              ▼
                 ┌──────────────────────────────┐
                 │ Phase 4.2: Test Coverage      │ ← AutoStep【v3 新增】
