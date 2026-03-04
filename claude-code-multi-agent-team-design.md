@@ -2843,6 +2843,13 @@ project-root/
 | 漏洞 N | 第 8 节目录结构 .pipeline/artifacts/ 出现两次，adr-draft.md 路径存在二义性 | 统一为单一 artifacts 目录，adr-draft.md 与其他产物并列 | v5 |
 | 漏洞 O | gate-b-review.json 无字段记录 Auditor-Biz 对未覆盖假设的处置决策，假设是否被接受仅存于自然语言 comments | 新增 assumption_dispositions 数组，支持 ACCEPTED / REQUIRE_PLANNER_COVERAGE 机械流转 | v5 |
 | 漏洞 P | Optimizer SLA 明确违规时无直接回退机制，需等待 Gate D 的主观审批，产生不必要延迟 | perf-report.json 新增 sla_violated 字段，Orchestrator 机械检测并直接触发 Phase 3 回退 | v5 |
+| 漏洞 Q | Resolver 的 conditions 字段为纯文本，无机械验证路径；Resolver 说"PASS"并附条件后，Orchestrator 直接推进，条件是否被执行完全依赖下游 Agent 是否读到文字 | resolver_verdict 新增结构化 conditions_checklist，Orchestrator 逐条机械验证（grep/exists/field_value），验证结果写入 resolver-conditions-check.json | v6 |
+| 漏洞 R | Phase 4a.1 的 confidence 字段（HIGH/LOW/UNKNOWN）完全不影响流转决策，LOW confidence 的不确定映射与 HIGH confidence 的确定映射被同等对待，可能导致无辜 Builder 被精确回退 | 流转规则新增 confidence 维度：PRECISE_MAPPED（全部 HIGH）→ 只回退 builders_high_confidence；LOW_CONFIDENCE_MAPPED（存在 LOW）→ 降级全体回退 | v6 |
+| 漏洞 S | Phase 0.5 检查 `## 功能描述`（H2），但 requirement.md 格式定义的是 `### 功能描述`（H3，位于 `## 最终需求定义` 下），导致所有合法文档永远输出 FAIL（高危 bug） | Phase 0.5 改为在 `## 最终需求定义` 下检查 H3 子节；config.json required_sections 从 H2 改为 H3；新增 `### 业务规则` 检查项 | v6 |
+| 漏洞 T | Gate D 产物 gate-d-review.json 缺少 rollback_to 字段，Gate D FAIL 时 Orchestrator 无法机械解析回退目标，与 Gate A / Gate C 产物格式不一致，违反"产物驱动流转"原则 | gate-d-review.json 补充 rollback_to 字段，枚举值限制为 null / phase-4a / phase-3 / phase-2；Orchestrator 机械验证并在越界时降级 | v6 |
+| 漏洞 U | new_test_files 的 Regression Guard 排除规则只定义了"Phase 4a FAIL 回退"场景，未覆盖 Gate C FAIL、Gate D FAIL、Optimizer SLA 违规等其他 Phase 3 回退路径，语义歧义导致实现时各路径行为不一致 | 明确规定 new_test_files 排除规则适用于当前 Pipeline 内所有 Phase 3 回退路径，清空时机统一为 Pipeline COMPLETED 毕业操作 | v6 |
+| 漏洞 V | Phase 4a 产物定义只有 test-report.json，未提及 coverage.lcov；Phase 4a.1 隐式依赖 coverage.lcov；若 Tester 未启用覆盖率收集，Phase 4a.1 全部返回 UNKNOWN，精确回退完全失效 | Phase 4a 产物列表新增 coverage.lcov（必须生成）；config.json 新增 testing.coverage_required: true；Orchestrator 在 Phase 4a.1 前验证 coverage.lcov 存在 | v6 |
+| 漏洞 W | state.json schema 缺少 phase_5_mode 和 new_test_files 字段定义，但两者在 Phase 5 和 Phase 7 毕业机制中均被读取；崩溃恢复后这两个字段丢失，导致 Documenter 无法确定 Phase 5 执行模式，new_test_files 排除规则失效 | state.json schema 补充 phase_5_mode（枚举：null/full/changelog_only/skip）和 new_test_files（数组）字段；明确 Orchestrator 写入时机 | v6 |
 
 ### 14.2 漏洞 5 设计详记 — Hotfix Diff Scope 死锁
 
