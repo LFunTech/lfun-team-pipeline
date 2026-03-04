@@ -2792,6 +2792,22 @@ project-root/
 
 37. **Optimizer 直接回退（修复漏洞 P）**：perf-report.json 新增 `sla_violated` 字段，SLA 明确违规时 Orchestrator 无需等待 Gate D，直接触发 Phase 3 回退。
 
+**v6 新增改进要点：**
+
+38. **Resolver 条件承诺机械化（修复漏洞 Q）**：resolver_verdict 新增结构化 `conditions_checklist` 数组，Orchestrator 在放行前逐条机械验证条件是否满足（grep / exists / field_value），验证结果写入 `resolver-conditions-check.json`，彻底消除 Resolver 条件成空话的风险。
+
+39. **Test Failure Mapper 精确回退的置信度保护（修复漏洞 R）**：Phase 4a.1 新增 `PRECISE_MAPPED`（全部 HIGH confidence）/ `LOW_CONFIDENCE_MAPPED`（存在 LOW confidence）两种 overall 值，LOW confidence 映射触发保守全体回退，防止不确定的 Builder 归属导致无辜 Builder 被精确回退。
+
+40. **Phase 0.5 标题层级 bug 修复（修复漏洞 S，高危）**：Phase 0.5 Section 检查从搜索 H2 标题（`## 功能描述`）修正为搜索 `## 最终需求定义` 下的 H3 子节（`### 功能描述` 等），修复了对所有合法 requirement.md 永远输出 FAIL 的严重 bug。
+
+41. **Gate D 产物 schema 完整化（修复漏洞 T）**：gate-d-review.json 补充结构化 `rollback_to` 字段，与 Gate A / Gate C 产物格式对齐，Orchestrator 机械解析回退目标；超出允许范围的值自动降级并记录警告。
+
+42. **new_test_files 排除规则统一（修复漏洞 U）**：new_test_files 的 Regression Guard 排除规则从"仅 Phase 4a FAIL 时"扩展为"任意 Phase 3 回退路径均适用"，消除 Gate C FAIL 等场景下的排除规则歧义。
+
+43. **Phase 4a 覆盖率生成强制化（修复漏洞 V）**：Phase 4a 产物列表新增 coverage.lcov（必须生成），config.json 新增 `testing.coverage_required: true` 配置，消除 Phase 4a.1 对覆盖率数据的隐式依赖，确保精确回退功能真正可用。
+
+44. **state.json schema 完整化（修复漏洞 W）**：state.json 补充 `phase_5_mode` 和 `new_test_files` 两个字段定义，明确写入时机和读取方，修复崩溃恢复时这两个关键字段丢失导致流转失效的问题。
+
 ---
 
 ## 14. 设计审查记录
