@@ -1,0 +1,62 @@
+{
+  "version": "v6",
+  "pipeline_id": "pipe-YYYYMMDD-001",
+  "project_name": "YOUR_PROJECT_NAME",
+  "max_attempts": {
+    "default": 3,
+    "phase-0": 5,
+    "phase-1": 3,
+    "phase-2": 3,
+    "phase-2.5": 3,
+    "phase-3": 5,
+    "phase-3.5": 3,
+    "phase-4a": 3,
+    "phase-5": 3,
+    "phase-6": 2,
+    "gate-a": 3,
+    "gate-b": 3,
+    "gate-c": 3,
+    "gate-d": 3,
+    "gate-e": 3
+  },
+  "required_skills": ["code-simplifier", "code-review"],
+  "requirement_completeness": {
+    "parent_section": "## 最终需求定义",
+    "required_sections": [
+      "### 功能描述",
+      "### 用户故事",
+      "### 业务规则",
+      "### 范围边界",
+      "### 验收标准"
+    ],
+    "section_match_mode": "prefix",
+    "min_words": 200,
+    "abort_on_critical_unresolved": true
+  },
+  "clarifier": {
+    "max_rounds": 5
+  },
+  "testing": {
+    "coverage_tool": "nyc",
+    "coverage_format": ["lcov", "json"],
+    "coverage_output_dir": ".pipeline/artifacts/coverage/",
+    "coverage_required": true,
+    "coverage_threshold": 80
+  },
+  "monitor": {
+    "observation_window_minutes": 30,
+    "error_rate_alert_pct": 0.1,
+    "error_rate_critical_pct": 1.0
+  },
+  "gates": {
+    "gate-d": {
+      "rollback_to_allowed": ["phase-4a", "phase-3"],
+      "rollback_to_max_depth": "phase-2"
+    }
+  },
+  "autosteps": {
+    "contract_compliance": {
+      "service_base_url": "http://localhost:3000"
+    }
+  }
+}
