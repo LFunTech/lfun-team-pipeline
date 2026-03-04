@@ -2074,10 +2074,10 @@ GATE_D_QA_REVIEW
 
 AUTOSTEP_API_CHANGE_DETECTOR
   │ 写入 phase_5_mode:                                    ← v5 修复漏洞 M
-  │   api_changed: true  + normal  → full    → PHASE_5（完整）
+  │   api_changed: true  + normal  → full          → PHASE_5（完整）
   │   api_changed: false + normal  → changelog_only → PHASE_5（仅 CHANGELOG）
-  │   api_changed: true  + hotfix  → full    → PHASE_5（完整）
-  │   api_changed: false + hotfix  → skip    → PHASE_6_0（跳过 Phase 5）
+  │   api_changed: true  + hotfix  → full          → PHASE_5（完整）
+  │   api_changed: false + hotfix  → skip          → PHASE_6_0（跳过 Phase 5）
   ▼
 PHASE_5_DOCUMENTATION (含 ADR最终化，基于 adr-draft.md)
   │
