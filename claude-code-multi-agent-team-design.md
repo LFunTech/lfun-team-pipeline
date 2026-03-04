@@ -2196,6 +2196,7 @@ project-root/
 │   ├── state.json               # 当前状态 + 崩溃恢复检查点
 │   ├── artifacts/
 │   │   ├── requirement.md       # Phase 0 — Markdown
+│   │   ├── requirement-completeness-report.json # Phase 0.5 AutoStep【v5 新增】
 │   │   ├── proposal.md          # Phase 1 — Markdown
 │   │   ├── gate-a-review.json   # Gate A — JSON
 │   │   ├── tasks.json           # Phase 2 — JSON
@@ -2206,6 +2207,7 @@ project-root/
 │   │   │   └── contracts-index.json
 │   │   ├── assumption-propagation-report.json # Phase 2.1 AutoStep【v4 新增】
 │   │   ├── schema-validation-report.json # Phase 2.6 AutoStep【v3 新增】
+│   │   ├── contract-semantic-report.json        # Phase 2.7 AutoStep【v5 新增】
 │   │   ├── impl-manifest.json   # Phase 3 — JSON（含 new_test_files 字段）
 │   │   ├── impl-manifest-builder-*.json # 各 Builder 临时文件【v4 新增，合并后可删除】
 │   │   ├── security-checklist.json      # Builder-Security 产物【v4 新增】
@@ -2218,6 +2220,7 @@ project-root/
 │   │   ├── gate-c-review.json   # Gate C — JSON 结论
 │   │   ├── contract-compliance-report.json # Phase 3.7 AutoStep【v3 新增】
 │   │   ├── test-report.json     # Phase 4a — JSON
+│   │   ├── failure-builder-map.json             # Phase 4a.1 AutoStep【v5 新增，Phase 4a FAIL 时生成】
 │   │   ├── coverage-report.json         # Phase 4.2 AutoStep【v3 新增】
 │   │   ├── perf-report.json     # Phase 4b — JSON（Optimizer，条件）
 │   │   ├── gate-d-review.json   # Gate D — JSON
@@ -2230,10 +2233,9 @@ project-root/
 │   │   ├── monitor-report.json  # Phase 7 — JSON
 │   │   ├── hotfix-scope-report.json     # Hotfix Scope Analyzer【v3 新增】
 │   │   ├── hotfix-tasks.json            # Hotfix 授权范围【v3 新增，hotfix 模式专用】
+│   │   ├── adr-draft.md         # Phase 1 Architect 输出【v4 新增，v5 路径修正】
 │   │   └── regression-suite-manifest.json # 累积回归套件清单【v4 新增，跨 Pipeline 持久化】
 │   ├── feedback/                # 回溯反馈 — Markdown
-│   ├── artifacts/
-│   │   └── adr-draft.md         # Phase 1 Architect 输出【v4 新增，Documenter 在 Phase 5 最终化】
 │   ├── prompts/                 # 各角色 system prompt — Markdown
 │   │   ├── clarifier.md         # 含业务域限制和 ESCALATION 条件
 │   │   ├── architect.md         # 含技术域限制（v4: 增加 adr-draft.md 输出要求）
@@ -2270,7 +2272,10 @@ project-root/
 │   │   ├── hotfix-scope-analyzer.sh          # Phase 7 ALERT 后置【v3 新增】
 │   │   ├── assumption-propagation-validator.sh # Phase 2.1【v4 新增】
 │   │   ├── changelog-consistency-checker.sh    # Phase 5.1【v4 新增】
-│   │   └── pre-deploy-readiness-check.sh       # Phase 6.0【v4 新增】
+│   │   ├── pre-deploy-readiness-check.sh       # Phase 6.0【v4 新增】
+│   │   ├── requirement-completeness-checker.sh  # Phase 0.5【v5 新增】
+│   │   ├── contract-semantic-validator.sh        # Phase 2.7【v5 新增】
+│   │   └── test-failure-mapper.sh               # Phase 4a.1【v5 新增】
 │   ├── skills/
 │   │   ├── code-simplifier/SKILL.md  # 【必备】
 │   │   ├── code-review/SKILL.md      # 【必备】
