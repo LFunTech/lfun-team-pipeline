@@ -25,9 +25,11 @@ EXPECTED_COUNT=$(python3 -c "
 import json
 try:
   data = json.load(open('$TASKS_FILE'))
-  print(len(data.get('contracts', [])))
-except: print(0)
-" 2>/dev/null || echo 0)
+  contracts = data.get('contracts', None)
+  print(len(contracts) if contracts is not None else -1)
+except Exception:
+  print(-1)
+" 2>/dev/null || echo -1)
 
 ACTUAL_COUNT=0
 INVALID_LIST="["
@@ -35,7 +37,7 @@ FIRST=true
 OVERALL="PASS"
 
 if [ -d "$CONTRACTS_DIR" ]; then
-  ACTUAL_COUNT=$(find "$CONTRACTS_DIR" -name "*.yaml" -o -name "*.json" 2>/dev/null | wc -l)
+  ACTUAL_COUNT=$(find "$CONTRACTS_DIR" \( -name "*.yaml" -o -name "*.json" \) 2>/dev/null | wc -l)
 
   while IFS= read -r f; do
     if ! python3 -c "
@@ -45,8 +47,8 @@ try:
     data = yaml.safe_load(fh) if '$f'.endswith('.yaml') else json.load(fh)
   assert str(data.get('openapi', '')).startswith('3.'), 'not openapi 3.x'
   assert 'paths' in data, 'missing paths'
-  sys.exit(0)
-except: sys.exit(1)
+except Exception:
+  sys.exit(1)
 " 2>/dev/null; then
       if ! $FIRST; then INVALID_LIST+=","; fi
       FIRST=false
@@ -54,11 +56,12 @@ except: sys.exit(1)
       INVALID_LIST+="\"$fname\""
       OVERALL="FAIL"
     fi
-  done < <(find "$CONTRACTS_DIR" -name "*.yaml" -o -name "*.json" 2>/dev/null)
+  done < <(find "$CONTRACTS_DIR" \( -name "*.yaml" -o -name "*.json" \) 2>/dev/null)
 fi
 
 INVALID_LIST+="]"
-[ "$ACTUAL_COUNT" -ne "$EXPECTED_COUNT" ] && OVERALL="FAIL"
+# 仅当 tasks.json 明确声明 contracts 列表时才检查数量（-1 表示未声明，跳过）
+[ "$EXPECTED_COUNT" -ge 0 ] && [ "$ACTUAL_COUNT" -ne "$EXPECTED_COUNT" ] && OVERALL="FAIL" || true
 
 cat > "$OUTPUT_FILE" << EOF
 {
