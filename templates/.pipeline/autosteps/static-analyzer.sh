@@ -40,10 +40,10 @@ try:
   print(sum(f.get('errorCount', 0) for f in data))
 except: print(0)
 " 2>/dev/null || echo 0)
-  [ "$LINT_ERRORS" -gt 0 ] && OVERALL="FAIL"
+  [ "$LINT_ERRORS" -gt 0 ] && OVERALL="FAIL" || true
 elif command -v flake8 &>/dev/null; then
   LINT_ERRORS=$(echo "$CHANGED_FILES" | grep -E '\.py$' | xargs -r flake8 2>/dev/null | wc -l || echo 0)
-  [ "$LINT_ERRORS" -gt 0 ] && OVERALL="FAIL"
+  [ "$LINT_ERRORS" -gt 0 ] && OVERALL="FAIL" || true
 fi
 
 if command -v npm &>/dev/null && [ -f "package.json" ]; then
@@ -52,7 +52,7 @@ import json, sys
 try: print(json.load(sys.stdin).get('metadata', {}).get('vulnerabilities', {}).get('high', 0))
 except: print(0)
 " 2>/dev/null || echo 0)
-  [ "$DEPENDENCY_VULNS" -gt 0 ] && OVERALL="FAIL"
+  [ "$DEPENDENCY_VULNS" -gt 0 ] && OVERALL="FAIL" || true
 fi
 
 cat > "$OUTPUT_FILE" << EOF
