@@ -2312,6 +2312,11 @@ project-root/
   },
   "required_skills": ["code-simplifier", "code-review"],
   "clarification_max_rounds": 5,
+  "requirement_completeness": {
+    "required_sections": ["功能描述", "用户故事", "验收标准", "范围边界"],
+    "min_words": 200,
+    "abort_on_critical_unresolved": true
+  },
   "clarification_abort_on_critical_unresolved": true,
   "monitoring_window_minutes": 30,
   "monitor_thresholds": {
@@ -2383,6 +2388,19 @@ project-root/
     },
     "api-change-detector": {
       "script": ".pipeline/autosteps/api-change-detector.sh",
+      "timeout_seconds": 30
+    },
+    "requirement-completeness-checker": {
+      "script": ".pipeline/autosteps/requirement-completeness-checker.sh",
+      "timeout_seconds": 10
+    },
+    "contract-semantic-validator": {
+      "script": ".pipeline/autosteps/contract-semantic-validator.sh",
+      "timeout_seconds": 60,
+      "tools": ["spectral", "node"]
+    },
+    "test-failure-mapper": {
+      "script": ".pipeline/autosteps/test-failure-mapper.sh",
       "timeout_seconds": 30
     }
   },
