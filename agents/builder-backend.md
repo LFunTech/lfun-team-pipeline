@@ -36,6 +36,11 @@ permissionMode: acceptEdits
 3. **可测试性**：业务逻辑要可注入依赖（避免硬编码外部依赖）
 4. **错误处理**：实现所有 contracts 中定义的错误响应（400/404/500 等）
 
+**文件所有权（Backend）：**
+- 拥有目录：`src/routes/`、`src/services/`、`src/middleware/`
+- **禁止**修改上述目录以外的任何文件（包括 `src/db/`、`src/repositories/`）
+- 跨层调用只能依赖 tasks.json 中声明的接口契约（函数名 + 参数 + 返回类型）
+
 ## 输出
 
 `.pipeline/artifacts/impl-manifest-backend.json`：

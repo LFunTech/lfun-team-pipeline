@@ -35,6 +35,11 @@ permissionMode: acceptEdits
 3. **幂等性**：迁移脚本必须支持幂等执行（IF NOT EXISTS / IF EXISTS）
 4. **严格文件范围**：只在 tasks.json 授权的路径下创建/修改文件
 
+**文件所有权（DBA）：**
+- 拥有目录：`src/db/`、`src/repositories/`、`src/models/`
+- **禁止**修改上述目录以外的任何文件
+- 如需向 Backend 暴露接口，在 tasks.json 声明的接口契约中定义函数签名，不直接修改 Backend 文件
+
 ## 输出
 
 `.pipeline/artifacts/impl-manifest-dba.json`：
