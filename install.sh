@@ -19,7 +19,7 @@ if [ ! -d "$AGENTS_SRC" ]; then
   exit 1
 fi
 
-AGENT_COUNT=$(find "$AGENTS_SRC" -name "*.md" | wc -l)
+AGENT_COUNT=$(find "$AGENTS_SRC" -maxdepth 1 -name "*.md" | wc -l)
 if [ "$AGENT_COUNT" -eq 0 ]; then
   echo "❌ 错误: agents/ 目录为空，请先执行安装计划"
   exit 1
@@ -31,7 +31,7 @@ echo "📁 目标目录: $AGENTS_DST"
 echo ""
 
 # ── 备份现有文件 ────────────────────────────────────────────────────
-EXISTING=$(find "$AGENTS_DST" -name "*.md" 2>/dev/null | wc -l)
+EXISTING=$(find "$AGENTS_DST" -maxdepth 1 -name "*.md" 2>/dev/null | wc -l)
 if [ "$EXISTING" -gt 0 ]; then
   BACKUP_DIR="$AGENTS_DST.backup.$(date +%Y%m%d%H%M%S)"
   echo "⚠️  检测到 $EXISTING 个现有 Agent 文件，备份到: $BACKUP_DIR"
@@ -47,7 +47,7 @@ while IFS= read -r agent_file; do
   cp "$agent_file" "$AGENTS_DST/$fname"
   echo "  ✓ $fname"
   INSTALLED=$((INSTALLED + 1))
-done < <(find "$AGENTS_SRC" -name "*.md" | sort)
+done < <(find "$AGENTS_SRC" -maxdepth 1 -name "*.md" | sort)
 
 echo ""
 echo "✅ 安装完成！已安装 $INSTALLED 个 Agent 文件到 $AGENTS_DST"
@@ -82,7 +82,7 @@ echo "流水线需要以下两个 Skill："
 echo "  • code-simplifier (Simplifier 使用)"
 echo "  • code-review (Inspector 使用)"
 echo ""
-if ls ~/.claude/plugins/ 2>/dev/null | grep -qE "code-simplifier|code-review"; then
+if find "$HOME/.claude/plugins/" -maxdepth 1 \( -name "*code-simplifier*" -o -name "*code-review*" \) 2>/dev/null | grep -q .; then
   echo "  ✓ Skills 已安装"
 else
   echo "  ℹ️  提示：如 Skills 未安装，Inspector 和 Simplifier 功能将降级"
@@ -95,9 +95,9 @@ echo "── 使用方法 ──────────────────
 echo ""
 echo "1. 初始化项目流水线配置："
 echo "   mkdir -p .pipeline/autosteps .pipeline/artifacts"
-echo "   cp -r $REPO_DIR/templates/.pipeline/config.json .pipeline/"
-echo "   cp -r $REPO_DIR/templates/.pipeline/autosteps/ .pipeline/autosteps/"
-echo "   cp $REPO_DIR/templates/CLAUDE.md CLAUDE.md"
+echo "   cp -r \"$REPO_DIR/templates/.pipeline/config.json\" .pipeline/"
+echo "   cp -r \"$REPO_DIR/templates/.pipeline/autosteps/\" .pipeline/autosteps/"
+echo "   cp \"$REPO_DIR/templates/CLAUDE.md\" CLAUDE.md"
 echo ""
 echo "2. 编辑 .pipeline/config.json，设置 project_name 等配置"
 echo ""
