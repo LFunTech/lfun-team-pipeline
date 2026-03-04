@@ -2540,9 +2540,9 @@ project-root/
 | 33 | **Assumption Propagation Validator** | AutoStep | **Phase 2.1** | **v4** |
 | 34 | **Changelog Consistency Checker** | AutoStep | **Phase 5.1** | **v4** |
 | 35 | **Pre-Deploy Readiness Check** | AutoStep | **Phase 6.0** | **v4** |
-| **36** | **Requirement Completeness Checker** | AutoStep | **Phase 0.5** | **v5** |
-| **37** | **Contract Semantic Validator** | AutoStep | **Phase 2.7** | **v5** |
-| **38** | **Test Failure Mapper** | AutoStep | **Phase 4a.1（FAIL 时）** | **v5** |
+| 36 | **Requirement Completeness Checker** | AutoStep | **Phase 0.5** | **v5** |
+| 37 | **Contract Semantic Validator** | AutoStep | **Phase 2.7** | **v5** |
+| 38 | **Test Failure Mapper** | AutoStep | **Phase 4a.1（FAIL 时）** | **v5** |
 
 **共计 38 个执行单元：19 个常驻 Agent + 4 个条件 Agent + 15 个 AutoStep。**
 
