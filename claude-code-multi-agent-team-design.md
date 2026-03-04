@@ -214,6 +214,27 @@ Orchestrator 按以下算法检测矛盾：
 - Orchestrator 优先采用 Resolver 的覆盖值（如存在），否则使用最深规则。
 - **下边界保护（v4 新增）**：Orchestrator 验证 `resolver_verdict.rollback_to` 不得为 `null`；若为 null 且存在任何 FAIL Auditor，Orchestrator 拒绝该覆盖并回退到默认最深规则，同时在日志中记录 `[WARN] Resolver 试图绕过回退被拒绝`。Resolver 可将深层回退升浅，但不能完全消除回退。
 
+**Resolver conditions_checklist 机械执行（v6 新增）：**
+
+当 Resolver 仲裁结果为 PASS 且附有执行条件时，须在 `resolver_verdict` 中提供结构化的 `conditions_checklist` 数组，而非纯文本 `conditions` 字符串。Orchestrator 在推进到下一阶段前，逐条机械验证每个条件：
+
+| 字段 | 说明 |
+|------|------|
+| `target_agent` | 需要执行此条件的 Agent 名称 |
+| `target_phase` | 回退到该 Phase 让 Agent 按条件重新处理 |
+| `requirement` | 可读说明（供 Agent 参考，非机械验证目标） |
+| `verification_method` | `grep`（关键词搜索）/ `exists`（文件存在）/ `field_value`（JSON 字段比对） |
+| `verification_pattern` | grep 的正则表达式，或 field_value 的期望值 |
+| `verification_file` | 被验证的文件路径 |
+
+**Orchestrator 条件验证流程：**
+1. 通知 `target_agent` 重新处理（携带 `conditions_checklist` 作为约束输入）。
+2. Agent 完成后，Orchestrator 逐条执行 `verification_method` 机械检查。
+3. 全部通过 → 写入 `resolver-conditions-check.json`（`overall: PASS`），推进到下一阶段。
+4. 任意失败 → `overall: FAIL`，回退到 `target_phase`，日志记录 `[WARN] Resolver 条件未满足：<requirement>`。
+
+若 `conditions_checklist` 为空数组，跳过验证直接推进（兼容无附加条件的 PASS 仲裁）。
+
 ### 2.5 问题域划分（Clarifier vs Architect）
 
 为避免用户被重复提问，两个澄清角色有明确的问题域边界：
