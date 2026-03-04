@@ -2141,6 +2141,9 @@ PHASE_1_PROPOSAL ◄────────────────────
   │                                              │
   ▼                                              │
 GATE_A_REVIEW ──┬─ CONFLICT → RESOLVER → 重评估  │
+                │   └─ RESOLVER conditions_checklist 非空 → RESOLVER_CONDITIONS_CHECK ← v6 新增
+                │         ├─ PASS → PHASE_2
+                │         └─ FAIL → rollback_to target_phase
                 ├─ PASS ──▶ PHASE_2              │
                 └─ FAIL ──▶ (rollback_to) ───────┘
 
@@ -2192,8 +2195,10 @@ PHASE_3_7_CONTRACT_COMPLIANCE_CHECKER             ← AutoStep【v3 新增】
   ▼
 PHASE_4A_FUNCTIONAL_TESTING
   ├─ PASS → PHASE_4_2_TEST_COVERAGE_ENFORCER
-  └─ FAIL → PHASE_4A_1_TEST_FAILURE_MAPPER       ← AutoStep【v5 新增，修复漏洞 L】
-               ├─ MAPPED      → 只回退 builders_to_rollback 中的 Builder（精确回退）
+  └─ FAIL → PHASE_4A_1_TEST_FAILURE_MAPPER       ← AutoStep【v5 新增，修复漏洞 L；v6 更新漏洞 R】
+               ├─ coverage.lcov 不存在 → 全体回退（跳过 Mapper，降级，v6 新增）
+               ├─ PRECISE_MAPPED → 只回退 builders_high_confidence（精确回退）  ← v6
+               ├─ LOW_CONFIDENCE_MAPPED → 全体回退（保守降级，v6 新增）
                └─ PARTIAL_MAPPED → 回退所有 Builder（降级，保留 new_test_files 标记）
 PHASE_4_2_TEST_COVERAGE_ENFORCER                  ← AutoStep【v3 新增】
   │ 覆盖率不足 → 回退 Phase 4a
@@ -2203,8 +2208,10 @@ PHASE_4B_PERFORMANCE_TESTING (条件，串行)
   └─ sla_violated: false → GATE_D_QA_REVIEW
 GATE_D_QA_REVIEW
   │ rollback_to 范围限制: phase-4a / phase-3 / phase-2（不得超过 phase-2）
+  │ rollback_to 字段由 gate-d-review.json 提供（v6 补充，修复漏洞 T）
   ├─ PASS ──▶ AUTOSTEP_API_CHANGE_DETECTOR
-  └─ FAIL ──▶ (rollback_to)
+  └─ FAIL ──▶ (gate-d-review.json.rollback_to)
+               Orchestrator 越界降级：超出允许范围 → 强制 phase-2
 
 AUTOSTEP_API_CHANGE_DETECTOR
   │ 写入 phase_5_mode:                                    ← v5 修复漏洞 M
