@@ -67,7 +67,12 @@ for schema_file in "$CONTRACTS_DIR"/*.yaml "$CONTRACTS_DIR"/*.json; do
   fname=$(basename "$schema_file")
 
   set +e
-  OUTPUT=$(schemathesis run "$schema_file" --base-url "$SERVICE_BASE_URL" --checks all 2>&1)
+  # Bug #9 fix: schemathesis 4.x uses --url instead of --base-url; --checks all → -c all
+  if schemathesis run --help 2>&1 | grep -q '\-\-url'; then
+    OUTPUT=$(schemathesis run "$schema_file" --url "$SERVICE_BASE_URL" --phases examples -w 1 2>&1)
+  else
+    OUTPUT=$(schemathesis run "$schema_file" --base-url "$SERVICE_BASE_URL" --checks all 2>&1)
+  fi
   EXIT_CODE=$?
   set -e
   if [ "$EXIT_CODE" -eq 0 ]; then

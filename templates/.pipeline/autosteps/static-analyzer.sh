@@ -47,11 +47,15 @@ elif command -v flake8 &>/dev/null; then
 fi
 
 if command -v npm &>/dev/null && [ -f "package.json" ]; then
+  # Bug #7 fix: use set +e to avoid pipefail causing both python3 and || echo 0 to output
+  set +e
   DEPENDENCY_VULNS=$(npm audit --json 2>/dev/null | python3 -c "
 import json, sys
 try: print(json.load(sys.stdin).get('metadata', {}).get('vulnerabilities', {}).get('high', 0))
 except: print(0)
-" 2>/dev/null || echo 0)
+" 2>/dev/null)
+  [ -z "$DEPENDENCY_VULNS" ] && DEPENDENCY_VULNS=0
+  set -e
   [ "$DEPENDENCY_VULNS" -gt 0 ] && OVERALL="FAIL" || true
 fi
 

@@ -19,6 +19,7 @@ mkdir -p "$DEPEND_DIR"
 DETECTED=()
 GENERATED=()
 SKIPPED=()
+UNFILLED=()
 
 # ── 检测函数 ──────────────────────────────────────────────
 detect() {
@@ -37,16 +38,21 @@ generate_template() {
   local template_file="$DEPEND_DIR/${name}.env.template"
   local env_file="$DEPEND_DIR/${name}.env"
 
+  # 无论 .env 是否已存在，都将该依赖加入 detected_deps
+  # builder-infra 需要完整的依赖列表来生成 Woodpecker secrets
+  DETECTED+=("$name")
+
   if [ -f "$env_file" ]; then
     SKIPPED+=("$env_file（已存在）")
     return
   fi
 
+  # .env 不存在，需要用户填写
+  UNFILLED+=("$name")
   if [ ! -f "$template_file" ]; then
     printf '%s\n' "$content" > "$template_file"
     GENERATED+=("$template_file")
   fi
-  DETECTED+=("$name")
 }
 
 # ── 关键词检测 ────────────────────────────────────────────
@@ -145,19 +151,25 @@ TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 detected_json=$(printf '%s\n' "${DETECTED[@]+"${DETECTED[@]}"}" | python3 -c "
 import sys, json
 items = [l.strip() for l in sys.stdin if l.strip()]
-print(json.dumps(items))
+print(json.dumps(items, ensure_ascii=False))
 ")
 
 generated_json=$(printf '%s\n' "${GENERATED[@]+"${GENERATED[@]}"}" | python3 -c "
 import sys, json
 items = [l.strip() for l in sys.stdin if l.strip()]
-print(json.dumps(items))
+print(json.dumps(items, ensure_ascii=False))
 ")
 
 skipped_json=$(printf '%s\n' "${SKIPPED[@]+"${SKIPPED[@]}"}" | python3 -c "
 import sys, json
 items = [l.strip() for l in sys.stdin if l.strip()]
-print(json.dumps(items))
+print(json.dumps(items, ensure_ascii=False))
+")
+
+unfilled_json=$(printf '%s\n' "${UNFILLED[@]+"${UNFILLED[@]}"}" | python3 -c "
+import sys, json
+items = [l.strip() for l in sys.stdin if l.strip()]
+print(json.dumps(items, ensure_ascii=False))
 ")
 
 cat > "$REPORT" << REPORT_EOF
@@ -165,6 +177,7 @@ cat > "$REPORT" << REPORT_EOF
   "autostep": "depend-collector",
   "timestamp": "$TIMESTAMP",
   "detected_deps": $detected_json,
+  "unfilled_deps": $unfilled_json,
   "templates_generated": $generated_json,
   "skipped": $skipped_json,
   "overall": "PASS"
@@ -172,6 +185,7 @@ cat > "$REPORT" << REPORT_EOF
 REPORT_EOF
 
 echo "[depend-collector] 检测到依赖：${DETECTED[*]:-无}"
+echo "[depend-collector] 未填写凭证：${UNFILLED[*]:-无}"
 echo "[depend-collector] 生成模板：${GENERATED[*]:-无}"
 echo "[depend-collector] 跳过（已存在）：${SKIPPED[*]:-无}"
 echo "[depend-collector] 报告：$REPORT"

@@ -24,12 +24,13 @@ fi
 
 if [ -n "${TEST_COMMAND:-}" ]; then
   CMD="$TEST_COMMAND"
-elif [ -f "package.json" ] && command -v npm &>/dev/null; then
-  CMD="npm test -- --passWithNoTests"
+elif [ -f "go.mod" ] && command -v go &>/dev/null; then
+  # Bug #8 fix: check go.mod before package.json to avoid false npm detection in Go+Node hybrid projects
+  CMD="go test ./..."
 elif [ -f "pytest.ini" ] || [ -f "pyproject.toml" ]; then
   CMD="python -m pytest -q"
-elif [ -f "go.mod" ]; then
-  CMD="go test ./..."
+elif [ -f "package.json" ] && command -v npm &>/dev/null; then
+  CMD="npm test -- --passWithNoTests"
 else
   cat > "$OUTPUT_FILE" << EOF
 {"autostep":"RegressionGuard","timestamp":"$TIMESTAMP","warning":"no test command detected","overall":"PASS"}

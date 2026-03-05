@@ -36,14 +36,20 @@ else
 fi
 
 REGRESSION_EXIT=0
-if [ -f "package.json" ] && command -v npm &>/dev/null; then
+# Bug #8 fix: check go.mod before package.json to avoid false npm detection in Go+Node hybrid projects
+if [ -f "go.mod" ] && command -v go &>/dev/null; then
   set +e
-  npm test -- --passWithNoTests > /dev/null 2>&1
+  go test ./... > /dev/null 2>&1
   REGRESSION_EXIT=$?
   set -e
 elif command -v python3 &>/dev/null && [ -f "pytest.ini" ]; then
   set +e
   python3 -m pytest -q > /dev/null 2>&1
+  REGRESSION_EXIT=$?
+  set -e
+elif [ -f "package.json" ] && command -v npm &>/dev/null; then
+  set +e
+  npm test -- --passWithNoTests > /dev/null 2>&1
   REGRESSION_EXIT=$?
   set -e
 fi
