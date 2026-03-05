@@ -69,8 +69,28 @@ permissionMode: acceptEdits
 }
 ```
 
+## 覆盖率文档规范
+
+ADR"实现验证"章节必须如实记录覆盖率情况，格式如下：
+
+**当 CI 阈值 = 需求目标（如均为 80%）且已达标：**
+```
+实际覆盖率：XX%（已达到目标 80%）
+```
+
+**当 CI 阈值低于需求目标（如 CI=25%，需求=80%）：**
+```
+实际覆盖率（静态 CI 环境）：XX%，CI 阈值：YY%（已达标）
+原始需求目标：80%（状态：PARTIAL）
+原因：路由处理器需运行时数据库/外部服务，无法在静态 CI 中覆盖；已在 docker-compose.test.yml 配置集成测试环境。
+```
+
+**禁止**：不得写"预计达到 80%+"（预测性陈述）、不得声称"已达到 80%"（若实际未达到）。
+只写**已知事实**：实际数字、配置阈值、PARTIAL 状态说明。
+
 ## 约束
 
 - 所有文档使用 Markdown 格式（禁止 Word/PDF）
 - CHANGELOG 必须包含 api-change-report.json 中所有变更契约的条目
 - ADR 最终化后状态从"草稿"改为"已接受"
+- API 文档必须与 contracts/ 中的 OpenAPI Schema **严格一致**（路径、HTTP 方法、响应结构、字段名）。写完后需自查：逐一对照 openapi.yaml 中的每个 endpoint，确认路径（注意单复数）、HTTP 方法（GET/POST/PATCH/PUT/DELETE）、响应字段均正确

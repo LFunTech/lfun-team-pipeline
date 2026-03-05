@@ -55,7 +55,7 @@ echo ""
 
 # ── 验证安装 ──────────────────────────────────────────────────────
 echo "── 安装验证 ──────────────────────────────────────"
-REQUIRED_AGENTS=("orchestrator" "clarifier" "architect" "auditor-biz" "auditor-tech" "auditor-qa" "auditor-ops" "resolver" "planner" "contract-formalizer" "builder-frontend" "builder-backend" "builder-dba" "builder-security" "builder-infra" "simplifier" "inspector" "tester" "documenter" "deployer" "monitor" "migrator" "optimizer" "translator")
+REQUIRED_AGENTS=("orchestrator" "clarifier" "architect" "auditor-biz" "auditor-tech" "auditor-qa" "auditor-ops" "resolver" "planner" "contract-formalizer" "builder-frontend" "builder-backend" "builder-dba" "builder-security" "builder-infra" "simplifier" "inspector" "tester" "documenter" "deployer" "monitor" "migrator" "optimizer" "translator" "github-ops")
 
 MISSING=0
 for agent in "${REQUIRED_AGENTS[@]}"; do
@@ -69,7 +69,7 @@ done
 
 echo ""
 if [ "$MISSING" -eq 0 ]; then
-  echo "🎉 所有 24 个 Agent 已成功安装！"
+  echo "🎉 所有 25 个 Agent 已成功安装！"
 else
   echo "⚠️  $MISSING 个 Agent 安装失败，请检查 agents/ 目录"
   exit 1

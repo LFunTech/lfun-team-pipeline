@@ -101,6 +101,32 @@ paths:
 
 - 每个文件必须是合法的 OpenAPI 3.0 格式（Phase 2.6 AutoStep 机械验证）
 - 字段类型必须与 tasks.json `definition` 中描述的类型语义一致（Phase 2.7 验证）
+- **字段名必须与 proposal 中的请求体字段名完全一致**；若 proposal 与需求文档有歧义，以需求文档为准，并在 schema description 中注明差异（避免 Architect 用 `url`、OpenAPI 用 `originalUrl` 等不一致导致 Builder 实现分歧）
 - GET 请求不得包含 requestBody
 - 路径参数必须在 parameters 中标注 `required: true`
 - 每个操作必须有 operationId
+
+## 自验证（写入每个文件后立即执行）
+
+写完每个 YAML 文件后，**立即**运行以下命令验证格式合法性：
+
+```bash
+# 验证 YAML 可解析
+python3 -c "import yaml, sys; yaml.safe_load(open('$FILE'))" && echo "YAML OK" || echo "YAML ERROR"
+
+# 验证必填字段存在（openapi、info、paths）
+python3 -c "
+import yaml, sys
+d = yaml.safe_load(open('$FILE'))
+assert 'openapi' in d, 'missing: openapi'
+assert 'info' in d, 'missing: info'
+assert 'paths' in d, 'missing: paths'
+for path, methods in d['paths'].items():
+    for method, op in methods.items():
+        assert 'operationId' in op, f'missing operationId in {method} {path}'
+        assert 'responses' in op, f'missing responses in {method} {path}'
+print('Structure OK')
+"
+```
+
+若任一命令报错，**必须修复后再继续处理下一个合约**，不得跳过。

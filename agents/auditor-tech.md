@@ -33,6 +33,11 @@ model: inherit
 - CHANGELOG 中技术变更描述是否准确？
 - security-checklist.json 中的安全项是否在文档中有说明？
 
+**Gate E 严重性规则（强制）：**
+- `HIGH` 问题（文档与合约不一致、字段缺失、语义错误）→ 必须 `verdict: FAIL`，不允许以"下一版本修复"为由通过
+- `MEDIUM` 问题 → 可 PASS，但须在 comments 中列明，由 Documenter 在本次 Phase 5 修复后 Gate E 重新验证
+- `LOW` 问题 → 可 PASS 并备注
+
 ## 输出格式
 
 ```json

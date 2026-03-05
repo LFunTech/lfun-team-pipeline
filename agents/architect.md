@@ -53,6 +53,14 @@ permissionMode: acceptEdits
 ## 接口设计草案
 ## 测试策略概要
 ## 部署策略概要
+
+**必填运维 Checklist（auditor-ops 强制验证）：**
+- [ ] **就绪端点**：定义 `/ready`（readiness probe），与 `/health`（liveness probe）分离；`/ready` 在依赖（数据库、模型、向量库）加载完毕前返回 503，避免容器编排平台过早路由流量
+- [ ] **日志策略**：明确结构化日志格式（JSON/structlog）、日志级别（DEBUG/INFO/WARNING/ERROR）、访问日志字段（request_id/latency_ms）、错误日志字段，以及 LOG_LEVEL 环境变量配置方式
+- [ ] **优雅关闭**：处理 SIGTERM 信号，后台任务（如异步摄入、嵌入计算）必须有 drain 机制或取消策略，确保关闭前数据写入完整，避免向量库（Chroma/FAISS 等）数据不一致
+- [ ] **资源说明**：列出运行时内存需求（含模型加载峰值）、磁盘空间（向量库/模型缓存）、网络依赖（HuggingFace Hub/LLM API）
+- [ ] **配置安全**：明确 `${VAR}` 插值机制（YAML 不原生支持，需说明具体实现方式）
+
 ## 预估工作量
 ```
 

@@ -43,7 +43,7 @@ for mpath in manifests:
     data = json.load(open(mpath))
     builder_name = os.path.basename(mpath)\
         .replace('impl-manifest-', '').replace('.json', '')
-    files = data.get('files_changed', [])
+    files = data.get('files_changed', data.get('files', []))
     builders.append({'builder': builder_name, 'files_changed': files})
     for f in files:
         key = f['path']

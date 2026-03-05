@@ -22,7 +22,7 @@ add_result() {
   if ! $FIRST; then RESULTS_LIST+=","; fi
   FIRST=false
   RESULTS_LIST+="{\"schema\":\"$1\",\"tool\":\"$2\",\"result\":\"$3\",\"detail\":\"$4\"}"
-  [ "$3" = "FAIL" ] && OVERALL="FAIL"
+  [ "$3" = "FAIL" ] && OVERALL="FAIL" || true
 }
 
 if ! curl -sf "$SERVICE_BASE_URL/health" > /dev/null 2>&1 && \
@@ -33,23 +33,48 @@ EOF
   exit 2
 fi
 
+# 检测 schemathesis，缺失时尝试自动安装
+if ! command -v schemathesis &>/dev/null; then
+  echo "[ContractCompliance] schemathesis 未找到，尝试自动安装..." >&2
+  pip install schemathesis -q 2>/dev/null || true
+fi
+
+# 若仍不可用，整体 FAIL（不允许跳过合约验证）
+if ! command -v schemathesis &>/dev/null; then
+  RESULTS_LIST="["
+  FIRST=true
+  for schema_file in "$CONTRACTS_DIR"/*.yaml "$CONTRACTS_DIR"/*.json; do
+    [ -f "$schema_file" ] || continue
+    add_result "$(basename "$schema_file")" "none" "FAIL" \
+      "schemathesis 未安装，无法进行合约验证。请执行: pip install schemathesis"
+  done
+  RESULTS_LIST+="]"
+  cat > "$OUTPUT_FILE" << EOF
+{
+  "autostep": "ContractComplianceChecker",
+  "timestamp": "$TIMESTAMP",
+  "service_base_url": "$SERVICE_BASE_URL",
+  "error": "schemathesis 未安装，合约验证无法执行",
+  "results": $RESULTS_LIST,
+  "overall": "FAIL"
+}
+EOF
+  exit 1
+fi
+
 for schema_file in "$CONTRACTS_DIR"/*.yaml "$CONTRACTS_DIR"/*.json; do
   [ -f "$schema_file" ] || continue
   fname=$(basename "$schema_file")
 
-  if command -v schemathesis &>/dev/null; then
-    set +e
-    OUTPUT=$(schemathesis run "$schema_file" --base-url "$SERVICE_BASE_URL" --checks all 2>&1)
-    EXIT_CODE=$?
-    set -e
-    if [ "$EXIT_CODE" -eq 0 ]; then
-      add_result "$fname" "schemathesis" "PASS" "所有契约测试通过"
-    else
-      DETAIL=$(echo "$OUTPUT" | tail -3 | tr '\n' ' ' | sed 's/"/\\"/g')
-      add_result "$fname" "schemathesis" "FAIL" "$DETAIL"
-    fi
+  set +e
+  OUTPUT=$(schemathesis run "$schema_file" --base-url "$SERVICE_BASE_URL" --checks all 2>&1)
+  EXIT_CODE=$?
+  set -e
+  if [ "$EXIT_CODE" -eq 0 ]; then
+    add_result "$fname" "schemathesis" "PASS" "所有契约测试通过"
   else
-    add_result "$fname" "none" "PASS" "WARNING: 未安装 schemathesis，跳过机械验证"
+    DETAIL=$(echo "$OUTPUT" | tail -3 | tr '\n' ' ' | sed 's/"/\\"/g')
+    add_result "$fname" "schemathesis" "FAIL" "$DETAIL"
   fi
 done
 

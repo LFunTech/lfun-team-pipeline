@@ -35,11 +35,13 @@ permissionMode: acceptEdits
 2. **严格文件范围**：只修改 tasks.json files 列表中的文件
 3. **可测试性**：业务逻辑要可注入依赖（避免硬编码外部依赖）
 4. **错误处理**：实现所有 contracts 中定义的错误响应（400/404/500 等）
+5. **全文件测试覆盖**：实现的**每个**源文件必须有对应测试，包括入口文件（`main.py`/`app.py`）、依赖注入文件（`dependencies.py`）、配置模块（`config.py`/`logging_config.py`）等。**禁止**提交覆盖率为 0% 的文件——Tester 阶段 (Phase 4.2) 会强制验证覆盖率阈值，零覆盖文件必然导致整体覆盖率不达标并触发重试。
 
 **文件所有权（Backend）：**
 - 拥有目录：`src/routes/`、`src/services/`、`src/middleware/`
 - **禁止**修改上述目录以外的任何文件（包括 `src/db/`、`src/repositories/`）
 - 跨层调用只能依赖 tasks.json 中声明的接口契约（函数名 + 参数 + 返回类型）
+- **测试文件中引用 DBA 模块时，路径必须以项目根为基准**（如 `../../src/repositories/linkRepository`），**禁止使用 `../../../builder-dba/` 等跨 worktree 相对路径**——合并后这些路径会立即失效
 
 ## 输出
 

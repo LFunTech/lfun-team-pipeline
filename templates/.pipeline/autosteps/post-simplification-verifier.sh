@@ -22,7 +22,7 @@ add_check() {
   if ! $FIRST; then CHECKS_LIST+=","; fi
   FIRST=false
   CHECKS_LIST+="{\"check\":\"$1\",\"result\":\"$2\",\"detail\":\"$3\"}"
-  [ "$2" = "FAIL" ] && OVERALL="FAIL"
+  [ "$2" = "FAIL" ] && OVERALL="FAIL" || true
 }
 
 if [ -f "$SIMPLIFY_REPORT" ] && [ -f "$IMPL_MANIFEST" ]; then

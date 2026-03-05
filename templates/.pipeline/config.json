@@ -58,7 +58,9 @@
   },
   "autosteps": {
     "contract_compliance": {
-      "service_base_url": "http://localhost:3000"
+      "service_start_cmd": "npm start",
+      "service_base_url": "http://localhost:3000",
+      "health_path": "/health"
     }
   }
 }
