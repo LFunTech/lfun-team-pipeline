@@ -138,35 +138,6 @@ GITIGNORE_EOF
   echo "在 Claude Code 对话中回复 **继续**，流水线将恢复执行。"
 } > "$DEPEND_DIR/README.md"
 
-# ── 输出报告 ──────────────────────────────────────────────
-python3 - <<'PYEOF'
-import json, os, sys
-
-depend_dir = os.environ.get('DEPEND_DIR', '.depend')
-detected = os.environ.get('_DETECTED', '').split('\n') if os.environ.get('_DETECTED') else []
-generated = os.environ.get('_GENERATED', '').split('\n') if os.environ.get('_GENERATED') else []
-skipped = os.environ.get('_SKIPPED', '').split('\n') if os.environ.get('_SKIPPED') else []
-
-detected = [x for x in detected if x]
-generated = [x for x in generated if x]
-skipped = [x for x in skipped if x]
-
-report = {
-    "autostep": "depend-collector",
-    "timestamp": __import__('datetime').datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
-    "detected_deps": detected,
-    "templates_generated": generated,
-    "skipped": skipped,
-    "overall": "PASS"
-}
-
-report_path = os.path.join(os.environ.get('PIPELINE_DIR', '.pipeline'), 'artifacts', 'depend-collection-report.json')
-with open(report_path, 'w') as f:
-    json.dump(report, f, ensure_ascii=False, indent=2)
-
-print(f"[depend-collector] 报告：{report_path}")
-PYEOF
-
 # 用 bash 方式输出报告（更可靠）
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
