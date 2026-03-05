@@ -155,3 +155,21 @@ git branch -D pipeline/phase-3/builder-<name>
 # 从本 repo 安装最新 Agents 到 ~/.claude/agents/
 bash install.sh
 ```
+
+## 凭证管理（.depend/ 目录）
+
+流水线在 Phase 2.0b 会自动扫描项目依赖，在项目根目录生成 `.depend/` 目录。
+
+**目录用途：** 存储外部服务凭证（数据库、Redis、GPU 服务器、对象存储等）。
+
+**文件类型：**
+- `.depend/*.env.template`：模板文件，列出所需的环境变量名（可提交到 git）
+- `.depend/*.env`：真实凭证文件，**已加入 .gitignore，绝不提交到版本控制**
+- `.depend/README.md`：填写说明（可提交到 git）
+
+**使用流程：**
+1. Phase 2.0b 完成后，流水线暂停并提示填写凭证
+2. 将各 `.env.template` 复制为 `.env` 并填入真实值
+3. 在 Claude Code 对话中回复"继续"，流水线恢复执行
+
+**注意：** 部署时，将 `.depend/*.env` 中的凭证手动配置到 Woodpecker CI 的 repo secrets 中，与 `.woodpecker/` 中的 secrets 字段对应。
