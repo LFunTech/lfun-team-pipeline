@@ -63,6 +63,7 @@ DESCRIPTION=$(grep -v "^#" .pipeline/artifacts/proposal.md | grep -v "^$" | head
 **Step 4：创建仓库**
 
 ```bash
+git rev-parse HEAD > /dev/null 2>&1 || { echo "错误：本地仓库无 commit，无法推送"; exit 1; }
 gh repo create "$GH_USER/$PROJECT_NAME" \
   --private \
   --description "$DESCRIPTION" \
@@ -78,6 +79,7 @@ gh repo create "$GH_USER/$PROJECT_NAME" \
 ```bash
 git remote -v | grep origin
 REPO_URL=$(gh repo view "$GH_USER/$PROJECT_NAME" --json url --jq '.url')
+CLONE_URL=$(gh repo view "$GH_USER/$PROJECT_NAME" --json sshUrl --jq '.sshUrl')
 echo "仓库已创建：$REPO_URL"
 ```
 
@@ -90,8 +92,8 @@ echo "仓库已创建：$REPO_URL"
   "github_ops_agent": "github-ops",
   "scenario": "create_repo",
   "timestamp": "<ISO-8601>",
-  "repo_url": "https://github.com/<user>/<project>",
-  "clone_url": "git@github.com:<user>/<project>.git",
+  "repo_url": "<REPO_URL>",
+  "clone_url": "<CLONE_URL>",
   "overall": "PASS"
 }
 ```
@@ -142,7 +144,8 @@ done
 ```bash
 git add .woodpecker/
 git commit -m "chore: add deployment configuration and woodpecker pipelines"
-git push origin main
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+git push origin "$CURRENT_BRANCH"
 ```
 
 **Step 4：输出结果**
@@ -160,7 +163,18 @@ echo "Woodpecker 配置已推送至 ${REPO_URL}/.woodpecker/"
 }
 ```
 
-（用 python3 读取现有 JSON，添加字段后写回）
+```bash
+python3 - <<'EOF'
+import json
+from datetime import datetime, timezone
+
+path = '.pipeline/artifacts/github-repo-info.json'
+data = json.load(open(path))
+data['woodpecker_pushed'] = True
+data['woodpecker_push_timestamp'] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+json.dump(data, open(path, 'w'), ensure_ascii=False, indent=2)
+EOF
+```
 
 ---
 
