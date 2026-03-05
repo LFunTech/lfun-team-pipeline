@@ -7,7 +7,7 @@ tools: >
   Agent(clarifier, architect, auditor-biz, auditor-tech, auditor-qa, auditor-ops,
   resolver, planner, contract-formalizer, builder-frontend, builder-backend,
   builder-dba, builder-security, builder-infra, simplifier, inspector, tester,
-  documenter, deployer, monitor, migrator, optimizer, translator),
+  documenter, deployer, monitor, migrator, optimizer, translator, github-ops),
   Bash, Read, Write, Edit, Glob, Grep, TodoWrite
 model: inherit
 permissionMode: acceptEdits
@@ -47,6 +47,8 @@ permissionMode: acceptEdits
     "gate-c": 0,
     "gate-d": 0,
     "gate-e": 0,
+    "phase-2.0a": 0,
+    "phase-2.0b": 0,
     "per_builder": {}
   },
   "conditional_agents": {
@@ -60,7 +62,9 @@ permissionMode: acceptEdits
   "phase_3_worktrees": {},
   "phase_3_branches": {},
   "phase_3_main_branch": null,
-  "phase_3_merge_order": []
+  "phase_3_merge_order": [],
+  "github_repo_created": false,
+  "github_repo_url": null
 }
 ```
 
@@ -101,8 +105,36 @@ input: requirement.md + proposal.md
 output: .pipeline/artifacts/gate-a-review.json
 ```
 矛盾检测 → 读取 overall：
-- `PASS` → 解析 proposal.md 激活条件角色，进入 Phase 2
+- `PASS` → 解析 proposal.md 激活条件角色，进入 Phase 2.0a
 - `FAIL` → rollback_to（取最深目标）
+
+### Phase 2.0a — GitHub Repo Creator（github-ops Agent）
+```
+spawn: github-ops
+scenario: create_repo
+input: config.json + proposal.md
+output: .pipeline/artifacts/github-repo-info.json
+```
+读取 `github-repo-info.json` 中 `overall`：
+- `PASS` → 写入 state.json `github_repo_created: true`、`github_repo_url: <url>`，进入 Phase 2.0b
+- `CANCELLED` → 写入 state.json `github_repo_created: false`，进入 Phase 2.0b（后续 push 跳过）
+- `FAIL` → ESCALATION
+
+### Phase 2.0b — Depend Collector（AutoStep + 暂停）
+```
+run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/depend-collector.sh
+output: .pipeline/artifacts/depend-collection-report.json
+```
+读取报告 `detected_deps` 字段：
+- 非空 → **暂停**，向用户展示：
+  ```
+  ⚠️  检测到以下外部依赖，请填写凭证文件后继续：
+  <逐行列出 .depend/*.env.template 文件路径>
+  参考 .depend/README.md 了解填写说明。
+  完成后回复"继续"。
+  ```
+  等待用户输入"继续"后进入 Phase 2。
+- 空 → 直接进入 Phase 2（无需凭证）。
 
 ### Phase 2 — Planner（任务细化）
 ```
@@ -176,13 +208,15 @@ FAIL → rollback_to: phase-2.5
 
 4. `git worktree list` 确认所有 worktree 创建成功。
 
-#### Phase 3 — Builder 调度（按依赖波次）
+#### Phase 3 — Builder 调度（按依赖波次顺序执行）
+
+> **注意**：Agent tool 按顺序调用，各 Builder 实际为顺序执行（非真正并行）。波次划分体现依赖顺序，同波次内也按列出顺序顺序调用。
 
 按以下波次 spawn，每波完成后才启动下一波：
-- 波次 1（并行）：DBA、Migrator（条件）
-- 波次 2：Backend
-- 波次 3（并行）：Security、Frontend
-- 波次 4（并行）：Infra（等 Security）、Translator（条件，等 Frontend）
+- 波次 1（顺序）：DBA、Migrator（条件）
+- 波次 2（顺序）：Backend
+- 波次 3（顺序）：Security、Frontend
+- 波次 4（顺序）：Infra（等 Security）、Translator（条件，等 Frontend）
 
 **spawn 消息格式**：
 ```
@@ -289,15 +323,36 @@ FAIL → rollback_to: phase-3（重新经过 3.1→3.2→3.3→3.5→3.6→Gate 
 
 ### Phase 3.7 — Contract Compliance Checker（AutoStep）
 
+从 config.json 读取服务启动配置（Python 解析）：
+```
+SERVICE_START_CMD=$(python3 -c "
+import json
+c=json.load(open('.pipeline/config.json'))
+print(c.get('autosteps',{}).get('contract_compliance',{}).get('service_start_cmd','npm start'))
+" 2>/dev/null || echo "npm start")
+
+SERVICE_BASE_URL=$(python3 -c "
+import json
+c=json.load(open('.pipeline/config.json'))
+print(c.get('autosteps',{}).get('contract_compliance',{}).get('service_base_url','http://localhost:3000'))
+" 2>/dev/null || echo "http://localhost:3000")
+
+HEALTH_PATH=$(python3 -c "
+import json
+c=json.load(open('.pipeline/config.json'))
+print(c.get('autosteps',{}).get('contract_compliance',{}).get('health_path','/health'))
+" 2>/dev/null || echo "/health")
+```
+
 启动服务（后台）：
-  npm start &
+  eval "$SERVICE_START_CMD" &
   SERVICE_PID=$!
-  等待就绪（最多 10s）：轮询 curl -sf http://localhost:3000/health，间隔 1s
-  若 10s 内未就绪：写入 WARN 报告跳过，kill $SERVICE_PID 2>/dev/null || true，继续
+  等待就绪（最多 30s）：轮询 curl -sf ${SERVICE_BASE_URL}${HEALTH_PATH}，间隔 2s
+  若 30s 内未就绪：写入 WARN 报告跳过，kill $SERVICE_PID 2>/dev/null || true，继续
 
 运行 AutoStep：
 ```
-SERVICE_BASE_URL=http://localhost:3000 \
+SERVICE_BASE_URL="$SERVICE_BASE_URL" \
 PIPELINE_DIR=.pipeline \
 bash .pipeline/autosteps/contract-compliance-checker.sh
 ```
@@ -306,6 +361,17 @@ bash .pipeline/autosteps/contract-compliance-checker.sh
   kill $SERVICE_PID 2>/dev/null || true
 
 FAIL → rollback_to: phase-3（对应 Builder）
+
+**config.json 示例（Rust 项目）：**
+```json
+"autosteps": {
+  "contract_compliance": {
+    "service_start_cmd": "cargo run --bin api-service",
+    "service_base_url": "http://localhost:8080",
+    "health_path": "/v1/health"
+  }
+}
+```
 
 ### Phase 4a — Tester（功能测试）
 ```
@@ -375,6 +441,16 @@ output: .pipeline/artifacts/gate-e-review.json
 ```
 FAIL → rollback_to: phase-5
 
+### Phase 5.9 — GitHub Woodpecker Push（github-ops Agent）
+
+仅在 `state.json.github_repo_created = true` 时执行；否则跳过，直接进入 Phase 6.0。
+```
+spawn: github-ops
+scenario: push_woodpecker
+input: .woodpecker/ 目录 + github-repo-info.json
+```
+FAIL → WARN（不阻断，记录日志后继续 Phase 6.0）
+
 ### Phase 6.0 — Pre-Deploy Readiness Check（AutoStep）
 ```
 run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/pre-deploy-readiness-check.sh
@@ -421,6 +497,40 @@ Resolver 输出 `resolver_verdict`：
 - 任意阶段超过 max_attempts 次 → 暂停，输出 `[ESCALATION] 超过最大重试次数，请求人工介入`
 - Phase 6.0 FAIL → 暂停，输出部署前检查失败详情
 - Clarifier 5 轮后仍有 `[CRITICAL-UNRESOLVED]` → 暂停
+
+## Git Push 规范
+
+每个 Phase/Gate 成功完成后，若 `state.json.github_repo_created = true`，执行：
+
+```bash
+git add -A
+git commit -m "<COMMIT_MSG>" --allow-empty
+git push origin $(git rev-parse --abbrev-ref HEAD) 2>/dev/null || echo "[WARN] git push 失败，继续流水线"
+```
+
+push 失败时仅记录 WARN，不中断流水线。
+
+### Commit Message 规范（Conventional Commits）
+
+| 阶段 | COMMIT_MSG |
+|------|-----------|
+| Phase 0 Clarifier | `docs: add requirement specification` |
+| Phase 1 Architect | `docs: add architecture proposal and ADRs` |
+| Gate A | `ci: gate-a passed` |
+| Phase 2.0a | `chore: initialize github repository` |
+| Phase 2 Planner | `docs: add task breakdown (N tasks, M builders)`（N/M 从 tasks.json 读取） |
+| Phase 2.5 Contract Formalizer | `docs: add OpenAPI contracts for N services`（N 从 contracts/ 目录文件数读取） |
+| Gate B | `ci: gate-b passed` |
+| Phase 3 各 Builder | `feat(builder-<name>): implement <service-name>`（service-name 从 impl-manifest 读取） |
+| Phase 3.5 Simplifier | `refactor: simplify implementation per static analysis` |
+| Gate C | `ci: gate-c passed` |
+| Phase 4a Tester | `test: add test suite (N cases, X% coverage)`（从 test-report.json 读取） |
+| Gate D | `ci: gate-d passed` |
+| Phase 5 Documenter | `docs: add README, CHANGELOG and API documentation` |
+| Gate E | `ci: gate-e passed` |
+| Phase 6 Deployer | `chore: add deployment configuration and woodpecker pipelines` |
+
+括号内的变量由 Orchestrator 在执行时从对应产物文件中读取真实值填入。
 
 ## 日志格式
 
