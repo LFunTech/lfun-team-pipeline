@@ -654,16 +654,20 @@ if not os.path.exists(INDEX_PATH):
 ```python
 def write_step_log(step, step_type, agent, result, inputs_artifacts,
                    outputs_artifacts, key_decisions, errors, rollback_to=None,
-                   rollback_triggered_by=None, context_injected=""):
+                   rollback_triggered_by=None, context_injected="", started_at=None):
+    # Orchestrator 应在步骤开始时用 started_at = datetime.datetime.utcnow().isoformat() + "Z" 记录开始时间，
+    # 并在调用 write_step_log 时传入。
     log_path = f".pipeline/artifacts/logs/step-{step}.log.json"
-    now = datetime.datetime.utcnow().isoformat() + "Z"
+    completed_at = datetime.datetime.utcnow().isoformat() + "Z"
+    if started_at is None:
+        started_at = completed_at
 
     new_entry = {
         "step": step, "step_type": step_type, "agent": agent,
         "pipeline_id": state["pipeline_id"],
         "attempt": 1,
-        "started_at": now,
-        "completed_at": now,
+        "started_at": started_at,
+        "completed_at": completed_at,
         "result": result,
         "rollback_to": rollback_to,
         "rollback_triggered_by": rollback_triggered_by,
@@ -676,16 +680,17 @@ def write_step_log(step, step_type, agent, result, inputs_artifacts,
 
     if os.path.exists(log_path):
         existing = json.load(open(log_path))
-        prev = {k: existing[k] for k in ["attempt","result","rollback_to","key_decisions","errors"]}
+        prev = {k: existing.get(k) for k in ["attempt","result","rollback_to","key_decisions","errors","started_at","completed_at"]}
         new_entry["attempt"] = existing["attempt"] + 1
         new_entry["retry_history"] = existing.get("retry_history", []) + [prev]
 
     with open(log_path, "w") as f:
         json.dump(new_entry, f, ensure_ascii=False, indent=2)
 
-    update_index(step, step_type, agent, result, log_path, outputs_artifacts, rollback_to)
+    update_index(step, step_type, agent, result, log_path, outputs_artifacts, rollback_to, started_at)
+    # rollback_to（step log 字段名）= caused_rollback_to（index 字段名），语义相同
 
-def update_index(step, step_type, agent, result, log_file, outputs, caused_rollback_to):
+def update_index(step, step_type, agent, result, log_file, outputs, caused_rollback_to, started_at):
     index = json.load(open(INDEX_PATH))
     now = datetime.datetime.utcnow().isoformat() + "Z"
     index["updated_at"] = now
@@ -695,6 +700,7 @@ def update_index(step, step_type, agent, result, log_file, outputs, caused_rollb
         "step": step, "step_type": step_type, "agent": agent,
         "result": result,
         "attempt": (existing["attempt"] + 1) if existing else 1,
+        "started_at": started_at,
         "completed_at": now,
         "log_file": log_file.replace(".pipeline/artifacts/", ""),
         "outputs": outputs,
@@ -726,6 +732,8 @@ def mark_rollback_causality(cause_step, target_step):
     with open(INDEX_PATH, "w") as f:
         json.dump(index, f, ensure_ascii=False, indent=2)
 ```
+
+**调用时序**：在 `write_step_log` 之后立即调用。`write_step_log` 通过 `update_index` 已将 `caused_rollback_to` 写入失败步骤的 index 条目；`mark_rollback_causality` 的额外作用是同时在**被回滚步骤**（target_step）的 index 条目中写入 `rollback_triggered_by`。若 target_step 尚无 index 条目（首次执行），该字段标注会静默跳过，待 target_step 执行完成后由下一轮 `write_step_log` 填写。
 
 ### Context Injection（spawn Agent 前必须执行）
 
