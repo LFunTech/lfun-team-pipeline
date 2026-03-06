@@ -305,12 +305,42 @@ for BUILDER in phase_3_worktrees:
 rmdir .worktrees 2>/dev/null || true
 ```
 
+**清理验证（强制）**：
+```bash
+# 验证所有 Builder worktree 已清理
+REMAINING=$(git worktree list | grep -c "pipeline/phase-3/" || echo 0)
+if [ "$REMAINING" -gt 0 ]; then
+  echo "[ERROR] Worktree 清理不完整，仍有 $REMAINING 个残余："
+  git worktree list | grep "pipeline/phase-3/"
+  echo "请手动执行：git worktree remove .worktrees/builder-<name> --force"
+  → ESCALATION：Worktree 清理失败，需人工介入后重启
+  → 写入索引最终状态 status: escalation，停止流水线
+fi
+echo "✅ 所有 Builder worktree 已清理"
+```
+
 **合并 impl-manifest**（AutoStep）：
 ```
 PIPELINE_DIR=.pipeline bash .pipeline/autosteps/impl-manifest-merger.sh
 ```
 若 exit ≠ 0：ESCALATION，停止流水线
-进入 Phase 3.1。
+
+### Phase 3.0b — Build Verifier（AutoStep）
+
+在所有 Builder 代码合并完成后、进入静态分析之前，强制执行编译验证。这是防止 Gate C 独立性失效的关键屏障。
+
+```
+run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/build-verifier.sh
+output: .pipeline/artifacts/build-verifier-report.json
+```
+读取报告 `overall` 字段：
+- `PASS` → 继续进入 Phase 3.1
+- `FAIL` → rollback_to: phase-3（按原 Builder 任务重新实现，**Orchestrator 不得自行修复 Builder 代码**）
+  标注因果：调用 `mark_rollback_causality(cause_step="phase-3.0b", target_step="phase-3")`。
+
+⚠️ **重要约束**：Build Verifier FAIL 时，Orchestrator **必须** rollback 委托给对应 Builder 重新实现，**禁止** Orchestrator 直接修改源代码绕过编译错误。
+
+写日志：调用 `write_step_log`，step=`"phase-3.0b"`，step_type=`"autostep"`，agent=`""`，从 `build-verifier-report.json` 读取 `overall`、`tool`、`errors` 前 3 条作为 `key_decisions`。
 
 #### 回滚清理（rollback_to: phase-3 时）
 
@@ -379,7 +409,20 @@ input: 代码 + 所有 Phase 3 报告
 output: .pipeline/artifacts/gate-c-review.json
 ```
 Inspector 调用前，Orchestrator 在产物中机械设置 `simplifier_verified: true/false`。
-FAIL → rollback_to: phase-3（重新经过 3.1→3.2→3.3→3.5→3.6→Gate C）
+FAIL → rollback_to: phase-3（重新经过 3.0b→3.1→3.2→3.3→3.5→3.6→Gate C）
+1. 激活 Resolver 修复 Inspector 报告的 CRITICAL/MAJOR 问题（Resolver 直接在主分支上提交修复）。
+2. Resolver 完成后，**必须更新 `phase_3_base_sha`**（Bug #15 修复）：
+   ```bash
+   NEW_SHA=$(git rev-parse HEAD)
+   python3 -c "
+   import json
+   s = json.load(open('.pipeline/state.json'))
+   s['phase_3_base_sha'] = '$NEW_SHA'
+   json.dump(s, open('.pipeline/state.json', 'w'), indent=2)
+   "
+   ```
+   此更新确保后续 Phase 3.2 Diff Scope Validator 以 Resolver 修复后的 HEAD 为基准，避免将 Resolver 合法修复误报为未授权变更。
+3. 重新运行 Phase 3.0b → 3.1 → 3.2 → 3.3 → 3.5 → 3.6 → Gate C。
 标注因果：调用 `mark_rollback_causality(cause_step="gate-c", target_step="phase-3")`。
 
 写日志：调用 `write_step_log`，step=`"gate-c"`，step_type=`"gate"`，agent=`"inspector"`，从 `gate-c-review.json` 提取 `overall`、`rollback_to` 及所有 `severity=CRITICAL` 的 `issues[].message` 作为 `key_decisions`。
@@ -658,13 +701,15 @@ push 失败时仅记录 WARN，不中断流水线。
 ## 日志系统
 
 > **每个步骤完成后，Orchestrator 必须写入结构化日志。这是强制性要求，不可跳过。**
+>
+> **执行约束**：每次调用 `write_step_log` 后，该方法内部会自动执行 `git commit -m 'log: <step> <result>'`，将日志文件纳入 git 历史。若某步骤日志在 `git log --oneline` 中找不到对应的 `log:` 提交，说明该步骤日志未写入，必须补写后方可继续。
 
 ### 目录初始化
 
 首次启动时（读取 state.json 后立即执行）：
 
 ```python
-import os, json, datetime
+import os, json, datetime, subprocess
 
 LOGS_DIR = ".pipeline/artifacts/logs"
 INDEX_PATH = f"{LOGS_DIR}/pipeline.index.json"
@@ -812,6 +857,18 @@ def write_step_log(step, step_type, agent, result, inputs_artifacts,
 
     update_index(step, step_type, agent, result, log_path, outputs_artifacts, rollback_to, started_at)
     # rollback_to（step log 字段名）= caused_rollback_to（index 字段名），语义相同
+
+    # ⚠️ 强制检查点：立即提交日志文件，确保日志写入可在 git 历史中追溯
+    # 若此 commit 成功，说明日志已实际写入磁盘。git push 规范的相位提交与本提交独立。
+    try:
+        subprocess.run(
+            f"git add .pipeline/artifacts/logs/ && "
+            f"git commit -m 'log: {step} {result}'",
+            shell=True, capture_output=True, timeout=10
+        )
+    except subprocess.TimeoutExpired:
+        pass  # 静默忽略超时，不中断流水线
+    # 注：commit 失败时静默忽略（如文件未变化），不中断流水线
 
 def update_index(step, step_type, agent, result, log_file, outputs, caused_rollback_to, started_at):
     index = json.load(open(INDEX_PATH))

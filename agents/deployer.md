@@ -42,6 +42,26 @@ permissionMode: acceptEdits
 
 2. 执行 deploy-plan.md 中的部署步骤（Bash 命令）
 3. 执行 Smoke Test（deploy-plan.md 中定义的健康检查端点）
+3.5. **前端可用性验证**（若 Docker Compose 中存在 nginx/frontend 服务）
+
+   检查 `docker-compose.yml` 是否存在 nginx 或 frontend 服务：
+   ```bash
+   FRONTEND_SERVICE=$(grep -E "^\s+(nginx|frontend):" docker-compose.yml | head -1 | tr -d ' :')
+   ```
+   若存在，从 docker-compose.yml 读取前端服务端口，执行可用性检查：
+   ```bash
+   FRONTEND_PORT=$(grep -A20 "  $FRONTEND_SERVICE:" docker-compose.yml | grep -E "\"[0-9]+:[0-9]+\"" | head -1 | grep -oE "[0-9]+:" | head -1 | tr -d ':')
+   FRONTEND_URL="http://localhost:${FRONTEND_PORT:-80}"
+   if curl -sf "$FRONTEND_URL/" | grep -qi "<!DOCTYPE html>"; then
+     echo "✅ 前端服务可用：$FRONTEND_URL → HTTP 200 + HTML"
+   else
+     echo "[WARN] 前端服务不可用或响应非 HTML：$FRONTEND_URL"
+     FRONTEND_CHECK="WARN"
+   fi
+   ```
+   - 前端验证结果记录在 `deploy-report.json` 的 `frontend_check` 字段（`"PASS"` 或 `"WARN"`）
+   - **前端不可用不触发回退**（deploy 流程继续），但 WARN 结果会传递给 Monitor 用于上线观测
+
 4. 记录部署结果
 
 ### 生产回滚（Monitor CRITICAL 时，由 Orchestrator 重新激活）
@@ -61,6 +81,7 @@ permissionMode: acceptEdits
   "action": "deploy|rollback",
   "steps_executed": ["step 1", "step 2"],
   "smoke_test_result": "PASS|FAIL",
+  "frontend_check": "PASS|WARN|SKIP",
   "failure_type": "deployment_failed|smoke_test_failed|null（成功时）",
   "overall": "PASS|FAIL"
 }

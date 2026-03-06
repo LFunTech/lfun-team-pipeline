@@ -243,8 +243,44 @@ redis:
 ```
 若 .env 无 REDIS_PASSWORD，则不加 `--requirepass`。保持两者一致是首要原则。
 
+## 前端 Docker 服务约束（Bug #17）
+
+若 `proposal.md` 或 `tasks.json` 包含前端技术栈（React/Vue/Angular/Svelte 等），**必须**在 `docker-compose.yml` 中包含 nginx/frontend 服务，并生成多阶段构建 Dockerfile：
+
+```dockerfile
+# frontend/Dockerfile（多阶段构建）
+FROM node:20-slim AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+```
+
+在 `docker-compose.yml` 中：
+```yaml
+services:
+  nginx:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    depends_on:
+      - backend  # 实际服务名
+    restart: unless-stopped
+```
+
+**目的**：使 Phase 6 Deployer 能检测 nginx/frontend 服务并执行前端可用性验证（`frontend_check: PASS/WARN`），而非 `SKIP`。前端检查 SKIP 意味着部署的前端功能完全未被验证。
+
 ## 约束
 
 - deploy-plan.md 必须包含 `rollback_command`（Pre-Deploy Readiness Check 验证）
 - .env.example 必须列出所有 proposal.md 中的外部依赖环境变量
 - 不实现业务代码
+- **若项目包含前端**，docker-compose.yml 必须包含 nginx 服务（见上方约束）

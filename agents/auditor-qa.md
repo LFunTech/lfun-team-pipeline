@@ -17,11 +17,12 @@ model: inherit
 - 验收标准是否可转化为具体测试用例？
 - 性能测试策略（如 performance_sensitive）是否充分？
 
-## Gate B 审核要点（输入：tasks.json）
+## Gate B 审核要点（输入：tasks.json + assumption-propagation-report.json）
 
 - 每个任务的 acceptance_criteria 是否可测试化？
 - 异常路径（错误码）是否有对应测试用例要求？
 - 新增功能是否有对应测试文件规划？
+- **假设传播 WARN 复核**：若 `assumption-propagation-report.json` 中存在 WARN 级假设，QA 角度确认：测试策略是否覆盖被假设的行为（如假设 JWT TTL 15分钟，测试用例是否验证 token 过期行为）；若假设未被测试覆盖，标记为 MEDIUM 问题
 
 ## Gate D 审核要点（输入：test-report.json + coverage-report.json + perf-report.json）
 
@@ -29,6 +30,11 @@ model: inherit
 - 覆盖率是否达到阈值（coverage-report.json `overall: PASS`）？
 - 性能结果是否符合 SLA（如有 perf-report.json）？
 - rollback_to 限制：只能回退到 phase-4a 或 phase-3，**不得超过 phase-2**
+- **覆盖率过低专项审查**：若 `coverage-report.json` 中 `line_coverage_pct` 低于 20%，必须：
+  1. 检查 `test-report.json` 是否包含 `notes` 字段，且 `notes` 中包含对低覆盖率的技术原因说明
+  2. 若无 `notes` 说明或说明不充分 → 判为 `MEDIUM` 问题，要求 Tester 补充说明后重新验证
+  3. 若有充分说明（工具局限且可统计部分 ≥ 60%）→ 可接受，在 comments 中注明
+  - rollback_to 限制：只能回退到 phase-4a（要求 Tester 补充 notes）
 
 ## Gate E 审核要点（输入：CHANGELOG + 测试文档 + doc-manifest.json）
 

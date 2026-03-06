@@ -145,14 +145,22 @@ done
 git add .woodpecker/
 git commit -m "chore: add deployment configuration and woodpecker pipelines"
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-git push origin "$CURRENT_BRANCH"
+PUSH_ERROR=""
+git push origin "$CURRENT_BRANCH" 2>&1 || PUSH_ERROR="git push failed: no remote or auth error"
+if [ -n "$PUSH_ERROR" ]; then
+  echo "[WARN] Woodpecker 配置 push 失败（网络/认证问题），继续流水线"
+fi
 ```
 
 **Step 4：输出结果**
 
 ```bash
 REPO_URL=$(python3 -c "import json; print(json.load(open('.pipeline/artifacts/github-repo-info.json')).get('repo_url',''))")
-echo "Woodpecker 配置已推送至 ${REPO_URL}/.woodpecker/"
+if [ -z "$PUSH_ERROR" ]; then
+  echo "Woodpecker 配置已推送至 ${REPO_URL}/.woodpecker/"
+else
+  echo "[WARN] Woodpecker 配置本地已提交但未推送至 GitHub，请手动执行 git push"
+fi
 ```
 
 更新 `.pipeline/artifacts/github-repo-info.json`，追加字段：
@@ -164,16 +172,19 @@ echo "Woodpecker 配置已推送至 ${REPO_URL}/.woodpecker/"
 ```
 
 ```bash
-python3 - <<'EOF'
-import json
+python3 - <<'PYEOF'
+import json, os
 from datetime import datetime, timezone
 
 path = '.pipeline/artifacts/github-repo-info.json'
 data = json.load(open(path))
-data['woodpecker_pushed'] = True
+push_error = os.environ.get('PUSH_ERROR', '')
+data['woodpecker_pushed'] = not bool(push_error)
 data['woodpecker_push_timestamp'] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+if push_error:
+    data['woodpecker_push_error'] = push_error
 json.dump(data, open(path, 'w'), ensure_ascii=False, indent=2)
-EOF
+PYEOF
 ```
 
 ---

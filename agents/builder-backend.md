@@ -60,6 +60,47 @@ permissionMode: acceptEdits
 }
 ```
 
+## 提交前验证
+
+在 `git commit` 之前，必须完成以下验证，确保代码可编译、关键接口完整。
+
+### 1. 编译验证（强制）
+
+根据项目技术栈执行对应的编译命令（在 worktree CWD 内）：
+
+```bash
+# Rust 项目
+cargo build 2>&1 | tail -20
+# 确认输出中包含 "Finished" 且不含 "error[E" 字样
+
+# Go 项目
+go build ./... 2>&1
+# 确认无输出（0 errors）
+
+# Node.js/TypeScript 项目（若有 build 脚本）
+npm run build 2>&1 | tail -20
+# 确认输出包含 "successfully built" 或类似成功标志
+```
+
+**若编译失败**：修复所有 `error` 后重新编译，**不得提交包含编译错误的代码**。
+
+### 2. OpenAPI 文档路径验证（Rust + utoipa 项目）
+
+若项目使用 `utoipa` 生成 OpenAPI 文档，在编译成功后验证路由注解是否正确：
+
+```bash
+# 检查 ApiDoc derive 宏中是否包含所有路由 handler
+# 在 openapi.rs（或 main.rs）中找到 #[derive(OpenApi)] 块
+grep -rn "paths(" --include="*.rs" src/ crates/ 2>/dev/null | grep -v "target/"
+# 找到 #[derive(OpenApi)] 所在文件后，检查 paths() 是否包含所有 handler 函数名
+# 若 paths() 为空或缺少 handler，补充对应 utoipa 路径注解后重新编译验证
+```
+
+**常见问题（utoipa + axum 0.8）：**
+- axum 0.8 路由语法已改变：`:id` → `{id}`，`*rest` → `{*rest}`
+- `utoipa-swagger-ui 8.x` 内部依赖 axum 0.7，需使用手动 serve 方式而非 `Router::from()` 转换
+- 编译时出现 axum 版本冲突时，优先排查 utoipa-swagger-ui 的依赖传递
+
 ## Git 提交
 
 完成所有文件实现并写出 impl-manifest 后，在 CWD（worktree）内：

@@ -57,3 +57,11 @@ permissionMode: acceptEdits
 - 不修改现有测试文件（只新增）
 - 覆盖率文件必须生成到 config.json 中 `testing.coverage_output_dir` 指定路径
 - 所有 acceptance_criteria 必须有对应测试用例
+- **降低覆盖率阈值约束**：若因工具局限（如 Rust tarpaulin 无法统计集成测试、Python 覆盖率工具不支持动态 DB 依赖等）而降低 `coverage_threshold`，**必须**在 `test-report.json` 的 `notes` 字段中说明：
+  1. 具体工具局限原因
+  2. 被排除在统计之外的测试类型及占比
+  3. 可统计的单元测试部分实际覆盖率
+
+  `coverage_threshold` 不得低于以下最低值：
+  - 整体（包含受工具限制的测试）：不低于 10%（低于此值说明几乎无单元测试覆盖）
+  - 可统计的单元测试部分：不低于 60%（通过工具正常测量的代码）

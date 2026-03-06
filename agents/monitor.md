@@ -37,6 +37,30 @@ fi
 - 若 DB 表数为 0 → `status: CRITICAL`，`status_reason: "DB schema 未初始化，迁移未执行"`
 - 若 DB 连通但表存在 → 继续量化观测
 
+## 前置检查：前端可用性验证
+
+在量化观测开始前，检查前端服务可用性（若项目包含 nginx/frontend 服务）：
+
+```bash
+# 从 deploy-report.json 读取前端检查结果（Deployer 已执行初步验证）
+FRONTEND_CHECK=$(python3 -c "
+import json, sys
+d = json.load(open('.pipeline/artifacts/deploy-report.json'))
+print(d.get('frontend_check', 'SKIP'))
+" 2>/dev/null || echo "SKIP")
+
+if [ "$FRONTEND_CHECK" = "WARN" ]; then
+  echo "[WARN] Deployer 阶段前端可用性验证未通过，补充验证..."
+  # 尝试直接访问（若 docker-compose 服务仍在运行）
+  FRONTEND_URL=$(grep -oE "http://[^'\"]+:[0-9]+" .env.example 2>/dev/null | head -1 || echo "http://localhost:80")
+  curl -sf "$FRONTEND_URL/" | grep -qi "<!DOCTYPE html>" && \
+    echo "✅ 前端服务现已恢复" || \
+    echo "[WARN] 前端服务仍不可用，记录到 monitor-report.json"
+fi
+```
+
+前端可用性检查结果（`"PASS"` / `"WARN"` / `"SKIP"`）记录到 `monitor-report.json` 的 `frontend_check` 字段。`WARN` 不触发 ALERT，但需在 `status_reason` 中注明。
+
 ## 观测维度与阈值
 
 阈值从 `config.json` 读取（如无配置使用默认值）：
@@ -67,6 +91,7 @@ fi
     "p99_latency_ms": 180,
     "error_log_rate": "normal"
   },
+  "frontend_check": "PASS|WARN|SKIP",
   "status": "NORMAL|ALERT|CRITICAL",
   "status_reason": "所有指标正常|超过 ALERT 阈值：...|超过 CRITICAL 阈值：..."
 }
@@ -77,3 +102,4 @@ fi
 - `status` 字段必须是 `NORMAL`/`ALERT`/`CRITICAL` 之一（Orchestrator 机械解析）
 - 阈值判定基于量化数据，不使用主观描述
 - 观测窗口至少 30 分钟（可在 config.json 中配置）
+- `frontend_check` 为 `WARN` 时，`status_reason` 必须包含前端不可用说明（即使整体 status 为 NORMAL）

@@ -130,3 +130,28 @@ print('Structure OK')
 ```
 
 若任一命令报错，**必须修复后再继续处理下一个合约**，不得跳过。
+
+## 最终完整性自检（所有文件写完后执行）
+
+全部合约文件写入完毕后，执行以下计数对比（Bug #16 修复）：
+
+```bash
+# 统计实际生成的 HTTP OpenAPI YAML 文件数（不含 _index.yaml）
+ACTUAL=$(ls .pipeline/artifacts/contracts/*.yaml 2>/dev/null | grep -v _index | wc -l | tr -d ' ')
+
+# 读取 tasks.json 中声明的 HTTP 合约数量（type != "internal"）
+EXPECTED=$(python3 -c "
+import json
+data = json.load(open('.pipeline/artifacts/tasks.json'))
+count = sum(1 for c in data.get('contracts', []) if c.get('type') != 'internal')
+print(count)
+" 2>/dev/null || echo "0")
+
+if [ "$ACTUAL" != "$EXPECTED" ]; then
+  echo "[ERROR] 合约文件数量不一致：tasks.json 声明 $EXPECTED 个，实际生成 $ACTUAL 个"
+  echo "请补充缺失文件或修正 tasks.json 中的 contracts 数组，再完成工作"
+  # 必须修复后才能提交产出，不得忽略此差异
+fi
+```
+
+若计数不一致，**必须修复（补充遗漏文件或更正 tasks.json）后才能结束工作**。Phase 2.6 Schema Completeness Validator 会进行机械验证，不一致将触发回退。

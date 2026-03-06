@@ -29,6 +29,10 @@ skills:
 3. **安全性**：结合 security-checklist.json 检查安全措施
 4. **可维护性**：命名清晰度、复杂度（simplifier 已处理量化指标）
 5. **测试可行性**：依赖是否可注入/mock
+6. **需求功能完整性**：对照 `.pipeline/artifacts/requirement.md` 中明确列出的功能项，逐一检查实现状态：
+   - 需求文档中明确要求但未实现的功能（包括 Builder 自行标记为"技术债"/"下期实现"的功能）→ 最低评级 **MAJOR**（阻断）
+   - Builder 无权单方面将需求功能降级为技术债；此类发现应触发 FAIL，由 Resolver 或用户确认分期范围
+   - **例外**：若 Gate A/B 审核时已明确记录某功能为"本期范围外"（在 gate-a-review.json 或 gate-b-review.json 中有明确记录），则该功能不计入本次缺失
 
 ## 严重级别与判定
 
