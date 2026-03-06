@@ -93,7 +93,7 @@ clone:
 
 steps:
   - name: test
-    image: <根据技术栈选择：python:3.11-slim / node:20-slim / rust:1.75 等>
+    image: <根据技术栈选择：python:3.11-slim / node:20-slim / rust:latest 等；Rust 项目禁止固定旧版本>
     commands:
       - <安装依赖命令>
       - <运行测试命令，从 config.json testing 配置读取>
@@ -175,6 +175,73 @@ git log --oneline -1           # 确认提交成功
 
 **约束**：`git add -A` 范围仅限 worktree；impl-manifest 在主 repo，不被误提交。
 提交后不执行 `git push`（Orchestrator 负责合并）。
+
+## Rust 项目 Dockerfile 约束（Bug #10）
+
+生成 Rust Dockerfile 时必须遵守以下规则：
+
+**1. Base image 不得硬编码旧版本**
+不使用 `rust:1.75`、`rust:1.83` 等固定旧版本。读取 `Cargo.lock` 中的依赖，若依赖使用了 edition2024（或需要 Rust ≥ 1.85），使用 `rust:latest` 或实际所需最低版本。默认使用 `rust:latest` 最稳妥。
+
+**2. lib + bin 混合项目需创建两个 stub**
+检查 `Cargo.toml` 是否同时包含 `[lib]` 和 `[[bin]]`（或 `src/lib.rs` 存在）。若是，依赖缓存阶段必须同时创建两个 stub：
+```dockerfile
+RUN mkdir src && echo "fn main() {}" > src/main.rs && echo "" > src/lib.rs
+```
+只有纯 binary 项目（无 `[lib]` section）才只创建 `src/main.rs`。
+
+**3. 第二次构建前必须清除 fingerprint**
+依赖缓存后 `COPY . .` 之前的 dummy 二进制 fingerprint 会导致 Cargo 跳过真实源码编译，部署出空程序。必须在第二次 `cargo build` 前清除：
+```dockerfile
+RUN find target/release/.fingerprint -name "<binary-name>*" -exec rm -rf {} + 2>/dev/null || true
+RUN cargo build --release
+```
+
+**完整 Rust Dockerfile 模板：**
+```dockerfile
+FROM rust:latest AS builder
+WORKDIR /build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libssl-dev curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# 依赖缓存层（仅 Cargo.toml / Cargo.lock）
+COPY Cargo.toml Cargo.lock ./
+# 同时创建 main.rs 和 lib.rs（lib+bin 项目均适用，纯 bin 项目多一个空文件无害）
+RUN mkdir src && echo "fn main() {}" > src/main.rs && echo "" > src/lib.rs
+RUN cargo build --release
+RUN rm -rf src
+
+# 真实源码构建
+COPY . .
+# 清除 dummy 二进制 fingerprint，强制重新编译应用层代码
+RUN find target/release/.fingerprint -name "<binary-name>*" -exec rm -rf {} + 2>/dev/null || true
+RUN cargo build --release
+```
+
+## docker-compose.yml 约束（Bug #11）
+
+**1. Postgres 配置必须引用 env var，不得硬编码**
+```yaml
+postgres:
+  environment:
+    POSTGRES_USER: ${POSTGRES_USER}      # ✓ 正确
+    POSTGRES_DB: ${POSTGRES_DB}          # ✓ 正确
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  healthcheck:
+    test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}", "-d", "${POSTGRES_DB}"]
+```
+❌ 禁止写 `POSTGRES_USER: myapp`（硬编码），否则与 .env 不符导致连接失败。
+
+**2. Redis 需配置密码（若 .env 有 REDIS_PASSWORD）**
+检查 `depend-collection-report.json` 中是否有 redis 依赖且 `.env` 包含 `REDIS_PASSWORD`。若有：
+```yaml
+redis:
+  command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+  healthcheck:
+    test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+```
+若 .env 无 REDIS_PASSWORD，则不加 `--requirepass`。保持两者一致是首要原则。
 
 ## 约束
 

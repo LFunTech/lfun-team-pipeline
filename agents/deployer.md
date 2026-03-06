@@ -22,9 +22,27 @@ permissionMode: acceptEdits
 
 ### 正常部署流程
 
-1. 执行 deploy-plan.md 中的部署步骤（Bash 命令）
-2. 执行 Smoke Test（deploy-plan.md 中定义的健康检查端点）
-3. 记录部署结果
+1. **构建并验证 Docker 镜像**（若使用 Docker Compose 部署）
+
+   先 `docker compose build`，然后对构建出的镜像做单容器验证，防止 dummy binary / 编译缓存污染等问题：
+   ```bash
+   # 获取主服务镜像名（从 docker-compose.yml 的 image 字段读取）
+   IMAGE_NAME=$(grep -A2 'build:' docker-compose.yml | grep 'image:' | awk '{print $2}' | head -1)
+
+   # 单容器验行：二进制能启动、退出码非段错误
+   docker run --rm --entrypoint sh "$IMAGE_NAME" -c "timeout 3 <binary-path> || true"
+   # 验证二进制文件大小合理（Rust release 通常 > 1MB；若 < 500KB 说明是 dummy binary）
+   SIZE=$(docker run --rm --entrypoint sh "$IMAGE_NAME" -c "wc -c < <binary-path>")
+   if [ "$SIZE" -lt 500000 ]; then
+     echo "[ERROR] 镜像中的二进制文件异常小 (${SIZE} bytes)，疑似 dummy binary，终止部署"
+     exit 1
+   fi
+   ```
+   若验证失败，写入 `failure_type: "deployment_failed"` 并停止，不执行 compose up。
+
+2. 执行 deploy-plan.md 中的部署步骤（Bash 命令）
+3. 执行 Smoke Test（deploy-plan.md 中定义的健康检查端点）
+4. 记录部署结果
 
 ### 生产回滚（Monitor CRITICAL 时，由 Orchestrator 重新激活）
 

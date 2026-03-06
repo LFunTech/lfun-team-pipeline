@@ -24,6 +24,9 @@ fi
 
 if [ -n "${TEST_COMMAND:-}" ]; then
   CMD="$TEST_COMMAND"
+elif [ -f "Cargo.toml" ] && command -v cargo &>/dev/null; then
+  # Bug regression fix: Rust projects must use cargo test, not npm/go
+  CMD="cargo test 2>&1"
 elif [ -f "go.mod" ] && command -v go &>/dev/null; then
   # Bug #8 fix: check go.mod before package.json to avoid false npm detection in Go+Node hybrid projects
   CMD="go test ./..."

@@ -37,7 +37,13 @@ fi
 
 REGRESSION_EXIT=0
 # Bug #8 fix: check go.mod before package.json to avoid false npm detection in Go+Node hybrid projects
-if [ -f "go.mod" ] && command -v go &>/dev/null; then
+# Rust support added: check Cargo.toml first
+if [ -f "Cargo.toml" ] && command -v cargo &>/dev/null; then
+  set +e
+  cargo test > /dev/null 2>&1
+  REGRESSION_EXIT=$?
+  set -e
+elif [ -f "go.mod" ] && command -v go &>/dev/null; then
   set +e
   go test ./... > /dev/null 2>&1
   REGRESSION_EXIT=$?

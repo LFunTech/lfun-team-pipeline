@@ -18,6 +18,25 @@ permissionMode: acceptEdits
 - `.pipeline/config.json`（阈值配置）
 - 可用的监控数据源（日志、metrics、APM）
 
+## 前置检查：DB 迁移验证（Bug #13）
+
+**在开始量化观测前，先验证 DB schema 已完成迁移。** 健康检查 `/health` 只验证连通性，不验证表是否存在。
+
+从 `deploy-report.json` 中获取数据库连接信息（或从 `.env` 读取 `DATABASE_URL`），执行迁移状态检查：
+
+```bash
+# PostgreSQL：验证核心业务表存在（从 db/migrations/ 目录推断表名）
+TABLES=$(psql "$DATABASE_URL" -t -c "\dt" 2>/dev/null | grep -c "table" || echo "0")
+if [ "$TABLES" -eq 0 ]; then
+  echo "[ERROR] DB schema 不存在，迁移可能未执行"
+  # 尝试运行迁移（若 sqlx/flyway/alembic 可用）
+  # 若无法自动修复，输出 CRITICAL 并停止观测
+fi
+```
+
+- 若 DB 表数为 0 → `status: CRITICAL`，`status_reason: "DB schema 未初始化，迁移未执行"`
+- 若 DB 连通但表存在 → 继续量化观测
+
 ## 观测维度与阈值
 
 阈值从 `config.json` 读取（如无配置使用默认值）：
