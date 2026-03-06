@@ -81,6 +81,8 @@ output: .pipeline/artifacts/requirement.md
 Clarifier 最多 5 轮澄清（每轮暂停展示问题给用户，等待用户回答后传回）。
 完成后检查 requirement.md 存在且非空。
 
+写日志：调用 `write_step_log`，step=`"phase-0"`，step_type=`"agent"`，agent=`"clarifier"`，从 `requirement.md` 提取"验收标准"前 3 条作为 `key_decisions`。
+
 ### Phase 0.5 — Requirement Completeness Checker（AutoStep）
 ```
 run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/requirement-completeness-checker.sh
@@ -90,6 +92,8 @@ output: .pipeline/artifacts/requirement-completeness-report.json
 - `PASS` → 进入 Phase 1
 - `FAIL` → 递增 phase-0 attempt，rollback_to: phase-0（提示 Clarifier 补充缺失内容）
 
+写日志：调用 `write_step_log`，step=`"phase-0.5"`，step_type=`"autostep"`，agent=`""`，从 `requirement-completeness-report.json` 读取 `overall` 及 `issues` 前 3 条作为 `key_decisions`。
+
 ### Phase 1 — Architect（方案设计）
 ```
 spawn: architect
@@ -97,6 +101,8 @@ input: requirement.md
 output: .pipeline/artifacts/proposal.md, .pipeline/artifacts/adr-draft.md
 ```
 验证 proposal.md 和 adr-draft.md 均存在且非空。
+
+写日志：调用 `write_step_log`，step=`"phase-1"`，step_type=`"agent"`，agent=`"architect"`，从 `proposal.md` 技术栈段落提取前 2 行作为 `key_decisions`。
 
 ### Gate A — Auditor 校验（方案审核）
 ```
@@ -107,6 +113,8 @@ output: .pipeline/artifacts/gate-a-review.json
 矛盾检测 → 读取 overall：
 - `PASS` → 解析 proposal.md 激活条件角色，进入 Phase 2.0a
 - `FAIL` → rollback_to（取最深目标）
+
+写日志：调用 `write_step_log`，step=`"gate-a"`，step_type=`"gate"`，agent=`"auditor"`，从 `gate-a-review.json` 提取 `overall`、`rollback_to` 及所有 `severity=CRITICAL` 的 `issues[].message` 作为 `key_decisions`。
 
 ### Phase 2.0a — GitHub Repo Creator（github-ops Agent）
 ```
@@ -119,6 +127,8 @@ output: .pipeline/artifacts/github-repo-info.json
 - `PASS` → 写入 state.json `github_repo_created: true`、`github_repo_url: <url>`，进入 Phase 2.0b
 - `CANCELLED` → 写入 state.json `github_repo_created: false`，进入 Phase 2.0b（后续 push 跳过）
 - `FAIL` → ESCALATION
+
+写日志：调用 `write_step_log`，step=`"phase-2.0a"`，step_type=`"agent"`，agent=`"github-ops"`，从 `github-repo-info.json` 读取 `overall` 字段作为 `key_decisions`。
 
 ### Phase 2.0b — Depend Collector（AutoStep + 暂停）
 ```
@@ -136,12 +146,16 @@ output: .pipeline/artifacts/depend-collection-report.json
   等待用户输入"继续"后进入 Phase 2。
 - 空（所有依赖凭证已填写或无外部依赖）→ 直接进入 Phase 2。
 
+写日志：调用 `write_step_log`，step=`"phase-2.0b"`，step_type=`"autostep"`，agent=`""`，从 `depend-collection-report.json` 读取 `unfilled_deps` 列表作为 `key_decisions`。
+
 ### Phase 2 — Planner（任务细化）
 ```
 spawn: planner
 input: proposal.md + requirement.md
 output: .pipeline/artifacts/tasks.json
 ```
+
+写日志：调用 `write_step_log`，step=`"phase-2"`，step_type=`"agent"`，agent=`"planner"`，从 `tasks.json` 读取任务总数和 Builder 数量作为 `key_decisions`（格式："共 N 个任务，M 个 Builder"）。
 
 ### Phase 2.1 — Assumption Propagation Validator（AutoStep）
 ```
@@ -150,12 +164,16 @@ output: .pipeline/artifacts/assumption-propagation-report.json
 ```
 结果附加给 Gate B Auditor-Biz（WARN 不阻断，仅信息传递）。
 
+写日志：调用 `write_step_log`，step=`"phase-2.1"`，step_type=`"autostep"`，agent=`""`，从 `assumption-propagation-report.json` 读取 `overall` 及 `issues` 前 3 条作为 `key_decisions`。
+
 ### Gate B — Auditor 校验（任务细化审核）
 ```
 spawn: auditor-biz, auditor-tech, auditor-qa, auditor-ops（并行）
 input: proposal.md + tasks.json + assumption-propagation-report.json
 output: .pipeline/artifacts/gate-b-review.json
 ```
+
+写日志：调用 `write_step_log`，step=`"gate-b"`，step_type=`"gate"`，agent=`"auditor"`，从 `gate-b-review.json` 提取 `overall`、`rollback_to` 及所有 `severity=CRITICAL` 的 `issues[].message` 作为 `key_decisions`。
 
 ### Phase 2.5 — Contract Formalizer（契约形式化）
 ```
@@ -164,6 +182,8 @@ input: tasks.json
 output: .pipeline/artifacts/contracts/ 目录
 ```
 
+写日志：调用 `write_step_log`，step=`"phase-2.5"`，step_type=`"agent"`，agent=`"contract-formalizer"`，统计 `contracts/` 目录下文件数量作为 `key_decisions`（格式："生成 N 个契约文件"）。
+
 ### Phase 2.6 — Schema Completeness Validator（AutoStep）
 ```
 run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/schema-completeness-validator.sh
@@ -171,12 +191,16 @@ output: .pipeline/artifacts/schema-validation-report.json
 ```
 FAIL → rollback_to: phase-2.5
 
+写日志：调用 `write_step_log`，step=`"phase-2.6"`，step_type=`"autostep"`，agent=`""`，从 `schema-validation-report.json` 读取 `overall` 及 `issues` 前 3 条作为 `key_decisions`。
+
 ### Phase 2.7 — Contract Semantic Validator（AutoStep）
 ```
 run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/contract-semantic-validator.sh
 output: .pipeline/artifacts/contract-semantic-report.json
 ```
 FAIL → rollback_to: phase-2.5
+
+写日志：调用 `write_step_log`，step=`"phase-2.7"`，step_type=`"autostep"`，agent=`""`，从 `contract-semantic-report.json` 读取 `overall` 及 `issues` 前 3 条作为 `key_decisions`。
 
 ### Phase 3 — 并行实现（Worktree 隔离）
 
@@ -234,6 +258,8 @@ Translator 额外传入：`FRONTEND_WORKTREE: <phase_3_worktrees["frontend"]>`
 每个 Builder 输出 `$PIPELINE_DIR/artifacts/impl-manifest-<builder>.json`。
 全部完成后进入合并步骤。
 
+写日志：每个 Builder 完成验证后，调用 `write_step_log`，step=`"phase-3-builder-<name>"`（将 `<name>` 替换为实际 Builder 名），step_type=`"agent"`，agent=`"builder-<name>"`，从 `impl-manifest-<name>.json` 读取 `summary` 字段（若有）或统计 `files_changed` 数量作为 `key_decisions`。
+
 #### Phase 3 — 合并序列
 
 按 `phase_3_merge_order` 顺序执行：
@@ -287,16 +313,22 @@ run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/static-analyzer.sh
 ```
 FAIL → rollback_to: phase-3
 
+写日志：调用 `write_step_log`，step=`"phase-3.1"`，step_type=`"autostep"`，agent=`""`，从 `static-analysis-report.json` 读取 `overall` 及 `issues` 前 3 条作为 `key_decisions`。
+
 ### Phase 3.2 — Diff Scope Validator（AutoStep）
 ```
 run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/diff-scope-validator.sh
 ```
+
+写日志：调用 `write_step_log`，step=`"phase-3.2"`，step_type=`"autostep"`，agent=`""`，从 `diff-scope-report.json`（若存在）读取 `overall` 及 `issues` 前 3 条作为 `key_decisions`。
 
 ### Phase 3.3 — Regression Guard（AutoStep）
 ```
 run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/regression-guard.sh
 ```
 （new_test_files 排除在外，不纳入回归套件）
+
+写日志：调用 `write_step_log`，step=`"phase-3.3"`，step_type=`"autostep"`，agent=`""`，从 `regression-guard-report.json`（若存在）读取 `overall` 作为 `key_decisions`。
 
 ### Phase 3.5 — Simplifier
 ```
@@ -306,11 +338,15 @@ output: .pipeline/artifacts/simplify-report.md
 ```
 验证 simplify-report.md 修改时间 > impl-manifest.json 修改时间。
 
+写日志：调用 `write_step_log`，step=`"phase-3.5"`，step_type=`"agent"`，agent=`"simplifier"`，从 `simplify-report.md` 提取前 3 行作为 `key_decisions`。
+
 ### Phase 3.6 — Post-Simplification Verifier（AutoStep）
 ```
 run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/post-simplification-verifier.sh
 ```
 FAIL → rollback_to: phase-3.5
+
+写日志：调用 `write_step_log`，step=`"phase-3.6"`，step_type=`"autostep"`，agent=`""`，从 `post-simplification-report.json`（若存在）读取 `overall` 作为 `key_decisions`。
 
 ### Gate C — Inspector（代码审查）
 ```
@@ -320,6 +356,8 @@ output: .pipeline/artifacts/gate-c-review.json
 ```
 Inspector 调用前，Orchestrator 在产物中机械设置 `simplifier_verified: true/false`。
 FAIL → rollback_to: phase-3（重新经过 3.1→3.2→3.3→3.5→3.6→Gate C）
+
+写日志：调用 `write_step_log`，step=`"gate-c"`，step_type=`"gate"`，agent=`"inspector"`，从 `gate-c-review.json` 提取 `overall`、`rollback_to` 及所有 `severity=CRITICAL` 的 `issues[].message` 作为 `key_decisions`。
 
 ### Phase 3.7 — Contract Compliance Checker（AutoStep）
 
@@ -362,6 +400,8 @@ bash .pipeline/autosteps/contract-compliance-checker.sh
 
 FAIL → rollback_to: phase-3（对应 Builder）
 
+写日志：调用 `write_step_log`，step=`"phase-3.7"`，step_type=`"autostep"`，agent=`""`，从 `contract-compliance-report.json`（若存在）读取 `overall` 及 `issues` 前 3 条作为 `key_decisions`。
+
 **config.json 示例（Rust 项目）：**
 ```json
 "autosteps": {
@@ -381,6 +421,8 @@ output: .pipeline/artifacts/test-report.json, .pipeline/artifacts/coverage.lcov
 ```
 FAIL → 运行 Phase 4a.1（Test Failure Mapper）
 
+写日志：调用 `write_step_log`，step=`"phase-4a"`，step_type=`"agent"`，agent=`"tester"`，从 `test-report.json` 读取 `total`、`passed`、`coverage` 三个字段作为 `key_decisions`（格式："共 N 用例，通过 M，覆盖率 X%"）。
+
 ### Phase 4a.1 — Test Failure Mapper（AutoStep，仅 Phase 4a FAIL 时）
 ```
 run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/test-failure-mapper.sh
@@ -390,11 +432,15 @@ output: .pipeline/artifacts/failure-builder-map.json
 - `HIGH` → 精确回退（仅 builders_to_rollback 中的 builder）
 - `LOW` → 保守全体回退 phase-3
 
+写日志：调用 `write_step_log`，step=`"phase-4a.1"`，step_type=`"autostep"`，agent=`""`，从 `failure-builder-map.json` 读取 `confidence` 及 `builders_to_rollback` 作为 `key_decisions`。
+
 ### Phase 4.2 — Test Coverage Enforcer（AutoStep）
 ```
 run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/test-coverage-enforcer.sh
 ```
 FAIL → rollback_to: phase-4a
+
+写日志：调用 `write_step_log`，step=`"phase-4.2"`，step_type=`"autostep"`，agent=`""`，从 `coverage-report.json`（若存在）读取 `overall` 及覆盖率阈值对比结果作为 `key_decisions`。
 
 ### Phase 4b — Optimizer（条件角色，仅 performance_sensitive: true）
 ```
@@ -404,6 +450,8 @@ output: .pipeline/artifacts/perf-report.json
 ```
 `perf-report.json` 中 `sla_violated: true` → 直接 rollback_to: phase-3（不等 Gate D）。
 
+写日志：调用 `write_step_log`，step=`"phase-4b"`，step_type=`"agent"`，agent=`"optimizer"`，从 `perf-report.json` 读取 `sla_violated` 及 `p95_latency` 作为 `key_decisions`。
+
 ### Gate D — Auditor-QA（测试验收）
 ```
 spawn: auditor-qa
@@ -412,12 +460,16 @@ output: .pipeline/artifacts/gate-d-review.json（含结构化 rollback_to 字段
 ```
 FAIL → rollback_to（限制：不超过 phase-2，只能 phase-4a 或 phase-3）
 
+写日志：调用 `write_step_log`，step=`"gate-d"`，step_type=`"gate"`，agent=`"auditor-qa"`，从 `gate-d-review.json` 提取 `overall`、`rollback_to` 及所有 `severity=CRITICAL` 的 `issues[].message` 作为 `key_decisions`。
+
 ### API Change Detector（AutoStep）
 ```
 run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/api-change-detector.sh
 output: .pipeline/artifacts/api-change-report.json
 ```
 写入 state.json: `phase_5_mode`（`full` 或 `changelog_only`）
+
+写日志：调用 `write_step_log`，step=`"phase-4.3"`，step_type=`"autostep"`，agent=`""`，从 `api-change-report.json` 读取 `overall` 及 `phase_5_mode` 作为 `key_decisions`。
 
 ### Phase 5 — Documenter（文档）
 ```
@@ -427,11 +479,15 @@ output: .pipeline/artifacts/doc-manifest.json
 ```
 如 `phase_5_mode: changelog_only`，仅更新 CHANGELOG，跳过 API 文档更新。
 
+写日志：调用 `write_step_log`，step=`"phase-5"`，step_type=`"agent"`，agent=`"documenter"`，从 `doc-manifest.json` 读取 `docs_updated` 列表前 3 项作为 `key_decisions`。
+
 ### Phase 5.1 — Changelog Consistency Checker（AutoStep）
 ```
 run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/changelog-consistency-checker.sh
 ```
 FAIL → rollback_to: phase-5
+
+写日志：调用 `write_step_log`，step=`"phase-5.1"`，step_type=`"autostep"`，agent=`""`，从 `changelog-consistency-report.json`（若存在）读取 `overall` 作为 `key_decisions`。
 
 ### Gate E — Auditor-QA + Auditor-Tech（文档审核）
 ```
@@ -440,6 +496,8 @@ input: doc-manifest.json + API 文档 + CHANGELOG + ADR
 output: .pipeline/artifacts/gate-e-review.json
 ```
 FAIL → rollback_to: phase-5
+
+写日志：调用 `write_step_log`，step=`"gate-e"`，step_type=`"gate"`，agent=`"auditor-qa+tech"`，从 `gate-e-review.json` 提取 `overall`、`rollback_to` 及所有 `severity=CRITICAL` 的 `issues[].message` 作为 `key_decisions`。
 
 ### Phase 5.9 — GitHub Woodpecker Push（github-ops Agent）
 
@@ -451,11 +509,15 @@ input: .woodpecker/ 目录 + github-repo-info.json
 ```
 FAIL → WARN（不阻断，记录日志后继续 Phase 6.0）
 
+写日志：调用 `write_step_log`，step=`"phase-5.9"`，step_type=`"agent"`，agent=`"github-ops"`，从 `woodpecker-push-report.json`（若存在）读取 `overall` 字段作为 `key_decisions`。
+
 ### Phase 6.0 — Pre-Deploy Readiness Check（AutoStep）
 ```
 run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/pre-deploy-readiness-check.sh
 ```
 FAIL → **ESCALATION**（不自动回退，请求人工介入）
+
+写日志：调用 `write_step_log`，step=`"phase-6.0"`，step_type=`"autostep"`，agent=`""`，从 `pre-deploy-report.json`（若存在）读取 `overall` 及 `issues` 前 3 条作为 `key_decisions`。
 
 ### Phase 6 — Deployer（部署）
 ```
@@ -467,6 +529,8 @@ FAIL：读取 `deploy-report.json` 中 `failure_type`：
 - `deployment_failed` → rollback_to: phase-3
 - `smoke_test_failed` → 激活 Deployer 执行生产回滚，然后 rollback_to: phase-1
 
+写日志：调用 `write_step_log`，step=`"phase-6"`，step_type=`"agent"`，agent=`"deployer"`，从 `deploy-report.json` 读取 `status`、`environment` 及 `failure_type`（如有）作为 `key_decisions`。
+
 ### Phase 7 — Monitor（上线观测）
 ```
 spawn: monitor
@@ -477,6 +541,8 @@ output: .pipeline/artifacts/monitor-report.json
 - `NORMAL` → 写入 state.json `status: COMPLETED`，执行测试文件毕业（new_test_files → regression-suite-manifest.json）
 - `ALERT` → 运行 Hotfix Scope Analyzer → phase-3 hotfix
 - `CRITICAL` → 激活 Deployer 执行生产回滚 → rollback_to: phase-1
+
+写日志：调用 `write_step_log`，step=`"phase-7"`，step_type=`"agent"`，agent=`"monitor"`，从 `monitor-report.json` 读取 `status`、`error_rate` 及 `p95_latency`（如有）作为 `key_decisions`。
 
 ## 矛盾检测与 Resolver 激活
 
