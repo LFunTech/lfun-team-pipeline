@@ -95,6 +95,8 @@ output: .pipeline/artifacts/requirement-completeness-report.json
 写日志：调用 `write_step_log`，step=`"phase-0.5"`，step_type=`"autostep"`，agent=`""`，从 `requirement-completeness-report.json` 读取 `overall` 及 `issues` 前 3 条作为 `key_decisions`。
 
 ### Phase 1 — Architect（方案设计）
+
+注入上下文：调用 `build_context_injection(current_step="phase-1", include_steps=["phase-0"])`，将返回值附加到 spawn 消息头部（若返回空字符串则跳过）。
 ```
 spawn: architect
 input: requirement.md
@@ -105,6 +107,8 @@ output: .pipeline/artifacts/proposal.md, .pipeline/artifacts/adr-draft.md
 写日志：调用 `write_step_log`，step=`"phase-1"`，step_type=`"agent"`，agent=`"architect"`，从 `proposal.md` 技术栈段落提取前 2 行作为 `key_decisions`。
 
 ### Gate A — Auditor 校验（方案审核）
+
+注入上下文：调用 `build_context_injection(current_step="gate-a", include_steps=["phase-0", "phase-1"])`，将返回值附加到 spawn 消息头部（若返回空字符串则跳过）。
 ```
 spawn: auditor-biz, auditor-tech, auditor-qa, auditor-ops（并行）
 input: requirement.md + proposal.md
@@ -117,6 +121,8 @@ output: .pipeline/artifacts/gate-a-review.json
 写日志：调用 `write_step_log`，step=`"gate-a"`，step_type=`"gate"`，agent=`"auditor"`，从 `gate-a-review.json` 提取 `overall`、`rollback_to` 及所有 `severity=CRITICAL` 的 `issues[].message` 作为 `key_decisions`。
 
 ### Phase 2.0a — GitHub Repo Creator（github-ops Agent）
+
+注入上下文：调用 `build_context_injection(current_step="phase-2.0a", include_steps=["phase-0", "phase-1", "gate-a"])`，将返回值附加到 spawn 消息头部（若返回空字符串则跳过）。
 ```
 spawn: github-ops
 scenario: create_repo
@@ -149,6 +155,8 @@ output: .pipeline/artifacts/depend-collection-report.json
 写日志：调用 `write_step_log`，step=`"phase-2.0b"`，step_type=`"autostep"`，agent=`""`，从 `depend-collection-report.json` 读取 `unfilled_deps` 列表作为 `key_decisions`。
 
 ### Phase 2 — Planner（任务细化）
+
+注入上下文：调用 `build_context_injection(current_step="phase-2", include_steps=["phase-0", "phase-1", "gate-a", "phase-2.0a", "phase-2.0b"])`，将返回值附加到 spawn 消息头部（若返回空字符串则跳过）。
 ```
 spawn: planner
 input: proposal.md + requirement.md
@@ -167,6 +175,8 @@ output: .pipeline/artifacts/assumption-propagation-report.json
 写日志：调用 `write_step_log`，step=`"phase-2.1"`，step_type=`"autostep"`，agent=`""`，从 `assumption-propagation-report.json` 读取 `overall` 及 `issues` 前 3 条作为 `key_decisions`。
 
 ### Gate B — Auditor 校验（任务细化审核）
+
+注入上下文：调用 `build_context_injection(current_step="gate-b", include_steps=["phase-0", "phase-1", "gate-a", "phase-2.0a", "phase-2.0b", "phase-2", "phase-2.1"])`，将返回值附加到 spawn 消息头部（若返回空字符串则跳过）。
 ```
 spawn: auditor-biz, auditor-tech, auditor-qa, auditor-ops（并行）
 input: proposal.md + tasks.json + assumption-propagation-report.json
@@ -176,6 +186,8 @@ output: .pipeline/artifacts/gate-b-review.json
 写日志：调用 `write_step_log`，step=`"gate-b"`，step_type=`"gate"`，agent=`"auditor"`，从 `gate-b-review.json` 提取 `overall`、`rollback_to` 及所有 `severity=CRITICAL` 的 `issues[].message` 作为 `key_decisions`。
 
 ### Phase 2.5 — Contract Formalizer（契约形式化）
+
+注入上下文：调用 `build_context_injection(current_step="phase-2.5", include_steps=["phase-0", "phase-1", "gate-a", "phase-2.0a", "phase-2.0b", "phase-2", "phase-2.1", "gate-b"])`，将返回值附加到 spawn 消息头部（若返回空字符串则跳过）。
 ```
 spawn: contract-formalizer
 input: tasks.json
@@ -241,6 +253,8 @@ FAIL → rollback_to: phase-2.5
 - 波次 2（顺序）：Backend
 - 波次 3（顺序）：Security、Frontend
 - 波次 4（顺序）：Infra（等 Security）、Translator（条件，等 Frontend）
+
+注入上下文：调用 `build_context_injection(current_step="phase-3-builder-<name>", include_steps=["phase-0", "phase-1", "gate-a", "phase-2", "phase-2.5", "gate-b"])`（将 `<name>` 替换为实际 Builder 名），将返回值附加到 spawn 消息头部（若返回空字符串则跳过）。
 
 **spawn 消息格式**：
 ```
@@ -331,6 +345,8 @@ run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/regression-guard.sh
 写日志：调用 `write_step_log`，step=`"phase-3.3"`，step_type=`"autostep"`，agent=`""`，从 `regression-guard-report.json`（若存在）读取 `overall` 作为 `key_decisions`。
 
 ### Phase 3.5 — Simplifier
+
+注入上下文：调用 `build_context_injection(current_step="phase-3.5", include_steps=["phase-0", "phase-1", "gate-a", "phase-2", "gate-b", "phase-3-builder-dba", "phase-3-builder-backend", "phase-3-builder-frontend", "phase-3-builder-security", "phase-3-builder-infra", "phase-3.1"])`，将返回值附加到 spawn 消息头部（若返回空字符串则跳过）。
 ```
 spawn: simplifier
 input: static-analysis-report.json + 代码
@@ -349,6 +365,8 @@ FAIL → rollback_to: phase-3.5
 写日志：调用 `write_step_log`，step=`"phase-3.6"`，step_type=`"autostep"`，agent=`""`，从 `post-simplification-report.json`（若存在）读取 `overall` 作为 `key_decisions`。
 
 ### Gate C — Inspector（代码审查）
+
+注入上下文：调用 `build_context_injection(current_step="gate-c", include_steps=["phase-0", "phase-1", "gate-a", "phase-2", "gate-b", "phase-3-builder-dba", "phase-3-builder-backend", "phase-3-builder-frontend", "phase-3-builder-security", "phase-3-builder-infra", "phase-3.1", "phase-3.5", "phase-3.6"])`，将返回值附加到 spawn 消息头部（若返回空字符串则跳过）。
 ```
 spawn: inspector
 input: 代码 + 所有 Phase 3 报告
@@ -414,6 +432,8 @@ FAIL → rollback_to: phase-3（对应 Builder）
 ```
 
 ### Phase 4a — Tester（功能测试）
+
+注入上下文：调用 `build_context_injection(current_step="phase-4a", include_steps=["gate-c"])`，将返回值附加到 spawn 消息头部（若返回空字符串则跳过）。
 ```
 spawn: tester
 input: tasks.json + impl-manifest.json
@@ -443,6 +463,8 @@ FAIL → rollback_to: phase-4a
 写日志：调用 `write_step_log`，step=`"phase-4.2"`，step_type=`"autostep"`，agent=`""`，从 `coverage-report.json`（若存在）读取 `overall` 及覆盖率阈值对比结果作为 `key_decisions`。
 
 ### Phase 4b — Optimizer（条件角色，仅 performance_sensitive: true）
+
+注入上下文：调用 `build_context_injection(current_step="phase-4b", include_steps=["gate-c", "phase-4a"])`，将返回值附加到 spawn 消息头部（若返回空字符串则跳过）。
 ```
 spawn: optimizer
 input: test-report.json + impl-manifest.json
@@ -453,6 +475,8 @@ output: .pipeline/artifacts/perf-report.json
 写日志：调用 `write_step_log`，step=`"phase-4b"`，step_type=`"agent"`，agent=`"optimizer"`，从 `perf-report.json` 读取 `sla_violated` 及 `p95_latency` 作为 `key_decisions`。
 
 ### Gate D — Auditor-QA（测试验收）
+
+注入上下文：调用 `build_context_injection(current_step="gate-d", include_steps=["phase-4a", "phase-4.2"])`，将返回值附加到 spawn 消息头部（若返回空字符串则跳过）。
 ```
 spawn: auditor-qa
 input: test-report.json + coverage-report.json + perf-report.json（如有）
@@ -472,6 +496,8 @@ output: .pipeline/artifacts/api-change-report.json
 写日志：调用 `write_step_log`，step=`"phase-4.3"`，step_type=`"autostep"`，agent=`""`，从 `api-change-report.json` 读取 `overall` 及 `phase_5_mode` 作为 `key_decisions`。
 
 ### Phase 5 — Documenter（文档）
+
+注入上下文：调用 `build_context_injection(current_step="phase-5", include_steps=["gate-c", "gate-d", "phase-4a"])`，将返回值附加到 spawn 消息头部（若返回空字符串则跳过）。
 ```
 spawn: documenter
 input: api-change-report.json + adr-draft.md + impl-manifest.json
@@ -490,6 +516,8 @@ FAIL → rollback_to: phase-5
 写日志：调用 `write_step_log`，step=`"phase-5.1"`，step_type=`"autostep"`，agent=`""`，从 `changelog-consistency-report.json`（若存在）读取 `overall` 作为 `key_decisions`。
 
 ### Gate E — Auditor-QA + Auditor-Tech（文档审核）
+
+注入上下文：调用 `build_context_injection(current_step="gate-e", include_steps=["phase-5"])`，将返回值附加到 spawn 消息头部（若返回空字符串则跳过）。
 ```
 spawn: auditor-qa, auditor-tech（并行）
 input: doc-manifest.json + API 文档 + CHANGELOG + ADR
@@ -502,6 +530,8 @@ FAIL → rollback_to: phase-5
 ### Phase 5.9 — GitHub Woodpecker Push（github-ops Agent）
 
 仅在 `state.json.github_repo_created = true` 时执行；否则跳过，直接进入 Phase 6.0。
+
+注入上下文：调用 `build_context_injection(current_step="phase-5.9", include_steps=["gate-e"])`，将返回值附加到 spawn 消息头部（若返回空字符串则跳过）。
 ```
 spawn: github-ops
 scenario: push_woodpecker
@@ -520,6 +550,8 @@ FAIL → **ESCALATION**（不自动回退，请求人工介入）
 写日志：调用 `write_step_log`，step=`"phase-6.0"`，step_type=`"autostep"`，agent=`""`，从 `pre-deploy-report.json`（若存在）读取 `overall` 及 `issues` 前 3 条作为 `key_decisions`。
 
 ### Phase 6 — Deployer（部署）
+
+注入上下文：调用 `build_context_injection(current_step="phase-6", include_steps=["gate-e"])`，将返回值附加到 spawn 消息头部（若返回空字符串则跳过）。
 ```
 spawn: deployer
 input: deploy-plan.md + state.json
@@ -532,6 +564,8 @@ FAIL：读取 `deploy-report.json` 中 `failure_type`：
 写日志：调用 `write_step_log`，step=`"phase-6"`，step_type=`"agent"`，agent=`"deployer"`，从 `deploy-report.json` 读取 `status`、`environment` 及 `failure_type`（如有）作为 `key_decisions`。
 
 ### Phase 7 — Monitor（上线观测）
+
+注入上下文：调用 `build_context_injection(current_step="phase-7", include_steps=["phase-6"])`，将返回值附加到 spawn 消息头部（若返回空字符串则跳过）。
 ```
 spawn: monitor
 input: deploy-report.json + config.json 阈值
@@ -549,6 +583,8 @@ output: .pipeline/artifacts/monitor-report.json
 在任意 Gate 的 Auditor 输出后：
 1. **结论矛盾**：同一组件/项目一个 PASS 一个 FAIL → 立即激活 Resolver。
 2. **内容矛盾**：提取 `comments` 关键词对（"必须使用 X" vs "禁止使用 X"）→ 激活 Resolver。
+
+注入上下文：激活 Resolver 时，调用 `build_context_injection(current_step="resolver", include_steps=<触发该 Resolver 的 Gate step_id 列表>)`，将返回值附加到 spawn 消息头部。
 
 Resolver 输出 `resolver_verdict`：
 - `rollback_to: null` 且有 FAIL Auditor → **拒绝**，使用最深规则，日志 `[WARN] Resolver 试图绕过回退被拒绝`
