@@ -30,7 +30,8 @@ ls -t .pipeline/artifacts/*.json | head -5
     ├── contracts/       ← OpenAPI Schema 文件
     ├── impl-manifest.json
     ├── gate-*.json
-    └── ...
+    ├── ...
+    └── logs/            ← 执行日志（pipeline.index.json + step-*.log.json）
 
 .worktrees/              ← Phase 3 临时目录（自动创建和清理，勿手动修改）
 ├── builder-dba/
@@ -173,3 +174,22 @@ bash install.sh
 3. 在 Claude Code 对话中回复"继续"，流水线恢复执行
 
 **注意：** 部署时，将 `.depend/*.env` 中的凭证手动配置到 Woodpecker CI 的 repo secrets 中，与 `.woodpecker/` 中的 secrets 字段对应。
+
+### 查看执行日志
+
+```bash
+# 查看完整执行历史（所有步骤的结果和关联）
+cat .pipeline/artifacts/logs/pipeline.index.json | python3 -m json.tool
+
+# 查看某个步骤的详细日志（含 key_decisions 和 retry_history）
+cat .pipeline/artifacts/logs/step-gate-c.log.json | python3 -m json.tool
+
+# 快速查看各步骤结果摘要
+python3 -c "
+import json
+idx = json.load(open('.pipeline/artifacts/logs/pipeline.index.json'))
+for s in idx['steps']:
+    rollback = f' → rollback:{s[\"caused_rollback_to\"]}' if s.get('caused_rollback_to') else ''
+    print(f'[{s[\"step\"]}] {s[\"result\"]} (attempt {s[\"attempt\"]}){rollback}')
+"
+```

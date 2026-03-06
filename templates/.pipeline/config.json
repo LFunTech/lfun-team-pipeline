@@ -1,5 +1,5 @@
 {
-  "version": "v6",
+  "version": "v6.2",
   "pipeline_id": "pipe-YYYYMMDD-001",
   "project_name": "YOUR_PROJECT_NAME",
   "max_attempts": {
@@ -7,6 +7,8 @@
     "phase-0": 5,
     "phase-0.5": 3,
     "phase-1": 3,
+    "phase-2.0a": 3,
+    "phase-2.0b": 3,
     "phase-2": 3,
     "phase-2.5": 3,
     "phase-3": 5,
