@@ -125,16 +125,16 @@ output: .pipeline/artifacts/github-repo-info.json
 run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/depend-collector.sh
 output: .pipeline/artifacts/depend-collection-report.json
 ```
-读取报告 `detected_deps` 字段：
+读取报告 `unfilled_deps` 字段（检测到但 .env 未填写的依赖）：
 - 非空 → **暂停**，向用户展示：
   ```
   ⚠️  检测到以下外部依赖，请填写凭证文件后继续：
-  <逐行列出 .depend/*.env.template 文件路径>
+  <逐行列出 unfilled_deps 中每项对应的 .depend/<name>.env.template 路径>
   参考 .depend/README.md 了解填写说明。
   完成后回复"继续"。
   ```
   等待用户输入"继续"后进入 Phase 2。
-- 空 → 直接进入 Phase 2（无需凭证）。
+- 空（所有依赖凭证已填写或无外部依赖）→ 直接进入 Phase 2。
 
 ### Phase 2 — Planner（任务细化）
 ```
@@ -531,6 +531,263 @@ push 失败时仅记录 WARN，不中断流水线。
 | Phase 6 Deployer | `chore: add deployment configuration and woodpecker pipelines` |
 
 括号内的变量由 Orchestrator 在执行时从对应产物文件中读取真实值填入。
+
+## 日志系统
+
+> **每个步骤完成后，Orchestrator 必须写入结构化日志。这是强制性要求，不可跳过。**
+
+### 目录初始化
+
+首次启动时（读取 state.json 后立即执行）：
+
+```python
+import os, json, datetime
+
+LOGS_DIR = ".pipeline/artifacts/logs"
+INDEX_PATH = f"{LOGS_DIR}/pipeline.index.json"
+
+os.makedirs(LOGS_DIR, exist_ok=True)
+
+if not os.path.exists(INDEX_PATH):
+    index = {
+        "pipeline_id": state["pipeline_id"],
+        "project_name": config["project_name"],
+        "created_at": datetime.datetime.utcnow().isoformat() + "Z",
+        "updated_at": datetime.datetime.utcnow().isoformat() + "Z",
+        "status": "running",
+        "steps": []
+    }
+    with open(INDEX_PATH, "w") as f:
+        json.dump(index, f, ensure_ascii=False, indent=2)
+# else: 恢复模式，继续追加，不覆盖已有记录
+```
+
+### step-\<phase\>.log.json Schema
+
+每个步骤对应一个日志文件 `.pipeline/artifacts/logs/step-<phase>.log.json`：
+
+```json
+{
+  "step": "gate-c",
+  "step_type": "gate",
+  "agent": "inspector",
+  "pipeline_id": "pipe-20260306-001",
+  "attempt": 2,
+  "started_at": "2026-03-06T13:05:00Z",
+  "completed_at": "2026-03-06T13:10:00Z",
+  "result": "PASS",
+  "rollback_to": null,
+  "rollback_triggered_by": null,
+  "inputs": {
+    "artifacts": ["impl-manifest.json", "static-analysis-report.json"],
+    "context_injected": "phase-3 builder-backend PASS: 实现 JWT + REST API（23 个文件）"
+  },
+  "outputs": {
+    "artifacts": ["gate-c-review.json"]
+  },
+  "key_decisions": [
+    "发现 JWT secret 硬编码（C-01, CRITICAL）",
+    "文件上传缺少类型校验（C-02, CRITICAL）"
+  ],
+  "errors": ["C-01: JWT secret 硬编码", "C-02: 文件类型验证缺失"],
+  "retry_history": [
+    {
+      "attempt": 1,
+      "result": "FAIL",
+      "rollback_to": "phase-3",
+      "key_decisions": ["发现 JWT secret 硬编码（C-01, CRITICAL）"],
+      "errors": ["C-01: JWT secret 硬编码"]
+    }
+  ]
+}
+```
+
+`step_type` 取值：`"agent"` | `"autostep"` | `"gate"`
+
+**重试规则**：重试同一阶段时，读取已有 step log，当前内容移入 `retry_history[]`，用新结果覆盖顶层字段，`attempt` 递增。
+
+### pipeline.index.json Schema
+
+```json
+{
+  "pipeline_id": "pipe-20260306-001",
+  "project_name": "MyProject",
+  "created_at": "2026-03-06T10:00:00Z",
+  "updated_at": "2026-03-06T15:32:00Z",
+  "status": "running",
+  "steps": [
+    {
+      "step": "phase-0",
+      "step_type": "agent",
+      "agent": "clarifier",
+      "result": "PASS",
+      "attempt": 1,
+      "started_at": "2026-03-06T10:00:00Z",
+      "completed_at": "2026-03-06T10:08:00Z",
+      "log_file": "logs/step-phase-0.log.json",
+      "outputs": ["requirement.md"],
+      "caused_rollback_to": null,
+      "rollback_triggered_by": null
+    }
+  ]
+}
+```
+
+### key_decisions 提取规则
+
+从已有 artifact 机械提取，字段缺失时忽略不报错：
+
+| 步骤 | 提取来源 | 提取内容 |
+|------|----------|----------|
+| Gate（Auditor 类） | `gate-*.json` | `issues[severity=CRITICAL].message`（全部）+ `overall` + `rollback_to` |
+| AutoStep（report 类） | `*-report.json` | `overall` + `issues[severity!=INFO].message`（前 3 条） |
+| Builder | `impl-manifest-<name>.json` | `summary`（若有）或 `"共变更 N 个文件"` |
+| Architect | `proposal.md` | 技术栈段落的前 2 行 |
+| Clarifier | `requirement.md` | "验收标准"的前 3 条 |
+| Tester | `test-report.json` | `total`、`passed`、`coverage` 三个数字 |
+| Documenter | `doc-manifest.json` | `docs_updated` 列表（前 3 项） |
+| Deployer | `deploy-report.json` | `status` + `environment` + `failure_type`（如有） |
+| Monitor | `monitor-report.json` | `status` + `error_rate` + `p95_latency`（如有） |
+
+### 写日志方法（伪代码）
+
+```python
+def write_step_log(step, step_type, agent, result, inputs_artifacts,
+                   outputs_artifacts, key_decisions, errors, rollback_to=None,
+                   rollback_triggered_by=None, context_injected=""):
+    log_path = f".pipeline/artifacts/logs/step-{step}.log.json"
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+
+    new_entry = {
+        "step": step, "step_type": step_type, "agent": agent,
+        "pipeline_id": state["pipeline_id"],
+        "attempt": 1,
+        "started_at": now,
+        "completed_at": now,
+        "result": result,
+        "rollback_to": rollback_to,
+        "rollback_triggered_by": rollback_triggered_by,
+        "inputs": {"artifacts": inputs_artifacts, "context_injected": context_injected},
+        "outputs": {"artifacts": outputs_artifacts},
+        "key_decisions": key_decisions,
+        "errors": errors,
+        "retry_history": []
+    }
+
+    if os.path.exists(log_path):
+        existing = json.load(open(log_path))
+        prev = {k: existing[k] for k in ["attempt","result","rollback_to","key_decisions","errors"]}
+        new_entry["attempt"] = existing["attempt"] + 1
+        new_entry["retry_history"] = existing.get("retry_history", []) + [prev]
+
+    with open(log_path, "w") as f:
+        json.dump(new_entry, f, ensure_ascii=False, indent=2)
+
+    update_index(step, step_type, agent, result, log_path, outputs_artifacts, rollback_to)
+
+def update_index(step, step_type, agent, result, log_file, outputs, caused_rollback_to):
+    index = json.load(open(INDEX_PATH))
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+    index["updated_at"] = now
+
+    existing = next((s for s in index["steps"] if s["step"] == step), None)
+    entry = {
+        "step": step, "step_type": step_type, "agent": agent,
+        "result": result,
+        "attempt": (existing["attempt"] + 1) if existing else 1,
+        "completed_at": now,
+        "log_file": log_file.replace(".pipeline/artifacts/", ""),
+        "outputs": outputs,
+        "caused_rollback_to": caused_rollback_to,
+        "rollback_triggered_by": existing.get("rollback_triggered_by") if existing else None
+    }
+    if existing:
+        index["steps"] = [entry if s["step"] == step else s for s in index["steps"]]
+    else:
+        index["steps"].append(entry)
+
+    with open(INDEX_PATH, "w") as f:
+        json.dump(index, f, ensure_ascii=False, indent=2)
+```
+
+### rollback 因果标注
+
+Gate/AutoStep FAIL 触发 rollback 时，额外执行：
+
+```python
+def mark_rollback_causality(cause_step, target_step):
+    """失败步骤标注 caused_rollback_to，被回滚步骤标注 rollback_triggered_by"""
+    index = json.load(open(INDEX_PATH))
+    for s in index["steps"]:
+        if s["step"] == cause_step:
+            s["caused_rollback_to"] = target_step
+        if s["step"] == target_step:
+            s["rollback_triggered_by"] = cause_step
+    with open(INDEX_PATH, "w") as f:
+        json.dump(index, f, ensure_ascii=False, indent=2)
+```
+
+### Context Injection（spawn Agent 前必须执行）
+
+每次 spawn Agent 之前（AutoStep 除外），读取索引，生成历史摘要注入 spawn 消息：
+
+```python
+def build_context_injection(current_step, include_steps=None):
+    """从索引中提取相关历史，拼成注入块。include_steps 为 None 时取所有已完成步骤。"""
+    index = json.load(open(INDEX_PATH))
+    lines = []
+    for s in index["steps"]:
+        if s["step"] == current_step:
+            break
+        if include_steps is not None and s["step"] not in include_steps:
+            continue
+        log_path = f".pipeline/artifacts/{s['log_file']}"
+        if not os.path.exists(log_path):
+            continue
+        log = json.load(open(log_path))
+        decisions = "；".join(log.get("key_decisions", [])[:2]) or "无"
+        attempt_info = f"attempt {s['attempt']}" if s["attempt"] > 1 else ""
+        result_str = s["result"]
+        if s.get("caused_rollback_to"):
+            result_str = f"FAIL→回滚{s['caused_rollback_to']}"
+        lines.append(f"[{s['step']} {s.get('agent','')} {result_str} {attempt_info}] {decisions}")
+
+    if not lines:
+        return ""
+    return "=== Pipeline History Context ===\n" + "\n".join(lines) + "\n=== End Context ==="
+```
+
+**裁剪规则（避免上下文过长）：**
+- clarifier：无历史，跳过注入
+- architect：`include_steps=["phase-0"]`
+- auditor gate-a：`include_steps=["phase-0","phase-1"]`
+- github-ops (2.0a)、planner：`include_steps=["phase-0","phase-1","gate-a"]`
+- contract-formalizer：`include_steps=["phase-0","phase-1","gate-a","phase-2","gate-b"]`（含 phase-2.0a/2.0b）
+- builder-\<name\>：`include_steps` = Phase 0 ~ Gate B（跳过其他 Builder 步骤）
+- simplifier：`include_steps` = Phase 0 ~ Phase 3.1（含各 Builder）
+- inspector（gate-c）：`include_steps` = Phase 0 ~ Phase 3.6（含各 Builder）
+- tester：`include_steps=["gate-c"]`（重点：代码审查发现了什么）
+- optimizer：`include_steps=["gate-c","phase-4a"]`
+- auditor-qa（gate-d）：`include_steps=["phase-4a","phase-4.2"]`
+- documenter：`include_steps=["gate-c","gate-d","phase-4a"]`
+- auditor gate-e：`include_steps=["phase-5"]`
+- deployer：`include_steps=["gate-e"]`
+- monitor：`include_steps=["phase-6"]`
+- resolver：`include_steps` = 触发 Resolver 的 Gate + 上一步骤
+
+**注入位置**：在 spawn 消息正文最前方，Agent 自身的 input 说明之前。
+
+### 最终状态写入
+
+ESCALATION 或 COMPLETED 时：
+
+```python
+index = json.load(open(INDEX_PATH))
+index["status"] = "completed"  # 或 "escalation" / "failed"
+index["updated_at"] = datetime.datetime.utcnow().isoformat() + "Z"
+with open(INDEX_PATH, "w") as f:
+    json.dump(index, f, ensure_ascii=False, indent=2)
+```
 
 ## 日志格式
 
