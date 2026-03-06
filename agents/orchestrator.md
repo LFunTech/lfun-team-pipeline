@@ -91,6 +91,7 @@ output: .pipeline/artifacts/requirement-completeness-report.json
 读取报告 `overall` 字段：
 - `PASS` → 进入 Phase 1
 - `FAIL` → 递增 phase-0 attempt，rollback_to: phase-0（提示 Clarifier 补充缺失内容）
+  标注因果：调用 `mark_rollback_causality(cause_step="phase-0.5", target_step="phase-0")`。
 
 写日志：调用 `write_step_log`，step=`"phase-0.5"`，step_type=`"autostep"`，agent=`""`，从 `requirement-completeness-report.json` 读取 `overall` 及 `issues` 前 3 条作为 `key_decisions`。
 
@@ -117,6 +118,7 @@ output: .pipeline/artifacts/gate-a-review.json
 矛盾检测 → 读取 overall：
 - `PASS` → 解析 proposal.md 激活条件角色，进入 Phase 2.0a
 - `FAIL` → rollback_to（取最深目标）
+  标注因果：调用 `mark_rollback_causality(cause_step="gate-a", target_step=<gate-a-review.json中rollback_to字段的值>)`。
 
 写日志：调用 `write_step_log`，step=`"gate-a"`，step_type=`"gate"`，agent=`"auditor"`，从 `gate-a-review.json` 提取 `overall`、`rollback_to` 及所有 `severity=CRITICAL` 的 `issues[].message` 作为 `key_decisions`。
 
@@ -202,6 +204,7 @@ run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/schema-completeness-validat
 output: .pipeline/artifacts/schema-validation-report.json
 ```
 FAIL → rollback_to: phase-2.5
+标注因果：调用 `mark_rollback_causality(cause_step="phase-2.6", target_step="phase-2.5")`。
 
 写日志：调用 `write_step_log`，step=`"phase-2.6"`，step_type=`"autostep"`，agent=`""`，从 `schema-validation-report.json` 读取 `overall` 及 `issues` 前 3 条作为 `key_decisions`。
 
@@ -211,6 +214,7 @@ run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/contract-semantic-validator
 output: .pipeline/artifacts/contract-semantic-report.json
 ```
 FAIL → rollback_to: phase-2.5
+标注因果：调用 `mark_rollback_causality(cause_step="phase-2.7", target_step="phase-2.5")`。
 
 写日志：调用 `write_step_log`，step=`"phase-2.7"`，step_type=`"autostep"`，agent=`""`，从 `contract-semantic-report.json` 读取 `overall` 及 `issues` 前 3 条作为 `key_decisions`。
 
@@ -326,6 +330,7 @@ phase_3_base_sha = null; phase_3_main_branch = null
 run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/static-analyzer.sh
 ```
 FAIL → rollback_to: phase-3
+标注因果：调用 `mark_rollback_causality(cause_step="phase-3.1", target_step="phase-3")`。
 
 写日志：调用 `write_step_log`，step=`"phase-3.1"`，step_type=`"autostep"`，agent=`""`，从 `static-analysis-report.json` 读取 `overall` 及 `issues` 前 3 条作为 `key_decisions`。
 
@@ -361,6 +366,7 @@ output: .pipeline/artifacts/simplify-report.md
 run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/post-simplification-verifier.sh
 ```
 FAIL → rollback_to: phase-3.5
+标注因果：调用 `mark_rollback_causality(cause_step="phase-3.6", target_step="phase-3.5")`。
 
 写日志：调用 `write_step_log`，step=`"phase-3.6"`，step_type=`"autostep"`，agent=`""`，从 `post-simplification-report.json`（若存在）读取 `overall` 作为 `key_decisions`。
 
@@ -374,6 +380,7 @@ output: .pipeline/artifacts/gate-c-review.json
 ```
 Inspector 调用前，Orchestrator 在产物中机械设置 `simplifier_verified: true/false`。
 FAIL → rollback_to: phase-3（重新经过 3.1→3.2→3.3→3.5→3.6→Gate C）
+标注因果：调用 `mark_rollback_causality(cause_step="gate-c", target_step="phase-3")`。
 
 写日志：调用 `write_step_log`，step=`"gate-c"`，step_type=`"gate"`，agent=`"inspector"`，从 `gate-c-review.json` 提取 `overall`、`rollback_to` 及所有 `severity=CRITICAL` 的 `issues[].message` 作为 `key_decisions`。
 
@@ -417,6 +424,7 @@ bash .pipeline/autosteps/contract-compliance-checker.sh
   kill $SERVICE_PID 2>/dev/null || true
 
 FAIL → rollback_to: phase-3（对应 Builder）
+标注因果：调用 `mark_rollback_causality(cause_step="phase-3.7", target_step="phase-3")`。
 
 写日志：调用 `write_step_log`，step=`"phase-3.7"`，step_type=`"autostep"`，agent=`""`，从 `contract-compliance-report.json`（若存在）读取 `overall` 及 `issues` 前 3 条作为 `key_decisions`。
 
@@ -451,6 +459,7 @@ output: .pipeline/artifacts/failure-builder-map.json
 读取 `confidence` 字段：
 - `HIGH` → 精确回退（仅 builders_to_rollback 中的 builder）
 - `LOW` → 保守全体回退 phase-3
+标注因果：调用 `mark_rollback_causality(cause_step="phase-4a", target_step=<failure-builder-map.json中rollback目标>)`。
 
 写日志：调用 `write_step_log`，step=`"phase-4a.1"`，step_type=`"autostep"`，agent=`""`，从 `failure-builder-map.json` 读取 `confidence` 及 `builders_to_rollback` 作为 `key_decisions`。
 
@@ -459,6 +468,7 @@ output: .pipeline/artifacts/failure-builder-map.json
 run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/test-coverage-enforcer.sh
 ```
 FAIL → rollback_to: phase-4a
+标注因果：调用 `mark_rollback_causality(cause_step="phase-4.2", target_step="phase-4a")`。
 
 写日志：调用 `write_step_log`，step=`"phase-4.2"`，step_type=`"autostep"`，agent=`""`，从 `coverage-report.json`（若存在）读取 `overall` 及覆盖率阈值对比结果作为 `key_decisions`。
 
@@ -471,6 +481,7 @@ input: test-report.json + impl-manifest.json
 output: .pipeline/artifacts/perf-report.json
 ```
 `perf-report.json` 中 `sla_violated: true` → 直接 rollback_to: phase-3（不等 Gate D）。
+标注因果：调用 `mark_rollback_causality(cause_step="phase-4b", target_step="phase-3")`。
 
 写日志：调用 `write_step_log`，step=`"phase-4b"`，step_type=`"agent"`，agent=`"optimizer"`，从 `perf-report.json` 读取 `sla_violated` 及 `p95_latency` 作为 `key_decisions`。
 
@@ -483,6 +494,7 @@ input: test-report.json + coverage-report.json + perf-report.json（如有）
 output: .pipeline/artifacts/gate-d-review.json（含结构化 rollback_to 字段）
 ```
 FAIL → rollback_to（限制：不超过 phase-2，只能 phase-4a 或 phase-3）
+标注因果：调用 `mark_rollback_causality(cause_step="gate-d", target_step=<gate-d-review.json中rollback_to字段的值>)`。
 
 写日志：调用 `write_step_log`，step=`"gate-d"`，step_type=`"gate"`，agent=`"auditor-qa"`，从 `gate-d-review.json` 提取 `overall`、`rollback_to` 及所有 `severity=CRITICAL` 的 `issues[].message` 作为 `key_decisions`。
 
@@ -512,6 +524,7 @@ output: .pipeline/artifacts/doc-manifest.json
 run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/changelog-consistency-checker.sh
 ```
 FAIL → rollback_to: phase-5
+标注因果：调用 `mark_rollback_causality(cause_step="phase-5.1", target_step="phase-5")`。
 
 写日志：调用 `write_step_log`，step=`"phase-5.1"`，step_type=`"autostep"`，agent=`""`，从 `changelog-consistency-report.json`（若存在）读取 `overall` 作为 `key_decisions`。
 
@@ -524,6 +537,7 @@ input: doc-manifest.json + API 文档 + CHANGELOG + ADR
 output: .pipeline/artifacts/gate-e-review.json
 ```
 FAIL → rollback_to: phase-5
+标注因果：调用 `mark_rollback_causality(cause_step="gate-e", target_step="phase-5")`。
 
 写日志：调用 `write_step_log`，step=`"gate-e"`，step_type=`"gate"`，agent=`"auditor-qa+tech"`，从 `gate-e-review.json` 提取 `overall`、`rollback_to` 及所有 `severity=CRITICAL` 的 `issues[].message` 作为 `key_decisions`。
 
@@ -559,7 +573,9 @@ output: .pipeline/artifacts/deploy-report.json
 ```
 FAIL：读取 `deploy-report.json` 中 `failure_type`：
 - `deployment_failed` → rollback_to: phase-3
+  标注因果：调用 `mark_rollback_causality(cause_step="phase-6", target_step="phase-3")`。
 - `smoke_test_failed` → 激活 Deployer 执行生产回滚，然后 rollback_to: phase-1
+  标注因果：调用 `mark_rollback_causality(cause_step="phase-6", target_step="phase-1")`。
 
 写日志：调用 `write_step_log`，step=`"phase-6"`，step_type=`"agent"`，agent=`"deployer"`，从 `deploy-report.json` 读取 `status`、`environment` 及 `failure_type`（如有）作为 `key_decisions`。
 
@@ -573,8 +589,11 @@ output: .pipeline/artifacts/monitor-report.json
 ```
 读取 `status` 字段：
 - `NORMAL` → 写入 state.json `status: COMPLETED`，执行测试文件毕业（new_test_files → regression-suite-manifest.json）
+  写索引最终状态：将 `pipeline.index.json` 中 `status` 字段更新为 `"completed"`，`updated_at` 更新为当前时间。
 - `ALERT` → 运行 Hotfix Scope Analyzer → phase-3 hotfix
+  标注因果：调用 `mark_rollback_causality(cause_step="phase-7", target_step="phase-3")`。
 - `CRITICAL` → 激活 Deployer 执行生产回滚 → rollback_to: phase-1
+  标注因果：调用 `mark_rollback_causality(cause_step="phase-7", target_step="phase-1")`。
 
 写日志：调用 `write_step_log`，step=`"phase-7"`，step_type=`"agent"`，agent=`"monitor"`，从 `monitor-report.json` 读取 `status`、`error_rate` 及 `p95_latency`（如有）作为 `key_decisions`。
 
@@ -599,6 +618,8 @@ Resolver 输出 `resolver_verdict`：
 - 任意阶段超过 max_attempts 次 → 暂停，输出 `[ESCALATION] 超过最大重试次数，请求人工介入`
 - Phase 6.0 FAIL → 暂停，输出部署前检查失败详情
 - Clarifier 5 轮后仍有 `[CRITICAL-UNRESOLVED]` → 暂停
+
+所有 ESCALATION 触发时，均需写索引最终状态：将 `pipeline.index.json` 中 `status` 字段更新为 `"escalation"`，`updated_at` 更新为当前时间。
 
 ## Git Push 规范
 
