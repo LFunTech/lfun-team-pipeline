@@ -327,7 +327,13 @@ PIPELINE_DIR=.pipeline bash .pipeline/autosteps/impl-manifest-merger.sh
 
 ### Phase 3.0b — Build Verifier（AutoStep）
 
-在所有 Builder 代码合并完成后、进入静态分析之前，强制执行编译验证。这是防止 Gate C 独立性失效的关键屏障。
+在所有 Builder 代码合并完成后、进入静态分析之前，强制执行两阶段编译验证。这是防止 Gate C 独立性失效的关键屏障。
+
+**两阶段验证：**
+1. **生产编译**：`cargo build --release` / `go build ./...` / `npm run build`
+2. **测试编译**（生产编译 PASS 后才运行）：`cargo test --no-run` / `go test -run='^$' ./...` / `npx tsc --noEmit`
+
+测试编译失败同样视为 Builder 责任，回滚至 phase-3。
 
 ```
 run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/build-verifier.sh
@@ -340,7 +346,7 @@ output: .pipeline/artifacts/build-verifier-report.json
 
 ⚠️ **重要约束**：Build Verifier FAIL 时，Orchestrator **必须** rollback 委托给对应 Builder 重新实现，**禁止** Orchestrator 直接修改源代码绕过编译错误。
 
-写日志：调用 `write_step_log`，step=`"phase-3.0b"`，step_type=`"autostep"`，agent=`""`，从 `build-verifier-report.json` 读取 `overall`、`tool`、`errors` 前 3 条作为 `key_decisions`。
+写日志：调用 `write_step_log`，step=`"phase-3.0b"`，step_type=`"autostep"`，agent=`""`，从 `build-verifier-report.json` 读取 `overall`、`tool`、`test_compile`、`errors`+`test_compile_errors` 前 3 条作为 `key_decisions`。
 
 #### 回滚清理（rollback_to: phase-3 时）
 
