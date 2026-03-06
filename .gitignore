@@ -1,0 +1,27 @@
+# Python test artifacts
+.hypothesis/
+.pytest_cache/
+__pycache__/
+*.pyc
+
+# Internal design docs (not for public release)
+docs/plans/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Credentials
+.env
+*.env
+!*.env.example
+!*.env.template
+
+# Demo projects (not part of distribution)
+demo-*/

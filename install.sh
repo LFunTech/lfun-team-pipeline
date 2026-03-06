@@ -1,107 +1,211 @@
 #!/bin/bash
-# install.sh — 安装 Claude Code Team Pipeline Agents
-# 将 agents/ 目录下所有 .md 文件复制到 ~/.claude/agents/
+# install.sh — lfun-team-pipeline installer
+# Installs agents, templates, and the `team` CLI command.
+#
+# Usage:
+#   bash install.sh              # normal install
+#   bash install.sh --update     # update existing installation
 
 set -euo pipefail
 
+VERSION="1.0.0"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENTS_SRC="$REPO_DIR/agents"
 AGENTS_DST="$HOME/.claude/agents"
+TEMPLATES_DST="$HOME/.local/share/team-pipeline"
+BIN_DIR="$HOME/.local/bin"
+TEAM_CMD="$BIN_DIR/team"
 
-echo "╔══════════════════════════════════════════════╗"
-echo "║  Claude Code Team Pipeline — Agent 安装程序  ║"
-echo "╚══════════════════════════════════════════════╝"
-echo ""
+UPDATE_MODE="${1:-}"
 
-# ── 验证源目录 ─────────────────────────────────────────────────────
-if [ ! -d "$AGENTS_SRC" ]; then
-  echo "❌ 错误: agents/ 目录不存在，请在 repo 根目录运行此脚本"
-  exit 1
-fi
-
-AGENT_COUNT=$(find "$AGENTS_SRC" -maxdepth 1 -name "*.md" | wc -l)
-if [ "$AGENT_COUNT" -eq 0 ]; then
-  echo "❌ 错误: agents/ 目录为空，请先执行安装计划"
-  exit 1
-fi
-
-# ── 创建目标目录 ────────────────────────────────────────────────────
-mkdir -p "$AGENTS_DST"
-echo "📁 目标目录: $AGENTS_DST"
-echo ""
-
-# ── 备份现有文件 ────────────────────────────────────────────────────
-EXISTING=$(find "$AGENTS_DST" -maxdepth 1 -name "*.md" 2>/dev/null | wc -l)
-if [ "$EXISTING" -gt 0 ]; then
-  BACKUP_DIR="$AGENTS_DST.backup.$(date +%Y%m%d%H%M%S)"
-  echo "⚠️  检测到 $EXISTING 个现有 Agent 文件，备份到: $BACKUP_DIR"
-  cp -r "$AGENTS_DST" "$BACKUP_DIR"
+print_header() {
   echo ""
+  echo "╔══════════════════════════════════════════════════════╗"
+  echo "║       lfun-team-pipeline  v${VERSION}  installer        ║"
+  echo "║       Claude Code Multi-Agent Delivery Pipeline      ║"
+  echo "╚══════════════════════════════════════════════════════╝"
+  echo ""
+}
+
+print_header
+
+# ── 1. Install agents to ~/.claude/agents/ ──────────────────────────
+echo "▶ Step 1/3 — Installing agents to $AGENTS_DST"
+
+if [ ! -d "$AGENTS_SRC" ]; then
+  echo "  ❌ agents/ directory not found. Run this script from the repo root."
+  exit 1
 fi
 
-# ── 复制 Agent 文件 ─────────────────────────────────────────────────
-echo "📋 安装 Agent 文件..."
+mkdir -p "$AGENTS_DST"
+
+EXISTING=$(find "$AGENTS_DST" -maxdepth 1 -name "*.md" 2>/dev/null | wc -l)
+if [ "$EXISTING" -gt 0 ] && [ "$UPDATE_MODE" != "--update" ]; then
+  BACKUP_DIR="$AGENTS_DST.backup.$(date +%Y%m%d%H%M%S)"
+  echo "  ⚠  Backing up $EXISTING existing agents → $BACKUP_DIR"
+  cp -r "$AGENTS_DST" "$BACKUP_DIR"
+fi
+
 INSTALLED=0
-while IFS= read -r agent_file; do
-  fname=$(basename "$agent_file")
-  cp "$agent_file" "$AGENTS_DST/$fname"
-  echo "  ✓ $fname"
+while IFS= read -r f; do
+  cp "$f" "$AGENTS_DST/$(basename "$f")"
   INSTALLED=$((INSTALLED + 1))
 done < <(find "$AGENTS_SRC" -maxdepth 1 -name "*.md" | sort)
 
-echo ""
-echo "✅ 安装完成！已安装 $INSTALLED 个 Agent 文件到 $AGENTS_DST"
-echo ""
+echo "  ✓ $INSTALLED agents installed"
 
-# ── 验证安装 ──────────────────────────────────────────────────────
-echo "── 安装验证 ──────────────────────────────────────"
-REQUIRED_AGENTS=("orchestrator" "clarifier" "architect" "auditor-biz" "auditor-tech" "auditor-qa" "auditor-ops" "resolver" "planner" "contract-formalizer" "builder-frontend" "builder-backend" "builder-dba" "builder-security" "builder-infra" "simplifier" "inspector" "tester" "documenter" "deployer" "monitor" "migrator" "optimizer" "translator" "github-ops")
+# ── 2. Copy templates to ~/.local/share/team-pipeline/ ──────────────
+echo ""
+echo "▶ Step 2/3 — Installing templates to $TEMPLATES_DST"
 
-MISSING=0
-for agent in "${REQUIRED_AGENTS[@]}"; do
-  if [ -f "$AGENTS_DST/$agent.md" ]; then
-    echo "  ✓ $agent"
+mkdir -p "$TEMPLATES_DST"
+cp -r "$REPO_DIR/templates/." "$TEMPLATES_DST/"
+echo "  ✓ Pipeline templates installed"
+
+# ── 3. Install `team` CLI to ~/.local/bin/ ───────────────────────────
+echo ""
+echo "▶ Step 3/3 — Installing \`team\` command to $BIN_DIR"
+
+mkdir -p "$BIN_DIR"
+cat > "$TEAM_CMD" << 'TEAM_SCRIPT'
+#!/bin/bash
+# team — lfun-team-pipeline CLI
+set -euo pipefail
+
+VERSION="1.0.0"
+TEAM_HOME="$HOME/.local/share/team-pipeline"
+
+usage() {
+  echo ""
+  echo "  lfun-team-pipeline v${VERSION}"
+  echo ""
+  echo "  Usage: team <command>"
+  echo ""
+  echo "  Commands:"
+  echo "    init      Initialize pipeline in the current project directory"
+  echo "    version   Print version"
+  echo "    update    Re-run installer to update agents and templates"
+  echo ""
+  echo "  Examples:"
+  echo "    cd my-project && team init"
+  echo "    claude --agent orchestrator"
+  echo ""
+}
+
+cmd_init() {
+  if [ ! -d "$TEAM_HOME/.pipeline" ]; then
+    echo "❌ Team pipeline not installed. Run: bash install.sh"
+    exit 1
+  fi
+
+  echo ""
+  echo "  Initializing lfun-team-pipeline in: $(pwd)"
+  echo ""
+
+  # Create directory structure
+  mkdir -p .pipeline/autosteps .pipeline/artifacts
+
+  # Copy config
+  if [ -f ".pipeline/config.json" ]; then
+    echo "  ⚠  .pipeline/config.json already exists, skipping"
   else
-    echo "  ✗ $agent (缺失!)"
+    cp "$TEAM_HOME/.pipeline/config.json" .pipeline/config.json
+    echo "  ✓ .pipeline/config.json"
+  fi
+
+  # Copy autosteps
+  STEP_COUNT=0
+  while IFS= read -r f; do
+    dest=".pipeline/autosteps/$(basename "$f")"
+    cp "$f" "$dest"
+    STEP_COUNT=$((STEP_COUNT + 1))
+  done < <(find "$TEAM_HOME/.pipeline/autosteps" -name "*.sh" | sort)
+  echo "  ✓ .pipeline/autosteps/ ($STEP_COUNT scripts)"
+
+  # Copy CLAUDE.md
+  if [ -f "CLAUDE.md" ]; then
+    echo "  ⚠  CLAUDE.md already exists, skipping"
+  else
+    cp "$TEAM_HOME/CLAUDE.md" CLAUDE.md
+    echo "  ✓ CLAUDE.md"
+  fi
+
+  echo ""
+  echo "  ✅ Pipeline initialized! Next steps:"
+  echo ""
+  echo "     1. Edit .pipeline/config.json  ← set project_name and tech stack"
+  echo "     2. claude --agent orchestrator ← start the pipeline"
+  echo ""
+}
+
+cmd_version() {
+  echo "lfun-team-pipeline v${VERSION}"
+}
+
+cmd_update() {
+  # Find the install.sh from the original repo or re-download
+  INSTALL_SCRIPT="$HOME/.local/share/team-pipeline/install.sh"
+  if [ -f "$INSTALL_SCRIPT" ]; then
+    bash "$INSTALL_SCRIPT" --update
+  else
+    echo "❌ Cannot find install.sh. Re-clone the repository and run install.sh manually."
+    exit 1
+  fi
+}
+
+case "${1:-}" in
+  init)    cmd_init ;;
+  version) cmd_version ;;
+  update)  cmd_update ;;
+  *)       usage ;;
+esac
+TEAM_SCRIPT
+
+chmod +x "$TEAM_CMD"
+echo "  ✓ 'team' command installed at $TEAM_CMD"
+
+# Copy install.sh itself so `team update` works
+cp "$REPO_DIR/install.sh" "$TEMPLATES_DST/install.sh" 2>/dev/null || true
+
+# ── PATH check ──────────────────────────────────────────────────────
+echo ""
+if echo "$PATH" | grep -q "$BIN_DIR"; then
+  echo "  ✓ $BIN_DIR is in PATH"
+else
+  echo "  ⚠  Add the following to your shell profile (~/.bashrc or ~/.zshrc):"
+  echo ""
+  echo '     export PATH="$HOME/.local/bin:$PATH"'
+  echo ""
+  echo "  Then restart your terminal or run: source ~/.bashrc"
+fi
+
+# ── Verify agents ────────────────────────────────────────────────────
+echo ""
+echo "── Verification ────────────────────────────────────────────────"
+REQUIRED=(orchestrator clarifier architect auditor-biz auditor-tech auditor-qa auditor-ops resolver planner contract-formalizer builder-frontend builder-backend builder-dba builder-security builder-infra simplifier inspector tester documenter deployer monitor migrator optimizer translator github-ops)
+MISSING=0
+for agent in "${REQUIRED[@]}"; do
+  if [ ! -f "$AGENTS_DST/$agent.md" ]; then
+    echo "  ✗ $agent (missing)"
     MISSING=$((MISSING + 1))
   fi
 done
 
-echo ""
 if [ "$MISSING" -eq 0 ]; then
-  echo "🎉 所有 25 个 Agent 已成功安装！"
+  echo "  ✓ All 25 agents verified"
 else
-  echo "⚠️  $MISSING 个 Agent 安装失败，请检查 agents/ 目录"
+  echo "  ❌ $MISSING agents missing"
   exit 1
 fi
 
-# ── 检查必备 Skills ────────────────────────────────────────────────
+# ── Done ─────────────────────────────────────────────────────────────
 echo ""
-echo "── 必备 Skills 检查 ────────────────────────────"
-echo "流水线需要以下两个 Skill："
-echo "  • code-simplifier (Simplifier 使用)"
-echo "  • code-review (Inspector 使用)"
+echo "╔══════════════════════════════════════════════════════╗"
+echo "║  ✅  Installation complete!                          ║"
+echo "║                                                      ║"
+echo "║  Quick start:                                        ║"
+echo "║    cd your-project                                   ║"
+echo "║    team init                                         ║"
+echo "║    claude --agent orchestrator                       ║"
+echo "╚══════════════════════════════════════════════════════╝"
 echo ""
-if find "$HOME/.claude/plugins/" -maxdepth 1 \( -name "*code-simplifier*" -o -name "*code-review*" \) 2>/dev/null | grep -q .; then
-  echo "  ✓ Skills 已安装"
-else
-  echo "  ℹ️  提示：如 Skills 未安装，Inspector 和 Simplifier 功能将降级"
-  echo "      请参考: https://docs.anthropic.com/claude-code/skills"
-fi
-
-# ── 使用说明 ──────────────────────────────────────────────────────
-echo ""
-echo "── 使用方法 ─────────────────────────────────────"
-echo ""
-echo "1. 初始化项目流水线配置："
-echo "   mkdir -p .pipeline/autosteps .pipeline/artifacts"
-echo "   cp -r \"$REPO_DIR/templates/.pipeline/config.json\" .pipeline/"
-echo "   cp -r \"$REPO_DIR/templates/.pipeline/autosteps/\" .pipeline/autosteps/"
-echo "   cp \"$REPO_DIR/templates/CLAUDE.md\" CLAUDE.md"
-echo ""
-echo "2. 编辑 .pipeline/config.json，设置 project_name 等配置"
-echo ""
-echo "3. 启动流水线："
-echo "   claude --agent orchestrator"
-echo ""
-echo "════════════════════════════════════════════════"
