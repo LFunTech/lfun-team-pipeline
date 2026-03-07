@@ -50,6 +50,8 @@ ls -t .pipeline/artifacts/*.json | head -5
 ## 阶段顺序参考
 
 ```
+System Planning → 系统规划（首次运行时，交互式拆解系统为提案队列）
+Pick Proposal   → 选取下一个待执行提案
 Phase 0    → Clarifier（需求澄清，最多 5 轮）
 Phase 0.5  → Requirement Completeness Checker（AutoStep）
 Phase 1    → Architect（方案设计）
@@ -81,6 +83,7 @@ Gate E     → Auditor-QA + Auditor-Tech（文档审核）
 Phase 6.0  → Pre-Deploy Readiness Check（AutoStep）
 Phase 6    → Deployer（部署）
 Phase 7    → Monitor（上线观测）
+Mark Completed  → 标记提案完成，循环取下一个
 ```
 
 ## 配置说明（.pipeline/config.json）
@@ -220,3 +223,22 @@ ls .pipeline/history/
 
 约束在每次流水线成功完成（Phase 7 NORMAL）后自动提取，经用户确认后写入。
 不建议手动编辑此文件——通过流水线管理以确保一致性。
+
+### 提案队列
+
+多提案系统使用提案队列管理交付顺序：
+
+```bash
+# 查看提案队列状态
+python3 -c "
+import json
+q = json.load(open('.pipeline/proposal-queue.json'))
+print(f'系统: {q[\"system_name\"]}')
+for p in q['proposals']:
+    status = '✓' if p['status'] == 'completed' else ('▶' if p['status'] == 'running' else '○')
+    print(f'  {status} [{p[\"id\"]}] {p[\"title\"]} ({p[\"status\"]})')
+"
+
+# 重新规划（保留已完成的工作）
+team replan
+```

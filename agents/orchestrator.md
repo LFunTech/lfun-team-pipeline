@@ -23,7 +23,8 @@ permissionMode: acceptEdits
 2. 读取 `.pipeline/state.json`（不存在则初始化），恢复当前阶段。
 3. 读取 `.pipeline/project-memory.json`（不存在则跳过，视为首次运行）。
 4. 初始化日志目录（见"日志系统"节）。
-5. 按以下顺序驱动流水线执行。
+5. 读取 `.pipeline/proposal-queue.json`（不存在则进入 System Planning）。
+6. 按阶段路由表驱动流水线执行。
 
 ## state.json 模式
 
@@ -78,7 +79,11 @@ permissionMode: acceptEdits
 
 | 当前完成 | 结果 | 下一步 | 备注 |
 |----------|------|--------|------|
-| （初始） | — | memory-load | 项目记忆加载 |
+| （初始） | 无 proposal-queue | system-planning | 首次运行，交互式规划 |
+| （初始） | 有 proposal-queue | pick-next-proposal | 恢复执行 |
+| system-planning | — | pick-next-proposal | |
+| pick-next-proposal | 有 pending 提案 | memory-load | |
+| pick-next-proposal | 全部 completed | ALL-COMPLETED | 所有提案交付完成 |
 | memory-load | — | phase-0 | |
 | phase-0 | — | phase-0.5 | |
 | phase-0.5 | PASS | phase-1 | |
@@ -137,7 +142,8 @@ permissionMode: acceptEdits
 | phase-7 | NORMAL | memory-consolidation | |
 | phase-7 | ALERT | → phase-3 | hotfix |
 | phase-7 | CRITICAL | → phase-1 | 先回滚生产 |
-| memory-consolidation | — | COMPLETED | |
+| memory-consolidation | — | mark-proposal-completed | |
+| mark-proposal-completed | — | pick-next-proposal | 循环执行下一个提案 | |
 
 ## Playbook 加载规则
 
@@ -183,6 +189,19 @@ def build_memory_injection():
         features = "、".join(r["feature"] for r in runs[-10:])  # 最近 10 次
         lines.append(f"已完成 {len(runs)} 次交付：{features}")
 
+    # 注入实现足迹（最近 5 次运行）
+    runs_with_footprint = [r for r in runs if r.get("footprint")]
+    if runs_with_footprint:
+        lines.append("")
+        lines.append("实现足迹：")
+        for r in runs_with_footprint[-5:]:
+            fp = r["footprint"]
+            lines.append(f"  [{r['pipeline_id']}] {r['feature']}")
+            if fp.get("api_endpoints"):
+                lines.append(f"    API: {', '.join(fp['api_endpoints'][:5])}")
+            if fp.get("db_tables"):
+                lines.append(f"    DB: {', '.join(fp['db_tables'])}")
+
     constraints = memory.get("constraints", [])
     if constraints:
         lines.append("")
@@ -205,6 +224,91 @@ def build_memory_injection():
 - Phase 0 spawn Clarifier 时：将 `build_memory_injection()` 返回值附加到 spawn 消息**最前方**
 - Phase 1 spawn Architect 时：将 `build_memory_injection()` 返回值附加到 spawn 消息**最前方**（在 Pipeline History Context 之前）
 - 其他阶段不注入项目记忆（它们通过 artifacts 文件传递信息）
+
+## System Planning（系统规划）
+
+仅在 `.pipeline/proposal-queue.json` 不存在时执行。
+
+### 交互流程
+
+1. 向用户提问："请描述你要构建的完整系统（功能、用户角色、核心业务流程）。"
+2. 根据用户描述，最多 3 轮澄清（聚焦系统边界、核心域、技术偏好）。
+3. 生成系统蓝图 `.pipeline/artifacts/system-blueprint.md`，包含：
+   - 系统定位（一句话）
+   - 技术栈选型
+   - 域划分（核心业务域列表）
+   - 数据模型骨架（表名 + 核心外键关系，不含完整字段）
+   - 跨域集成协议（域间交互方式，一句话描述）
+   - 共享约定（API 前缀、认证方式、错误格式）
+4. 将系统拆解为有序提案队列，写入 `.pipeline/proposal-queue.json`：
+   - 每个提案是一个可独立交付的增量
+   - 明确 `depends_on`（依赖哪些前序提案）
+   - 明确 `scope`（包含什么、不包含什么）
+   - 第一个提案应包含基础框架搭建（脚手架、CI、认证基础设施）
+5. 将蓝图中的技术栈和共享约定写入 `project-memory.json` 的 `constraints`（自动分配 id）。
+6. 展示蓝图和提案队列给用户确认，用户可调整顺序、范围、增删提案。
+7. 用户确认后，进入 `pick-next-proposal`。
+
+### 蓝图模板
+
+```markdown
+# 系统蓝图: [系统名称]
+
+## 系统定位
+[一句话描述]
+
+## 技术栈
+- 后端: [框架]
+- 前端: [框架]（如有）
+- 数据库: [数据库]
+- 部署: [方式]
+
+## 域划分与提案归属
+| 业务域 | 负责提案 | 依赖域 |
+|--------|---------|--------|
+
+## 数据模型骨架
+[表名 + 核心外键关系]
+
+## 跨域集成协议
+[域间交互方式]
+
+## 共享约定
+[API 前缀、认证方式、错误格式、日志格式]
+
+## 交付计划
+[提案顺序 + 依赖关系 + 范围边界]
+```
+
+## Pick Next Proposal（提案选取）
+
+读取 `.pipeline/proposal-queue.json`：
+
+1. 找到第一个 `status: "pending"` 的提案。
+2. 检查其 `depends_on` 中所有提案是否已 `completed`。未满足 → ESCALATION（依赖未完成）。
+3. 将该提案 `status` 改为 `"running"`，`pipeline_id` 设为当前 `state.json.pipeline_id`。
+4. 重新初始化 `state.json`（新的 pipeline_id，所有 attempt_counts 归零，status: running）。
+5. 将提案的 `title` 和 `scope` 作为用户需求输入，传递给 Phase 0 Clarifier。
+
+**传递格式**：
+```
+[来自系统规划的提案 P-NNN]
+标题: <title>
+范围: <scope>
+依赖提案: <depends_on 列表中已完成提案的 title>
+
+请基于以上范围进行需求澄清。
+```
+
+## Mark Proposal Completed（提案标记完成）
+
+Memory Consolidation 完成后执行：
+
+1. 读取 `.pipeline/proposal-queue.json`，找到当前 `status: "running"` 的提案。
+2. 将其 `status` 改为 `"completed"`。
+3. 写入 proposal-queue.json。
+4. 输出 `[Pipeline] 提案 <id> <title> 交付完成`。
+5. 进入 `pick-next-proposal`（路由表指向）。
 
 ## 矛盾检测与 Resolver 激活
 
@@ -595,7 +699,21 @@ Phase 7 返回 `NORMAL` 后、写入 COMPLETED 之前执行。
 2. 新增约束追加到 `constraints` 数组，自动分配 `id`（格式 `C-NNN`，NNN 为已有最大编号 +1）
 3. 每条约束包含 `id`、`text`、`tags`（从约束内容提取关键业务域标签）、`source`（当前 pipeline_id）
 4. 被推翻的约束从 `constraints` 移入 `superseded`，记录 `superseded_by` 和 `reason`
-5. 追加本次运行到 `runs` 数组：`{"pipeline_id": "<id>", "date": "<YYYY-MM-DD>", "feature": "<从 requirement.md 标题提取>", "proposal_ref": "history/<id>/proposal.md", "adr_ref": "history/<id>/adr-draft.md"}`
+5. 追加本次运行到 `runs` 数组：
+   ```json
+   {
+     "pipeline_id": "<id>",
+     "date": "<YYYY-MM-DD>",
+     "feature": "<从 requirement.md 标题提取>",
+     "proposal_ref": "history/<id>/proposal.md",
+     "adr_ref": "history/<id>/adr-draft.md",
+     "footprint": {
+       "api_endpoints": ["从 impl-manifest-backend.json 的 api_endpoints_implemented 提取"],
+       "db_tables": ["从 impl-manifest-dba.json 的 files_changed 中提取 migration 文件对应的表名"],
+       "key_files": ["从合并后的 impl-manifest.json 的 files_changed 提取前 10 个关键文件路径"]
+     }
+   }
+   ```
 6. 若 `constraints` 超过 50 条 → 输出 `[WARN] 项目约束已达 50 条上限，建议审查清理`
 
 ### Step 5 — 归档本次产物

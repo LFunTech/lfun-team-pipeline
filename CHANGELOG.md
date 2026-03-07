@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **产物归档**: 每次流水线完成后自动归档 artifacts 到 `.pipeline/history/<pipeline-id>/`
 - Clarifier 增加项目记忆感知（检测约束冲突、避免重复澄清）
 - Architect 增加约束检查（新方案不得违反已有约束）
+- **系统规划（System Planning）**: 首次运行时自动进入交互式系统规划，将完整系统拆解为有序提案队列
+- **提案队列（Proposal Queue）**: `.pipeline/proposal-queue.json` 管理多提案顺序执行，自动依赖检查和状态流转
+- **实现足迹（Footprint）**: 每次提案完成后自动记录 API endpoints、DB tables、关键文件路径，注入给后续提案
+- `team replan` 命令：重新规划提案队列（保留已完成工作）
 
 ### Changed
 - Pipeline version bump to v6.3

@@ -5,6 +5,42 @@
 
 ---
 
+## System Planning — 系统规划
+
+> 仅在 `.pipeline/proposal-queue.json` 不存在时执行。详细规则见 orchestrator.md 中"System Planning"节。
+
+本章节由 Orchestrator 内联执行（不 spawn 独立 Agent），交互式与用户对话：
+
+1. 请用户描述完整系统
+2. 最多 3 轮澄清（系统边界、核心域、技术偏好）
+3. 生成系统蓝图 `.pipeline/artifacts/system-blueprint.md`
+4. 拆解为提案队列 `.pipeline/proposal-queue.json`
+5. 将共享约定写入 `project-memory.json` 的 constraints
+6. 用户确认后进入 `pick-next-proposal`
+
+---
+
+## Pick Next Proposal — 提案选取
+
+> 详细规则见 orchestrator.md 中"Pick Next Proposal"节。
+
+1. 读取 proposal-queue.json，找第一个 pending 提案
+2. 检查依赖是否全部 completed
+3. 标记为 running，初始化新 state.json
+4. 将提案 title + scope 作为输入传给 Phase 0
+
+---
+
+## Mark Proposal Completed — 提案完成标记
+
+> 详细规则见 orchestrator.md 中"Mark Proposal Completed"节。
+
+1. 将当前 running 提案标记为 completed
+2. 输出完成日志
+3. 进入 pick-next-proposal
+
+---
+
 ## Phase 0 — Clarifier（需求澄清）
 ```
 spawn: clarifier

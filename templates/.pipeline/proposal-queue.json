@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "system_name": "",
+  "blueprint_ref": ".pipeline/artifacts/system-blueprint.md",
+  "proposals": []
+}

@@ -84,6 +84,7 @@ usage() {
   echo "  Commands:"
   echo "    init      Initialize pipeline in the current project directory"
   echo "    version   Print version"
+  echo "    replan    Re-plan the proposal queue (keeps completed work)"
   echo "    update    Re-run installer to update agents and templates"
   echo ""
   echo "  Examples:"
@@ -165,10 +166,35 @@ cmd_update() {
   fi
 }
 
+cmd_replan() {
+  if [ ! -f ".pipeline/proposal-queue.json" ]; then
+    echo "❌ No proposal queue found. Run: claude --agent orchestrator"
+    exit 1
+  fi
+
+  echo ""
+  echo "  Re-planning: removing proposal queue to trigger System Planning"
+  echo ""
+
+  # Archive current queue
+  BACKUP="pipeline/proposal-queue.backup.$(date +%Y%m%d%H%M%S).json"
+  cp .pipeline/proposal-queue.json ".pipeline/$BACKUP" 2>/dev/null || true
+  echo "  ✓ Backed up current queue to .pipeline/$BACKUP"
+
+  # Remove queue to trigger re-planning
+  rm .pipeline/proposal-queue.json
+  echo "  ✓ Queue removed. Next 'claude --agent orchestrator' will enter System Planning."
+  echo ""
+  echo "  Note: Completed proposals are preserved in project-memory.json."
+  echo "  The new plan will build on existing progress."
+  echo ""
+}
+
 case "${1:-}" in
   init)    cmd_init ;;
   version) cmd_version ;;
   update)  cmd_update ;;
+  replan)  cmd_replan ;;
   *)       usage ;;
 esac
 TEAM_SCRIPT
