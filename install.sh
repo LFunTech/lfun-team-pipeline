@@ -103,7 +103,7 @@ cmd_init() {
   echo ""
 
   # Create directory structure
-  mkdir -p .pipeline/autosteps .pipeline/artifacts
+  mkdir -p .pipeline/autosteps .pipeline/artifacts .pipeline/history
 
   # Copy config
   if [ -f ".pipeline/config.json" ]; then
@@ -111,6 +111,18 @@ cmd_init() {
   else
     cp "$TEAM_HOME/.pipeline/config.json" .pipeline/config.json
     echo "  ✓ .pipeline/config.json"
+  fi
+
+  # Copy playbook
+  cp "$TEAM_HOME/.pipeline/playbook.md" .pipeline/playbook.md
+  echo "  ✓ .pipeline/playbook.md"
+
+  # Copy project-memory template (only if not exists, preserve user data)
+  if [ -f ".pipeline/project-memory.json" ]; then
+    echo "  ⚠  .pipeline/project-memory.json already exists, skipping"
+  else
+    cp "$TEAM_HOME/.pipeline/project-memory.json" .pipeline/project-memory.json
+    echo "  ✓ .pipeline/project-memory.json"
   fi
 
   # Copy autosteps

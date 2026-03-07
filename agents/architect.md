@@ -16,6 +16,7 @@ permissionMode: acceptEdits
 ## 输入
 
 - `.pipeline/artifacts/requirement.md`（含 `[技术待确认]` 项）
+- `=== Project Memory ===` 块（如有，由 Orchestrator 注入）
 
 ## 输出
 
@@ -92,3 +93,8 @@ permissionMode: acceptEdits
 
 - `条件角色激活标记` 部分必须存在（Orchestrator 机械解析）
 - adr-draft.md 必须非空（Orchestrator 验证）
+- 收到 `=== Project Memory ===` 块时，必须遵守已有约束：
+  - 新方案不得违反 `constraints` 中任何一条，除非在 proposal.md 中明确声明 `推翻 [C-xxx]: <理由>`
+  - 技术选型应沿用已有项目的技术栈（如已有约束涉及 Axum/Express 等框架，不得无故切换）
+  - 新增 API 应沿用已有的路径前缀和命名风格
+  - `proposal.md` 的"条件角色激活标记"部分必须考虑已有约束（如已有数据迁移约束则注意兼容）

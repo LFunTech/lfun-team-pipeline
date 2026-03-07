@@ -20,6 +20,9 @@ ls -t .pipeline/artifacts/*.json | head -5
 ```
 .pipeline/
 ├── config.json          ← 流水线配置（编辑此文件以自定义行为）
+├── playbook.md          ← 阶段执行手册（Orchestrator 按需加载，勿手动修改）
+├── project-memory.json  ← 项目记忆（跨流水线约束清单，自动维护）
+├── history/             ← 历次流水线产物归档（按需查阅）
 ├── state.json           ← 运行时状态（Orchestrator 自动管理，勿手动修改）
 ├── autosteps/           ← AutoStep Shell 脚本（15 个）
 └── artifacts/           ← 运行时产物（所有 Agent 和 AutoStep 的输出）
@@ -193,3 +196,27 @@ for s in idx['steps']:
     print(f'[{s[\"step\"]}] {s[\"result\"]} (attempt {s[\"attempt\"]}){rollback}')
 "
 ```
+
+### 项目记忆
+
+流水线自动维护 `.pipeline/project-memory.json`，存储跨流水线的项目约束。
+
+```bash
+# 查看当前约束
+python3 -c "
+import json
+m = json.load(open('.pipeline/project-memory.json'))
+print(f'项目定位: {m.get(\"project_purpose\", \"未定义\")}')
+print(f'约束数量: {len(m.get(\"constraints\", []))}')
+print(f'历史运行: {len(m.get(\"runs\", []))} 次')
+for c in m.get('constraints', []):
+    tags = ', '.join(c.get('tags', []))
+    print(f'  [{c[\"id\"]}]({tags}) {c[\"text\"]}')
+"
+
+# 查看历次运行
+ls .pipeline/history/
+```
+
+约束在每次流水线成功完成（Phase 7 NORMAL）后自动提取，经用户确认后写入。
+不建议手动编辑此文件——通过流水线管理以确保一致性。

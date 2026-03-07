@@ -52,6 +52,10 @@
     "error_rate_alert_ratio": 0.001,
     "error_rate_critical_ratio": 0.01
   },
+  "memory": {
+    "max_constraints": 50,
+    "archive_artifacts": true
+  },
   "gates": {
     "gate-d": {
       "rollback_to_allowed": ["phase-4a", "phase-3"],
