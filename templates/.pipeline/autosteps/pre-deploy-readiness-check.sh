@@ -60,7 +60,7 @@ fi
 if [ -f ".env.example" ]; then
   add_check "env_example_exists" "PASS" ".env.example 存在，环境变量已记录"
 else
-  add_check "env_example_exists" "PASS" "无 .env.example（可能无环境变量依赖）"
+  add_check "env_example_exists" "WARN" "无 .env.example（建议创建以记录环境变量依赖）"
 fi
 
 CHECKS_LIST+="]"

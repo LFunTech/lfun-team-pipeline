@@ -77,6 +77,10 @@ CRITICAL_COUNT=$(grep -c '\[CRITICAL-UNRESOLVED' "$REQUIREMENT_FILE" 2>/dev/null
 
 ASSUMED_COUNT=$(grep -c '\[ASSUMED:' "$REQUIREMENT_FILE" 2>/dev/null || true)
 ASSUMED_VALID=true
+if [ "$ASSUMED_COUNT" -gt 0 ]; then
+  INVALID_FORMAT=$(grep '\[ASSUMED:' "$REQUIREMENT_FILE" | grep -cvE '\[ASSUMED: .+\]' 2>/dev/null || true)
+  [ "$INVALID_FORMAT" -gt 0 ] && ASSUMED_VALID=false || true
+fi
 
 WORD_COUNT=$(wc -w < "$REQUIREMENT_FILE")
 [ "$WORD_COUNT" -lt "$MIN_WORDS" ] && SECTIONS_OVERALL="FAIL" || true

@@ -14,19 +14,21 @@ TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 write_report() {
   local overall="$1" tool="$2" output="$3" errors="$4" test_compile="$5" test_errors="$6"
-  python3 - <<PYEOF
-import json
+  OVERALL="$overall" TOOL="$tool" BUILD_OUTPUT="$output" ERRORS="$errors" \
+  TEST_COMPILE="$test_compile" TEST_ERRORS="$test_errors" \
+  TIMESTAMP="$TIMESTAMP" REPORT="$REPORT" python3 - <<'PYEOF'
+import json, os
 data = {
     "autostep": "BuildVerifier",
-    "timestamp": "$TIMESTAMP",
-    "tool": "$tool",
-    "overall": "$overall",
-    "build_output_tail": """$output""",
-    "errors": $errors,
-    "test_compile": "$test_compile",
-    "test_compile_errors": $test_errors
+    "timestamp": os.environ["TIMESTAMP"],
+    "tool": os.environ["TOOL"],
+    "overall": os.environ["OVERALL"],
+    "build_output_tail": os.environ["BUILD_OUTPUT"],
+    "errors": json.loads(os.environ["ERRORS"]),
+    "test_compile": os.environ["TEST_COMPILE"],
+    "test_compile_errors": json.loads(os.environ["TEST_ERRORS"])
 }
-with open("$REPORT", "w") as f:
+with open(os.environ["REPORT"], "w") as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
 PYEOF
 }

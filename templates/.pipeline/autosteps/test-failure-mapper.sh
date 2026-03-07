@@ -34,7 +34,9 @@ file_to_builder = {}
 for builder_info in impl_manifest.get('builders', []):
   builder = builder_info.get('builder', 'unknown')
   for f in builder_info.get('files_changed', []):
-    file_to_builder[f['path']] = builder
+    path = f.get('path') if isinstance(f, dict) else f
+    if path:
+      file_to_builder[path] = builder
 
 failed_tests = test_report.get('failed_tests', [])
 builder_failures = {}
@@ -44,9 +46,9 @@ for test in failed_tests:
   source_guess = re.sub(r'\.test\.|\.spec\.', '.', test_file.replace('tests/', 'src/'))
   builder = file_to_builder.get(source_guess, file_to_builder.get(test_file, None))
   if builder:
-    builder_failures.setdefault(builder, []).append(test['test'])
+    builder_failures.setdefault(builder, []).append(test.get('test', 'unknown'))
   else:
-    builder_failures.setdefault('unknown', []).append(test['test'])
+    builder_failures.setdefault('unknown', []).append(test.get('test', 'unknown'))
 
 has_unknown = 'unknown' in builder_failures
 unique_builders = [b for b in builder_failures if b != 'unknown']

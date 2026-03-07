@@ -30,7 +30,7 @@ model: inherit
 
 ## 输出格式
 
-输出到对应 gate json（gate-a-review.json 或 gate-b-review.json）的 `results` 数组中：
+输出独立 JSON 对象，Orchestrator 负责将各 Auditor 输出合并到 gate json（gate-a-review.json 或 gate-b-review.json）的 `results` 数组中：
 
 ```json
 {

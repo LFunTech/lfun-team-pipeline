@@ -32,7 +32,7 @@ model: inherit
   "reviewer": "Auditor-Ops",
   "verdict": "PASS|FAIL",
   "comments": "运维层面审核意见",
-  "rollback_to": "phase-0|phase-1|null",
+  "rollback_to": "phase-0|phase-1|phase-2|null",
   "rollback_reason": "回退原因（FAIL 时）"
 }
 ```

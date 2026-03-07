@@ -141,7 +141,7 @@ cat .pipeline/artifacts/gate-a-review.json | python3 -m json.tool
 
 ```bash
 # 检查
-ls ~/.claude/plugins/ | grep -E "code-simplifier|code-review"
+ls ~/.claude/skills/ | grep -E "code-simplifier|code-review"
 ```
 
 如缺失，请参考 Claude Code Skill 安装文档。

@@ -43,6 +43,7 @@ permissionMode: acceptEdits
     "phase-3": 0,
     "phase-3.5": 0,
     "phase-4a": 0,
+    "phase-4.2": 0,
     "phase-5": 0,
     "phase-6": 0,
     "gate-a": 0,
@@ -85,6 +86,7 @@ permissionMode: acceptEdits
 | （初始） | 有 proposal-queue | pick-next-proposal | 恢复执行 |
 | system-planning | — | pick-next-proposal | |
 | pick-next-proposal | 有 pending 提案 | memory-load | |
+| pick-next-proposal | 依赖未完成 | ESCALATION | 提示用户调整提案顺序或手动完成依赖 |
 | pick-next-proposal | 全部 completed | ALL-COMPLETED | 所有提案交付完成 |
 | memory-load | — | phase-0 | |
 | phase-0 | — | phase-0.5 | |
@@ -121,7 +123,7 @@ permissionMode: acceptEdits
 | phase-3.7 | FAIL | → phase-3 | rollback |
 | phase-4a | PASS | phase-4.2 | |
 | phase-4a | FAIL | phase-4a.1 | 运行 Test Failure Mapper |
-| phase-4a.1 | HIGH confidence | → 精确 rollback builders | |
+| phase-4a.1 | HIGH confidence | → phase-3 | 精确模式：仅重跑 failure-builder-map.json 中 builders_to_rollback 列出的 builder |
 | phase-4a.1 | LOW confidence | → phase-3 | 全体 rollback |
 | phase-4.2 | PASS | phase-4b（条件）或 gate-d | performance_sensitive 决定 |
 | phase-4.2 | FAIL | → phase-4a | rollback |
@@ -135,7 +137,7 @@ permissionMode: acceptEdits
 | phase-5.1 | FAIL | → phase-5 | rollback |
 | gate-e | PASS | phase-5.9 | |
 | gate-e | FAIL | → phase-5 | rollback |
-| phase-5.9 | — | phase-6.0 | FAIL 仅 WARN |
+| phase-5.9 | PASS/FAIL | phase-6.0 | FAIL 时仅记录 WARN 日志，不阻断 |
 | phase-6.0 | PASS | phase-6 | |
 | phase-6.0 | FAIL | ESCALATION | |
 | phase-6 | PASS | phase-7 | |

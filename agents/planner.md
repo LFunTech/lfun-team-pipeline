@@ -16,6 +16,7 @@ permissionMode: acceptEdits
 
 - `.pipeline/artifacts/proposal.md`
 - `.pipeline/artifacts/requirement.md`
+- `.pipeline/state.json`（读取 `conditional_agents` 字段，确定条件角色是否激活）
 
 ## 输出
 
@@ -23,7 +24,7 @@ permissionMode: acceptEdits
 
 ## 任务分解要求
 
-- 每个任务分配到具体 Builder（Builder-Frontend/Backend/DBA/Security/Infra）
+- 每个任务分配到具体 Builder（Builder-Frontend/Backend/DBA/Security/Infra），若 `state.json.conditional_agents` 中对应角色为 `true`，还需分配 Migrator/Translator 的任务
 - 每个任务包含精确的文件路径列表（`path` + `action: create|modify|delete`）
 - 每个任务包含可量化的 `acceptance_criteria`（必须可转化为测试用例）
 - 任务间依赖关系必须在 `depends_on` 中声明

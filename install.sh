@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-VERSION="1.0.0"
+VERSION="6.3"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENTS_SRC="$REPO_DIR/agents"
 AGENTS_DST="$HOME/.claude/agents"
@@ -72,7 +72,7 @@ cat > "$TEAM_CMD" << 'TEAM_SCRIPT'
 # team — lfun-team-pipeline CLI
 set -euo pipefail
 
-VERSION="1.0.0"
+VERSION="6.3"
 TEAM_HOME="$HOME/.local/share/team-pipeline"
 
 usage() {
@@ -126,6 +126,14 @@ cmd_init() {
     echo "  ✓ .pipeline/project-memory.json"
   fi
 
+  # Copy proposal-queue template (only if not exists, preserve user data)
+  if [ -f ".pipeline/proposal-queue.json" ]; then
+    echo "  ⚠  .pipeline/proposal-queue.json already exists, skipping"
+  else
+    cp "$TEAM_HOME/.pipeline/proposal-queue.json" .pipeline/proposal-queue.json
+    echo "  ✓ .pipeline/proposal-queue.json"
+  fi
+
   # Copy autosteps
   STEP_COUNT=0
   while IFS= read -r f; do
@@ -177,7 +185,7 @@ cmd_replan() {
   echo ""
 
   # Archive current queue
-  BACKUP="pipeline/proposal-queue.backup.$(date +%Y%m%d%H%M%S).json"
+  BACKUP="proposal-queue.backup.$(date +%Y%m%d%H%M%S).json"
   cp .pipeline/proposal-queue.json ".pipeline/$BACKUP" 2>/dev/null || true
   echo "  ✓ Backed up current queue to .pipeline/$BACKUP"
 
