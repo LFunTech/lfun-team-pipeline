@@ -10,15 +10,17 @@
 
 **lfun-team-pipeline** orchestrates **25 specialized AI agents** that collaborate like a real engineering team — requirements analyst, architect, multiple parallel developers, QA engineers, a deployer, and a post-launch monitor — all driven by a single orchestrator.
 
-You describe what you want to build. The pipeline does the rest.
+You describe the full system you want to build. The pipeline automatically decomposes it into an ordered proposal queue and delivers each one sequentially. Each proposal runs through the complete requirements-to-production lifecycle independently.
 
 ```
-clarifier → architect → planner → [builders in parallel] → tester → deployer → monitor
+system planning → proposal queue → [P-001: clarify → architect → build → test → deploy → monitor] → P-002 → ...
 ```
 
 ## Pipeline Overview
 
 ```
+System Plan  System Planning (first run, interactive decomposition into proposal queue)
+Pick Proposal Pick next pending proposal for execution
 Phase 0    Clarifier            Requirements elicitation (up to 5 rounds)
 Phase 0.5  AutoStep             Requirement completeness check
 Phase 1    Architect            System design and ADR generation
@@ -36,6 +38,7 @@ Gate E     Tech + QA Auditors   Documentation accuracy review
 Phase 5.9  GitHub Ops           Repo creation · Woodpecker CI activation
 Phase 6    Deployer             Docker Compose deployment · smoke test
 Phase 7    Monitor              30-minute health observation window
+Mark Done    Mark proposal completed, auto-loop to next
 ```
 
 ## Prerequisites
@@ -79,11 +82,13 @@ team init
 # 2. Edit pipeline config (set project_name, tech stack, coverage threshold)
 $EDITOR .pipeline/config.json
 
-# 3. Start the pipeline — describe your project when prompted
+# 3. Start the pipeline — describe the full system you want to build
 claude --agent orchestrator
+# First run enters System Planning automatically, generates a proposal queue, then executes sequentially
+# Restarting after interruption automatically resumes from last progress
 ```
 
-The orchestrator will clarify requirements, design the system, assign tasks to builder agents in parallel git worktrees, run all quality gates, and deploy — automatically.
+On first run, the orchestrator guides you through describing the full system, generates a system blueprint and an ordered proposal queue, then automatically executes each proposal through the complete Phase 0-7 lifecycle.
 
 ## Integrating into an Existing Repository
 
@@ -132,7 +137,7 @@ git commit -m "chore: add lfun-team-pipeline"
 claude --agent orchestrator
 ```
 
-When the orchestrator asks what to build, describe the new feature you want to add. Builders will read the existing codebase in their git worktrees and implement changes that are consistent with the current architecture.
+Describe the new feature or full system you want to add. On first run, the orchestrator enters System Planning to generate a proposal queue, then executes each proposal sequentially. Builders will read the existing codebase in their git worktrees and implement changes that are consistent with the current architecture.
 
 **Important notes for existing repos:**
 
@@ -142,13 +147,77 @@ When the orchestrator asks what to build, describe the new feature you want to a
 - Coverage thresholds should be set to match or slightly exceed your current baseline, not a fixed target like 80%
 - If your project already has an OpenAPI spec, inform the orchestrator at Phase 2.5 to avoid regenerating from scratch
 
+## Multi-Proposal System Delivery
+
+The pipeline supports describing a complete system upfront, automatically decomposing it into an ordered proposal queue, and delivering each proposal sequentially.
+
+**Flow overview:**
+
+```
+Describe system → System Planning → Proposal Queue → [P-001 execute] → [P-002 execute] → ... → All done
+```
+
+**Step 1 — Start**
+
+```bash
+claude --agent orchestrator
+```
+
+On first run, the Orchestrator enters System Planning and guides you through describing the full system. Once complete, it generates:
+- `.pipeline/artifacts/system-blueprint.md`: System blueprint (tech stack, domain decomposition, data model skeleton)
+- `.pipeline/proposal-queue.json`: Ordered proposal queue
+
+**Step 2 — Auto-execution**
+
+After System Planning completes, the first proposal starts automatically. Each proposal independently runs through the full Phase 0-7 lifecycle.
+
+**Resume after interruption**
+
+```bash
+# Restart after interruption — automatically resumes from last progress
+claude --agent orchestrator
+```
+
+**Check progress**
+
+```bash
+python3 -c "
+import json
+q = json.load(open('.pipeline/proposal-queue.json'))
+for p in q['proposals']:
+    s = '✓' if p['status'] == 'completed' else ('▶' if p['status'] == 'running' else '○')
+    print(f'  {s} [{p[\"id\"]}] {p[\"title\"]}')
+"
+```
+
+**Re-plan**
+
+```bash
+# Preserve completed work, re-plan remaining proposals
+team replan
+claude --agent orchestrator
+```
+
+## Project Memory
+
+The pipeline automatically maintains `.pipeline/project-memory.json`, recording cross-proposal business and architecture constraints:
+
+- **Constraint registry**: Automatically extracted after each proposal completes (in MUST/MUST NOT form), written after user confirmation
+- **Implementation footprint**: Records APIs, database tables, and key files implemented by each proposal
+- **Conflict detection**: When a new proposal conflicts with existing constraints, the Clarifier and Architect proactively flag the issue
+
+Project memory ensures that business rules and technical decisions remain consistent across multiple proposals, preventing contradictions.
+
 ## `team init` Output
 
 ```
 .pipeline/
 ├── config.json          ← Pipeline configuration (edit before starting)
+├── playbook.md          ← Phase execution playbook (loaded on-demand by Orchestrator)
+├── project-memory.json  ← Project memory (cross-pipeline constraint registry)
 ├── autosteps/           ← 16 automated scripts (do not edit)
-└── artifacts/           ← Runtime outputs (auto-generated)
+├── artifacts/           ← Runtime outputs (auto-generated)
+└── history/             ← Past proposal artifact archives
 CLAUDE.md                ← Pipeline instructions for Claude Code
 ```
 

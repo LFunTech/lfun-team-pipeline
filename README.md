@@ -10,15 +10,17 @@
 
 **lfun-team-pipeline** 是基于 [Claude Code](https://claude.ai/code) 构建的生产级软件交付流水线。它编排 **25 个专属 AI 角色**，像真实工程团队一样协作 —— 需求分析师、架构师、多个并行开发者、QA 工程师、部署工程师、上线监控员 —— 由一个总指挥（Orchestrator）统一驱动。
 
-你描述想构建什么，流水线自动完成剩下的事。
+你描述想构建的完整系统，流水线自动拆解为有序提案队列并逐个交付。支持系统级规划与多提案顺序执行，每个提案独立走完需求到上线全流程。
 
 ```
-需求澄清 → 架构设计 → 任务拆解 → [并行构建] → 测试 → 部署 → 监控
+系统规划 → 提案队列 → [P-001: 需求澄清 → 架构 → 构建 → 测试 → 部署 → 监控] → P-002 → ...
 ```
 
 ## 流水线总览
 
 ```
+System Plan  系统规划（首次运行，交互式拆解为提案队列）
+Pick Proposal 选取下一个待执行提案
 Phase 0    Clarifier            需求澄清（最多 5 轮）
 Phase 0.5  AutoStep             需求完整性检查
 Phase 1    Architect            系统设计 + ADR 生成
@@ -36,6 +38,7 @@ Gate E     Tech + QA 审计员      文档准确性评审
 Phase 5.9  GitHub Ops           仓库创建 · Woodpecker CI 激活
 Phase 6    Deployer             Docker Compose 部署 + 冒烟测试
 Phase 7    Monitor              30 分钟健康观测窗口
+Mark Done    标记提案完成，自动循环执行下一个
 ```
 
 ## 先决条件
@@ -79,11 +82,13 @@ team init
 # 2. 编辑流水线配置（设置项目名、技术栈、覆盖率阈值等）
 $EDITOR .pipeline/config.json
 
-# 3. 启动流水线 —— 根据提示描述你要构建的项目
+# 3. 启动流水线 —— 描述你要构建的完整系统
 claude --agent orchestrator
+# 首次运行自动进入系统规划，生成提案队列后逐个执行
+# 中断后重新启动会自动恢复到上次进度
 ```
 
-Orchestrator 会主动提问澄清需求、设计系统、在并行 git worktree 中分配构建任务、运行所有质量门、最后自动部署。
+首次运行时，Orchestrator 会引导你描述完整系统，生成系统蓝图和有序提案队列，然后自动逐个执行每个提案的 Phase 0-7 全流程。
 
 ## 接入现有项目
 
@@ -132,7 +137,7 @@ git commit -m "chore: add lfun-team-pipeline"
 claude --agent orchestrator
 ```
 
-当 Orchestrator 询问要构建什么时，描述你想新增的功能。各 Builder 会在独立的 git worktree 中读取现有代码，并按现有架构风格实现变更。
+描述你想新增的功能或完整系统。首次运行时 Orchestrator 会进入系统规划阶段，生成提案队列后逐个执行。各 Builder 会在独立的 git worktree 中读取现有代码，并按现有架构风格实现变更。
 
 **接入现有项目的注意事项：**
 
@@ -142,13 +147,77 @@ claude --agent orchestrator
 - 覆盖率阈值建议设为当前基准值，而非固定的 80%
 - 若项目已有 OpenAPI 契约，在 Phase 2.5 告知 Orchestrator，避免重复生成
 
+## 多提案系统交付
+
+流水线支持一次性描述完整系统，自动拆解为有序提案队列并逐个交付。
+
+**流程概览：**
+
+```
+描述系统 → 系统规划 → 提案队列 → [P-001 执行] → [P-002 执行] → ... → 全部完成
+```
+
+**第一步 — 启动**
+
+```bash
+claude --agent orchestrator
+```
+
+首次运行时，Orchestrator 进入系统规划阶段，引导你描述完整系统。完成后自动生成：
+- `.pipeline/artifacts/system-blueprint.md`：系统蓝图（技术栈、域划分、数据模型骨架）
+- `.pipeline/proposal-queue.json`：有序提案队列
+
+**第二步 — 自动执行**
+
+系统规划完成后自动开始第一个提案，每个提案独立走完 Phase 0-7 全流程。
+
+**中断恢复**
+
+```bash
+# 中断后重新启动，自动继续上次进度
+claude --agent orchestrator
+```
+
+**查看进度**
+
+```bash
+python3 -c "
+import json
+q = json.load(open('.pipeline/proposal-queue.json'))
+for p in q['proposals']:
+    s = '✓' if p['status'] == 'completed' else ('▶' if p['status'] == 'running' else '○')
+    print(f'  {s} [{p[\"id\"]}] {p[\"title\"]}')
+"
+```
+
+**重新规划**
+
+```bash
+# 保留已完成工作，重新规划剩余提案
+team replan
+claude --agent orchestrator
+```
+
+## 项目记忆
+
+流水线自动维护 `.pipeline/project-memory.json`，记录跨提案的业务和架构约束：
+
+- **约束清单**：每次提案完成后自动提取（MUST/MUST NOT 形式），经用户确认后写入
+- **实现足迹**：记录每个提案实现的 API、数据库表、关键文件
+- **冲突检测**：新提案与已有约束冲突时，Clarifier 和 Architect 会主动提醒
+
+项目记忆确保多次提案之间的业务规则、技术决策保持一致，不会前后矛盾。
+
 ## `team init` 初始化内容
 
 ```
 .pipeline/
 ├── config.json          ← 流水线配置（启动前编辑）
+├── playbook.md          ← 阶段执行手册（Orchestrator 按需加载）
+├── project-memory.json  ← 项目记忆（跨流水线约束清单）
 ├── autosteps/           ← 16 个自动化脚本（无需修改）
-└── artifacts/           ← 运行时产物（自动生成）
+├── artifacts/           ← 运行时产物（自动生成）
+└── history/             ← 历次提案产物归档
 CLAUDE.md                ← 流水线对 Claude Code 的指令
 ```
 
