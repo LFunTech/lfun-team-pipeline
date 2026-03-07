@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Orchestrator Split**: Orchestrator（993 行）拆分为精简状态机（612 行）+ Playbook 按需加载，解决长 prompt 导致阶段流转丢失问题
+- **阶段路由表**: Orchestrator 新增完整路由表（50+ 条流转规则），确保每个阶段完成后明确知道下一步
+- **项目记忆（Project Memory）**: 新增 `.pipeline/project-memory.json`，存储跨流水线的业务和架构约束
+  - Memory Load: Phase 0 前加载并注入给 Clarifier 和 Architect
+  - Memory Consolidation: Phase 7 后提取约束、用户确认、归档产物
+  - 约束冲突检测: 新约束与已有约束冲突时提示用户确认推翻
+- **产物归档**: 每次流水线完成后自动归档 artifacts 到 `.pipeline/history/<pipeline-id>/`
+- Clarifier 增加项目记忆感知（检测约束冲突、避免重复澄清）
+- Architect 增加约束检查（新方案不得违反已有约束）
+
+### Changed
+- Pipeline version bump to v6.3
+- `team init` 现在额外复制 `playbook.md` 和 `project-memory.json`，并创建 `.pipeline/history/` 目录
+
 ## [1.0.0] - 2026-03-06
 
 First public release of lfun-team-pipeline.

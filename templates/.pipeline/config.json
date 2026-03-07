@@ -1,5 +1,5 @@
 {
-  "version": "v6.2",
+  "version": "v6.3",
   "pipeline_id": "pipe-YYYYMMDD-001",
   "project_name": "YOUR_PROJECT_NAME",
   "max_attempts": {
