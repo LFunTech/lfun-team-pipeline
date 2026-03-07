@@ -215,7 +215,7 @@ claude --agent orchestrator
 ├── config.json          ← 流水线配置（启动前编辑）
 ├── playbook.md          ← 阶段执行手册（Orchestrator 按需加载）
 ├── project-memory.json  ← 项目记忆（跨流水线约束清单）
-├── autosteps/           ← 16 个自动化脚本（无需修改）
+├── autosteps/           ← 17 个自动化脚本（无需修改）
 ├── artifacts/           ← 运行时产物（自动生成）
 └── history/             ← 历次提案产物归档
 CLAUDE.md                ← 流水线对 Claude Code 的指令

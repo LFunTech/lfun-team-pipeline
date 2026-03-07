@@ -215,7 +215,7 @@ Project memory ensures that business rules and technical decisions remain consis
 ├── config.json          ← Pipeline configuration (edit before starting)
 ├── playbook.md          ← Phase execution playbook (loaded on-demand by Orchestrator)
 ├── project-memory.json  ← Project memory (cross-pipeline constraint registry)
-├── autosteps/           ← 16 automated scripts (do not edit)
+├── autosteps/           ← 17 automated scripts (do not edit)
 ├── artifacts/           ← Runtime outputs (auto-generated)
 └── history/             ← Past proposal artifact archives
 CLAUDE.md                ← Pipeline instructions for Claude Code

@@ -41,7 +41,7 @@ First public release of lfun-team-pipeline.
 - `planner` — Task breakdown into builder-assignable units
 - `contract-formalizer` — OpenAPI contract generation and validation
 - `builder-backend` / `builder-frontend` / `builder-dba` / `builder-infra` / `builder-security` — Parallel implementation builders
-- `builder-migrator` / `builder-translator` — Conditional specialist builders
+- `migrator` / `translator` — Conditional specialist builders
 - `simplifier` — Code simplification and cleanup
 - `inspector` — Deep code review (Gate C)
 - `tester` — Integration and unit test generation
@@ -51,7 +51,7 @@ First public release of lfun-team-pipeline.
 - `monitor` — Post-deploy health observation (30-minute window)
 - `github-ops` — GitHub repository creation and Woodpecker CI activation
 
-**16 AutoStep Scripts** (fully automated, no human involvement)
+**17 AutoStep Scripts** (fully automated, no human involvement)
 - `requirement-completeness-checker.sh` — Validates requirement document completeness
 - `assumption-propagation-validator.sh` — Ensures assumptions propagate through tasks
 - `schema-completeness-validator.sh` — Validates OpenAPI schema completeness
@@ -67,6 +67,7 @@ First public release of lfun-team-pipeline.
 - `changelog-consistency-checker.sh` — Validates CHANGELOG format
 - `pre-deploy-readiness-check.sh` — Pre-deployment verification
 - `impl-manifest-merger.sh` — Merges builder implementation manifests
+- `build-verifier.sh` — Two-stage build verification (production + test compilation)
 - `depend-collector.sh` — Detects external dependencies and generates credential templates
 
 **Pipeline Features**

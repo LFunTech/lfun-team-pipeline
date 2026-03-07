@@ -24,7 +24,7 @@ ls -t .pipeline/artifacts/*.json | head -5
 ├── project-memory.json  ← 项目记忆（跨流水线约束清单，自动维护）
 ├── history/             ← 历次流水线产物归档（按需查阅）
 ├── state.json           ← 运行时状态（Orchestrator 自动管理，勿手动修改）
-├── autosteps/           ← AutoStep Shell 脚本（15 个）
+├── autosteps/           ← AutoStep Shell 脚本（17 个）
 └── artifacts/           ← 运行时产物（所有 Agent 和 AutoStep 的输出）
     ├── requirement.md
     ├── proposal.md
@@ -56,6 +56,8 @@ Phase 0    → Clarifier（需求澄清，最多 5 轮）
 Phase 0.5  → Requirement Completeness Checker（AutoStep）
 Phase 1    → Architect（方案设计）
 Gate A     → Auditor-Biz/Tech/QA/Ops（方案审核）
+Phase 2.0a → GitHub Repo Creator（github-ops Agent）
+Phase 2.0b → Depend Collector（AutoStep + 暂停等凭证）
 Phase 2    → Planner（任务细化）
 Phase 2.1  → Assumption Propagation Validator（AutoStep）
 Gate B     → Auditor-Biz/Tech/QA/Ops（任务审核）
@@ -64,6 +66,7 @@ Phase 2.6  → Schema Completeness Validator（AutoStep）
 Phase 2.7  → Contract Semantic Validator（AutoStep）
 Phase 3    → Builders 并行实现（Frontend/Backend/DBA/Security/Infra）
              + 条件角色（Migrator/Translator）
+Phase 3.0b → Build Verifier（AutoStep，编译验证）
 Phase 3.1  → Static Analyzer（AutoStep）
 Phase 3.2  → Diff Scope Validator（AutoStep）
 Phase 3.3  → Regression Guard（AutoStep）
@@ -80,6 +83,7 @@ AutoStep   → API Change Detector
 Phase 5    → Documenter（文档）
 Phase 5.1  → Changelog Consistency Checker（AutoStep）
 Gate E     → Auditor-QA + Auditor-Tech（文档审核）
+Phase 5.9  → GitHub Woodpecker Push（github-ops Agent）
 Phase 6.0  → Pre-Deploy Readiness Check（AutoStep）
 Phase 6    → Deployer（部署）
 Phase 7    → Monitor（上线观测）
@@ -91,7 +95,7 @@ Mark Completed  → 标记提案完成，循环取下一个
 | 字段 | 说明 | 默认值 |
 |------|------|--------|
 | `project_name` | 项目名称 | `YOUR_PROJECT_NAME` |
-| `max_attempts.default` | 各阶段最大重试次数 | `3` |
+| `max_attempts.default` | 未单独配置的阶段的最大重试次数（兜底值） | `3` |
 | `requirement_completeness.min_words` | 需求文档最小字数 | `200` |
 | `testing.coverage_tool` | 测试覆盖率工具 | `nyc` |
 | `testing.coverage_threshold` | 覆盖率阈值（百分比） | `80` |
