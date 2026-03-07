@@ -50,8 +50,10 @@ permissionMode: acceptEdits
     "gate-c": 0,
     "gate-d": 0,
     "gate-e": 0,
+    "phase-0.5": 0,
     "phase-2.0a": 0,
     "phase-2.0b": 0,
+    "phase-4b": 0,
     "per_builder": {}
   },
   "conditional_agents": {

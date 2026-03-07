@@ -41,6 +41,18 @@
 
 ---
 
+## Memory Load — 项目记忆加载
+
+> 详细规则见 orchestrator.md 中"项目记忆加载（Memory Load）"节。
+
+在 Phase 0 之前执行。读取 `.pipeline/project-memory.json`：
+
+1. 文件不存在 → 跳过（首次运行），直接进入 Phase 0
+2. 文件存在 → 调用 `build_memory_injection()` 生成注入块
+3. 注入块传递给 Phase 0 Clarifier 和 Phase 1 Architect 的 spawn 消息
+
+---
+
 ## Phase 0 — Clarifier（需求澄清）
 ```
 spawn: clarifier

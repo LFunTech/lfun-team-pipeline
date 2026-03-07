@@ -1,6 +1,6 @@
 # CLAUDE.md — 多角色软件交付流水线
 
-本项目使用基于 Claude Code 的多角色软件交付流水线（v6）。
+本项目使用基于 Claude Code 的多角色软件交付流水线（v6.3）。
 
 ## 快速启动
 
@@ -52,6 +52,7 @@ ls -t .pipeline/artifacts/*.json | head -5
 ```
 System Planning → 系统规划（首次运行时，交互式拆解系统为提案队列）
 Pick Proposal   → 选取下一个待执行提案
+Memory Load     → 项目记忆加载（注入约束给 Clarifier/Architect）
 Phase 0    → Clarifier（需求澄清，最多 5 轮）
 Phase 0.5  → Requirement Completeness Checker（AutoStep）
 Phase 1    → Architect（方案设计）
@@ -87,6 +88,7 @@ Phase 5.9  → GitHub Woodpecker Push（github-ops Agent）
 Phase 6.0  → Pre-Deploy Readiness Check（AutoStep）
 Phase 6    → Deployer（部署）
 Phase 7    → Monitor（上线观测）
+Memory Consolidation → 项目记忆固化（提取约束，用户确认后写入）
 Mark Completed  → 标记提案完成，循环取下一个
 ```
 

@@ -16,15 +16,14 @@ permissionMode: acceptEdits
 
 - `.pipeline/artifacts/tasks.json`（包含 contracts 数组）
 
-## 工作模式（模板驱动）
+## 工作模式
 
-Orchestrator 已为每个 contract 生成骨架文件（只含路径、ID）。你的职责是**只填充语义字段**：
-- 请求/响应字段名、类型、格式（format、enum、required）
-- 错误响应体（schema）
-- 描述（description、summary）
-- 参数约束（minimum、maximum、pattern、minLength、maxLength）
-
-**不修改**：operationId、paths 路径、HTTP 方法（已由 Orchestrator 从 tasks.json 机械填入）。
+根据 `tasks.json` 中的 `contracts` 数组，为每个 contract 生成完整的 OpenAPI 3.0 Schema 文件：
+- 从 contract 的 `definition` 提取路径、HTTP 方法、operationId
+- 填充请求/响应字段名、类型、格式（format、enum、required）
+- 填充错误响应体（schema）
+- 填充描述（description、summary）
+- 填充参数约束（minimum、maximum、pattern、minLength、maxLength）
 
 ## 输出
 

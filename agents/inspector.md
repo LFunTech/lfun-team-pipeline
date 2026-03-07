@@ -15,7 +15,7 @@ skills:
 
 ## 输入
 
-- 所有 impl-manifest.json 中 files_changed 的源码文件
+- 合并后的 `impl-manifest.json`（由 impl-manifest-merger.sh 从各 Builder 的 impl-manifest-\<name\>.json 合并生成）中 `files_changed` 的源码文件
 - `.pipeline/artifacts/scope-validation-report.json`（已验证文件范围，无需重复校验）
 - `.pipeline/artifacts/post-simplify-report.json`（精简已通过）
 - `.pipeline/artifacts/contracts/`（契约合规性参考）
