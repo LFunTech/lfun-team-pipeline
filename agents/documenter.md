@@ -61,7 +61,7 @@ permissionMode: acceptEdits
   "documenter": "Documenter",
   "timestamp": "ISO-8601",
   "mode": "full|changelog_only",
-  "files_updated": [
+  "docs_updated": [
     {"path": "docs/api.md", "type": "api-doc"},
     {"path": "CHANGELOG.md", "type": "changelog"},
     {"path": "docs/adr/001-resource-design.md", "type": "adr"}

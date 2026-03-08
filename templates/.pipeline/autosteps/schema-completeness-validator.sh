@@ -39,7 +39,10 @@ except ImportError:
 try:
     data = json.load(open(tasks_file))
     contracts = data.get('contracts', None)
-    expected_count = len(contracts) if contracts is not None else -1
+    if contracts is not None:
+        expected_count = sum(1 for c in contracts if c.get('type') != 'internal')
+    else:
+        expected_count = -1
 except Exception:
     expected_count = -1
 

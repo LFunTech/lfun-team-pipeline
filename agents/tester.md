@@ -50,6 +50,7 @@ permissionMode: acceptEdits
 ```
 
 3. `.pipeline/artifacts/coverage/coverage.lcov`（必须生成，Phase 4a.1 依赖）
+   - **注意**：`coverage-report.json`（含 `overall`、`line_coverage_pct` 等结构化字段）由 Phase 4.2 AutoStep `test-coverage-enforcer.sh` 从 `coverage.lcov` 自动生成，Tester 无需创建此文件
 4. 更新 `state.json.new_test_files`（新增测试文件路径列表）
 
 ## 约束

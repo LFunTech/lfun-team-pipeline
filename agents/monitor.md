@@ -22,11 +22,23 @@ permissionMode: acceptEdits
 
 **在开始量化观测前，先验证 DB schema 已完成迁移。** 健康检查 `/health` 只验证连通性，不验证表是否存在。
 
-从 `deploy-report.json` 中获取数据库连接信息（或从 `.env` 读取 `DATABASE_URL`），执行迁移状态检查：
+从 `deploy-report.json` 中获取数据库连接信息（或从 `.env` 读取 `DATABASE_URL`），根据数据库类型执行迁移状态检查：
 
 ```bash
-# PostgreSQL：验证核心业务表存在（从 db/migrations/ 目录推断表名）
-TABLES=$(psql "$DATABASE_URL" -t -c "\dt" 2>/dev/null | grep -c "table" || echo "0")
+# 根据 DATABASE_URL 协议或已安装工具判断数据库类型
+if echo "$DATABASE_URL" | grep -qE '^postgres'; then
+  TABLES=$(psql "$DATABASE_URL" -t -c "\dt" 2>/dev/null | grep -c "table" || echo "0")
+elif echo "$DATABASE_URL" | grep -qE '^mysql'; then
+  DB_NAME=$(echo "$DATABASE_URL" | grep -oP '/\K[^?]+' | tail -1)
+  TABLES=$(mysql -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$DB_NAME'" -s -N 2>/dev/null || echo "0")
+elif echo "$DATABASE_URL" | grep -qE '^sqlite|:memory:'; then
+  TABLES=$(sqlite3 "$DATABASE_URL" ".tables" 2>/dev/null | wc -w || echo "0")
+else
+  # 无法识别 DB 类型时，通过迁移文件间接验证
+  TABLES=$(find db/migrations/ src/db/ -name "*.sql" 2>/dev/null | wc -l || echo "0")
+  [ "$TABLES" -gt 0 ] && echo "[INFO] 无法直连 DB，但发现 $TABLES 个迁移文件" || true
+fi
+
 if [ "$TABLES" -eq 0 ]; then
   echo "[ERROR] DB schema 不存在，迁移可能未执行"
   # 尝试运行迁移（若 sqlx/flyway/alembic 可用）

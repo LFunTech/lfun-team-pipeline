@@ -27,9 +27,11 @@ permissionMode: acceptEdits
 
 ## 输出
 
-`.pipeline/artifacts/contracts/` 目录下每个 contract 一个文件：
+1. `.pipeline/artifacts/contracts/` 目录下每个 HTTP contract 一个文件：
 - 文件名：`<contract-id>.yaml`（OpenAPI 3.0 格式）
-- 数量必须等于 tasks.json 中 `contracts` 数组长度（Schema Completeness Validator 验证）
+- 数量必须等于 tasks.json 中 `contracts` 数组中 `type != "internal"` 的条目数（Schema Completeness Validator 验证）
+
+2. **修改 `tasks.json`**：在 `contracts` 数组中追加 `type: "internal"` 的内部模块接口定义条目（不生成 YAML 文件）
 
 #### 内部模块接口（contracts 字段补充）
 
