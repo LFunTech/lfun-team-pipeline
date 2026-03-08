@@ -60,6 +60,30 @@ permissionMode: acceptEdits
 
 3. `.pipeline/artifacts/impl-manifest-security.json`（标准格式）
 
+## 提交前验证
+
+在 `git commit` 之前，必须完成以下验证，确保代码可编译。
+
+### 编译验证（强制）
+
+根据项目技术栈执行对应的编译命令（在 worktree CWD 内）：
+
+```bash
+# Rust 项目
+cargo build 2>&1 | tail -20
+# 确认输出中包含 "Finished" 且不含 "error[E" 字样
+
+# Go 项目
+go build ./... 2>&1
+# 确认无输出（0 errors）
+
+# Node.js/TypeScript 项目（若有 build 脚本）
+npm run build 2>&1 | tail -20
+# 确认输出包含成功标志且不含 "error" 字样
+```
+
+**若编译失败**：修复所有 `error` 后重新编译，**不得提交包含编译错误的代码**。Build Verifier（Phase 3.0b）会机械验证编译结果，编译失败将导致整个 Phase 3 回滚。
+
 ## Git 提交
 
 完成所有文件实现并写出 impl-manifest 后，在 CWD（worktree）内：

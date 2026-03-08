@@ -54,6 +54,26 @@ skills:
 }
 ```
 
+## 提交前验证
+
+在 `git commit` 之前，必须完成以下验证，确保代码可编译。
+
+### 编译验证（强制）
+
+根据项目技术栈执行对应的编译命令（在 worktree CWD 内）：
+
+```bash
+# React/Vue/TypeScript 项目
+npm run build 2>&1 | tail -20
+# 确认输出包含成功标志（如 "Compiled successfully"、"built in" 等）且不含 "error" 字样
+
+# 若无 build 脚本但有 TypeScript
+npx tsc --noEmit 2>&1
+# 确认无输出（0 errors）
+```
+
+**若编译失败**：修复所有 `error` 后重新编译，**不得提交包含编译错误的代码**。Build Verifier（Phase 3.0b）会机械验证编译结果，编译失败将导致整个 Phase 3 回滚。
+
 ## Git 提交
 
 完成所有文件实现并写出 impl-manifest 后，在 CWD（worktree）内：

@@ -63,6 +63,16 @@ for pattern in [f'{contracts_dir}/*.yaml', f'{contracts_dir}/*.json']:
                     errors.append({'file': fname, 'rule': 'operation-id-required', 'message': 'every operation must have operationId'})
                     overall = 'FAIL'
                     break
+                # 校验 path parameter 必须标记 required: true（OpenAPI 3.x 规范）
+                if isinstance(op, dict):
+                    for param in op.get('parameters', []):
+                        if isinstance(param, dict) and param.get('in') == 'path' and not param.get('required', False):
+                            errors.append({
+                                'file': fname,
+                                'rule': 'path-param-required',
+                                'message': f"path parameter '{param.get('name', '?')}' in {method.upper()} {path} must have required: true"
+                            })
+                            overall = 'FAIL'
 
 result = {
     'autostep': 'ContractSemanticValidator',

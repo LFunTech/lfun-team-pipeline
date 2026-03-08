@@ -36,8 +36,9 @@ permissionMode: acceptEdits
 4. **严格文件范围**：只在 tasks.json 授权的路径下创建/修改文件
 
 **文件所有权（DBA）：**
-- 拥有目录：`src/db/`、`src/repositories/`、`src/models/`
-- **禁止**修改上述目录以外的任何文件
+- **权威来源**：以 tasks.json 中 `assigned_to: "Builder-DBA"` 的 `files` 列表为准
+- 典型目录参考（按技术栈不同可能变化）：`src/db/`、`src/repositories/`、`src/models/`（Node.js）；`migrations/`、`src/models/`、`src/db/`（Rust/Go/Python）
+- **禁止**修改 tasks.json 未授权的文件
 - 如需向 Backend 暴露接口，在 tasks.json 声明的接口契约中定义函数签名，不直接修改 Backend 文件
 
 ## 输出

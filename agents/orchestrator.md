@@ -25,6 +25,7 @@ permissionMode: acceptEdits
 4. 初始化日志目录（见"日志系统"节）。
 5. 读取 `.pipeline/proposal-queue.json`（不存在则进入 System Planning）。
    - JSON 解析失败 → ESCALATION，输出 `[ESCALATION] proposal-queue.json 格式错误，请检查文件内容`
+   - 解析成功但 `proposals` 数组为空 → 视同文件不存在，进入 System Planning（避免空模板阻断流程）
    - 解析成功后验证 `depends_on` 无循环引用：从每个 pending 提案出发，沿 depends_on 链遍历，若回到自身 → ESCALATION，输出 `[ESCALATION] 提案依赖存在循环: <循环路径>`
 6. 按阶段路由表驱动流水线执行。
 
@@ -39,24 +40,39 @@ permissionMode: acceptEdits
   "status": "running",
   "attempt_counts": {
     "phase-0": 0,
-    "phase-1": 0,
-    "phase-2": 0,
-    "phase-2.5": 0,
-    "phase-3": 0,
-    "phase-3.5": 0,
-    "phase-4a": 0,
-    "phase-4.2": 0,
-    "phase-5": 0,
-    "phase-6": 0,
-    "gate-a": 0,
-    "gate-b": 0,
-    "gate-c": 0,
-    "gate-d": 0,
-    "gate-e": 0,
     "phase-0.5": 0,
+    "phase-1": 0,
+    "gate-a": 0,
     "phase-2.0a": 0,
     "phase-2.0b": 0,
+    "phase-2": 0,
+    "phase-2.1": 0,
+    "gate-b": 0,
+    "phase-2.5": 0,
+    "phase-2.6": 0,
+    "phase-2.7": 0,
+    "phase-3": 0,
+    "phase-3.0b": 0,
+    "phase-3.1": 0,
+    "phase-3.2": 0,
+    "phase-3.3": 0,
+    "phase-3.5": 0,
+    "phase-3.6": 0,
+    "gate-c": 0,
+    "phase-3.7": 0,
+    "phase-4a": 0,
+    "phase-4a.1": 0,
+    "phase-4.2": 0,
     "phase-4b": 0,
+    "gate-d": 0,
+    "api-change-detector": 0,
+    "phase-5": 0,
+    "phase-5.1": 0,
+    "gate-e": 0,
+    "phase-5.9": 0,
+    "phase-6.0": 0,
+    "phase-6": 0,
+    "phase-7": 0,
     "per_builder": {}
   },
   "conditional_agents": {
@@ -187,10 +203,13 @@ def build_memory_injection():
     if not os.path.exists(path):
         return ""
     memory = json.load(open(path))
-    if not memory.get("constraints"):
-        return ""
 
-    lines = [f"项目定位：{memory.get('project_purpose', '未定义')}"]
+    # 逐字段独立检查，不因 constraints 为空就丢弃其他记忆信息
+    lines = []
+    if memory.get("project_purpose"):
+        lines.append(f"项目定位：{memory['project_purpose']}")
+    else:
+        lines.append("项目定位：未定义")
 
     runs = memory.get("runs", [])
     if runs:
@@ -225,6 +244,9 @@ def build_memory_injection():
         for s in superseded[-5:]:  # 只展示最近 5 条
             lines.append(f"  [{s['id']}] {s['text']} → 被 {s['superseded_by']} 推翻：{s['reason']}")
 
+    # 若只有默认的"项目定位：未定义"且无其他内容，跳过注入
+    if len(lines) <= 1 and "未定义" in lines[0]:
+        return ""
     return "=== Project Memory ===\n" + "\n".join(lines) + "\n=== End Memory ==="
 ```
 
@@ -389,7 +411,7 @@ push 失败时仅记录 WARN，不中断流水线。
 | Phase 3 各 Builder | `feat(builder-<name>): implement <service-name>`（service-name 从 impl-manifest 读取） |
 | Phase 3.5 Simplifier | `refactor: simplify implementation per static analysis` |
 | Gate C | `ci: gate-c passed` |
-| Phase 4a Tester | `test: add test suite (N cases, X% coverage)`（从 test-report.json 读取） |
+| Phase 4a Tester | `test: add test suite (N cases, M passed)`（N/M 从 test-report.json 的 total/passed 读取） |
 | Gate D | `ci: gate-d passed` |
 | Phase 5 Documenter | `docs: add README, CHANGELOG and API documentation` |
 | Gate E | `ci: gate-e passed` |
@@ -502,11 +524,13 @@ if not os.path.exists(INDEX_PATH):
 
 ### key_decisions 提取规则
 
-从已有 artifact 机械提取，字段缺失时忽略不报错：
+从已有 artifact 机械提取，字段缺失时忽略不报错。
+
+> **注意**：此表为通用参考。各阶段的**具体提取字段名**以 playbook.md 对应章节的"写日志"指令为准（如 Gate 产物中实际字段可能为 `comments[].detail` 而非 `issues[].message`）。
 
 | 步骤 | 提取来源 | 提取内容 |
 |------|----------|----------|
-| Gate（Auditor 类） | `gate-*.json` | `issues[severity=CRITICAL].message`（全部）+ `overall` + `rollback_to` |
+| Gate（Auditor 类） | `gate-*.json` | `comments[severity=CRITICAL].detail`（全部）+ `overall` + `rollback_to` |
 | AutoStep（report 类） | `*-report.json` | `overall` + `issues[severity!=INFO].message`（前 3 条） |
 | Builder | `impl-manifest-<name>.json` | `summary`（若有）或 `"共变更 N 个文件"` |
 | Architect | `proposal.md` | 技术栈段落的前 2 行 |

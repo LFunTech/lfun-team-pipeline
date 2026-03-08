@@ -62,7 +62,8 @@ result = {
     "timestamp": os.environ["TIMESTAMP"],
     "api_changed": os.environ["API_CHANGED"] == "true",
     "changed_contracts": json.loads(os.environ.get("CHANGED_CONTRACTS", "[]")),
-    "phase_5_mode": os.environ["PHASE5_MODE"]
+    "phase_5_mode": os.environ["PHASE5_MODE"],
+    "overall": "PASS"
 }
 with open(os.environ["OUTPUT_FILE"], "w") as f:
     json.dump(result, f, ensure_ascii=False, indent=2)

@@ -51,10 +51,12 @@ invalid_files = []
 overall = 'PASS'
 
 if os.path.isdir(contracts_dir):
-    schema_files = sorted(
+    all_files = sorted(
         glob.glob(f'{contracts_dir}/*.yaml') +
         glob.glob(f'{contracts_dir}/*.json')
     )
+    # 排除以 _ 开头的元数据文件（如 _index.yaml）和非 OpenAPI 文件
+    schema_files = [f for f in all_files if not os.path.basename(f).startswith('_')]
     actual_count = len(schema_files)
 
     for schema_file in schema_files:

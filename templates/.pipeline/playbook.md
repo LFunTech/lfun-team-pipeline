@@ -368,9 +368,16 @@ for BUILDER in phase_3_worktrees（若非空）:
   git worktree remove ".worktrees/builder-$BUILDER" --force 2>/dev/null || true
   git branch -D "pipeline/phase-3/builder-$BUILDER" 2>/dev/null || true
 rm -rf .worktrees 2>/dev/null || true
+
+# 移除上一轮 Tester 新增的测试文件（避免 Regression Guard 误报）
+for TEST_FILE in state.json.new_test_files（若非空）:
+  git rm "$TEST_FILE" 2>/dev/null || true
+git commit -m "chore: remove new_test_files before phase-3 retry" --allow-empty 2>/dev/null || true
+
 # 重置 state.json
 phase_3_worktrees = {}; phase_3_branches = {}
 phase_3_base_sha = null; phase_3_main_branch = null
+new_test_files = []
 ```
 
 ---
@@ -390,6 +397,7 @@ FAIL → rollback_to: phase-3
 ```
 run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/diff-scope-validator.sh
 ```
+**FAIL 不阻断**：脚本 FAIL（exit 1）时记录 WARN 日志，不触发 rollback，继续进入 Phase 3.3。未授权变更信息记录在 `scope-validation-report.json` 中供 Gate C Inspector 参考。
 
 写日志：调用 `write_step_log`，step=`"phase-3.2"`，step_type=`"autostep"`，agent=`""`，从 `scope-validation-report.json`（若存在）读取 `overall` 及 `unauthorized_changes` 前 3 条作为 `key_decisions`。
 
@@ -399,6 +407,7 @@ run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/diff-scope-validator.sh
 ```
 run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/regression-guard.sh
 ```
+**FAIL 不阻断**：脚本 FAIL（exit 1）时记录 WARN 日志，不触发 rollback，继续进入 Phase 3.5。回归测试失败信息记录在 `regression-report.json` 中供后续 Gate C 参考。
 （new_test_files 排除在外，不纳入回归套件）
 
 写日志：调用 `write_step_log`，step=`"phase-3.3"`，step_type=`"autostep"`，agent=`""`，从 `regression-report.json`（若存在）读取 `overall` 作为 `key_decisions`。
@@ -745,11 +754,13 @@ Memory Consolidation 完成后执行：
 
 ## Appendix: key_decisions 提取规则
 
-从已有 artifact 机械提取，字段缺失时忽略不报错：
+从已有 artifact 机械提取，字段缺失时忽略不报错。
+
+> **注意**：此表为通用参考。各阶段的**具体提取字段名**以上方对应章节的"写日志"指令为准（如 Gate 产物中实际字段可能为 `comments[].detail` 而非 `issues[].message`）。
 
 | 步骤 | 提取来源 | 提取内容 |
 |------|----------|----------|
-| Gate（Auditor 类） | `gate-*.json` | `issues[severity=CRITICAL].message`（全部）+ `overall` + `rollback_to` |
+| Gate（Auditor 类） | `gate-*.json` | `comments[severity=CRITICAL].detail`（全部）+ `overall` + `rollback_to` |
 | AutoStep（report 类） | `*-report.json` | `overall` + `issues[severity!=INFO].message`（前 3 条） |
 | Builder | `impl-manifest-<name>.json` | `summary`（若有）或 `"共变更 N 个文件"` |
 | Architect | `proposal.md` | 技术栈段落的前 2 行 |

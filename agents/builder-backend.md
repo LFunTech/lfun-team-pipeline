@@ -38,8 +38,9 @@ permissionMode: acceptEdits
 5. **全文件测试覆盖**：实现的**每个**源文件必须有对应测试，包括入口文件（`main.py`/`app.py`）、依赖注入文件（`dependencies.py`）、配置模块（`config.py`/`logging_config.py`）等。**禁止**提交覆盖率为 0% 的文件——Tester 阶段 (Phase 4.2) 会强制验证覆盖率阈值，零覆盖文件必然导致整体覆盖率不达标并触发重试。
 
 **文件所有权（Backend）：**
-- 拥有目录：`src/routes/`、`src/services/`、`src/middleware/`
-- **禁止**修改上述目录以外的任何文件（包括 `src/db/`、`src/repositories/`）
+- **权威来源**：以 tasks.json 中 `assigned_to: "Builder-Backend"` 的 `files` 列表为准
+- 典型目录参考（按技术栈不同可能变化）：`src/routes/`、`src/services/`、`src/middleware/`（Node.js）；`src/handlers/`、`src/services/`（Rust/Go）
+- **禁止**修改 tasks.json 未授权的文件（包括 DBA 负责的数据库层目录）
 - 跨层调用只能依赖 tasks.json 中声明的接口契约（函数名 + 参数 + 返回类型）
 - **测试文件中引用 DBA 模块时，路径必须以项目根为基准**（如 `../../src/repositories/linkRepository`），**禁止使用 `../../../builder-dba/` 等跨 worktree 相对路径**——合并后这些路径会立即失效
 

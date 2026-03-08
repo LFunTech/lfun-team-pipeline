@@ -64,6 +64,17 @@ OVERALL="PASS"
 while IFS= read -r changed_file; do
   [ -z "$changed_file" ] && continue
   [[ "$changed_file" == .pipeline/* ]] && continue
+  # 白名单：包管理器自动生成的锁文件
+  [[ "$changed_file" == "Cargo.lock" ]] && continue
+  [[ "$changed_file" == "package-lock.json" ]] && continue
+  [[ "$changed_file" == "go.sum" ]] && continue
+  [[ "$changed_file" == "yarn.lock" ]] && continue
+  [[ "$changed_file" == "pnpm-lock.yaml" ]] && continue
+  [[ "$changed_file" == "Gemfile.lock" ]] && continue
+  [[ "$changed_file" == "poetry.lock" ]] && continue
+  # 白名单：.gitignore 和 .env.example 等项目配置文件
+  [[ "$changed_file" == ".gitignore" ]] && continue
+  [[ "$changed_file" == ".env.example" ]] && continue
   if ! echo "$AUTHORIZED_FILES" | grep -qxF "$changed_file"; then
     UNAUTHORIZED+=("$changed_file")
     OVERALL="FAIL"
