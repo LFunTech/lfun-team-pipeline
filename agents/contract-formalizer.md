@@ -33,6 +33,8 @@ permissionMode: acceptEdits
 
 2. **修改 `tasks.json`**：在 `contracts` 数组中追加 `type: "internal"` 的内部模块接口定义条目（不生成 YAML 文件）
 
+3. **无 HTTP API 场景**：若提案无 HTTP API（所有 contract 均为 internal 或 contracts 为空），在 contracts/ 目录下创建 `_no-http-api.json` 作为元数据占位文件（`_` 前缀使 validator 自动跳过）。不得创建不带 `_` 前缀的非 OpenAPI 文件，否则 Phase 2.6 会将其误判为无效 schema 并 FAIL。
+
 #### 内部模块接口（contracts 字段补充）
 
 除 HTTP API 的 OpenAPI schema 文件外，还需在 `tasks.json` 的 `contracts` 字段中为
