@@ -16,13 +16,16 @@ mkdir -p "$(dirname "$OUTPUT_FILE")"
 
 THRESHOLD=80
 if [ -f "$CONFIG_FILE" ] && command -v python3 &>/dev/null; then
-  THRESHOLD=$(python3 -c "
-import json
+  THRESHOLD=$(CONFIG_FILE="$CONFIG_FILE" python3 << 'PYEOF'
+import json, os
 try:
-  c = json.load(open('$CONFIG_FILE'))
-  print(c.get('testing', {}).get('coverage_threshold', 80))
-except: print(80)
-" 2>/dev/null || echo 80)
+    c = json.load(open(os.environ['CONFIG_FILE']))
+    print(c.get('testing', {}).get('coverage_threshold', 80))
+except Exception:
+    print(80)
+PYEOF
+  )
+  THRESHOLD="${THRESHOLD:-80}"
 fi
 
 COVERAGE_PCT=0
@@ -49,31 +52,39 @@ try:
     print(round(hit_lines / total_lines * 100, 1))
   else:
     print(0)
-except: print(0)
+except Exception: print(0)
 PYEOF
 )
 elif [ -f "$COVERAGE_DIR/coverage-summary.json" ]; then
-  COVERAGE_PCT=$(python3 -c "
-import json
+  COVERAGE_PCT=$(COVERAGE_DIR="$COVERAGE_DIR" python3 << 'PYEOF'
+import json, os
 try:
-  data = json.load(open('$COVERAGE_DIR/coverage-summary.json'))
-  print(data.get('total', {}).get('lines', {}).get('pct', 0))
-except: print(0)
-" 2>/dev/null || echo 0)
+    data = json.load(open(os.environ['COVERAGE_DIR'] + '/coverage-summary.json'))
+    print(data.get('total', {}).get('lines', {}).get('pct', 0))
+except Exception:
+    print(0)
+PYEOF
+  )
+  COVERAGE_PCT="${COVERAGE_PCT:-0}"
 fi
 
 BELOW_THRESHOLD=$(python3 -c "print('true' if $COVERAGE_PCT < $THRESHOLD else 'false')" 2>/dev/null || echo "true")
 [ "$BELOW_THRESHOLD" = "true" ] && OVERALL="FAIL" || true
 
-cat > "$OUTPUT_FILE" << EOF
-{
-  "autostep": "TestCoverageEnforcer",
-  "timestamp": "$TIMESTAMP",
-  "line_coverage_pct": $COVERAGE_PCT,
-  "threshold_pct": $THRESHOLD,
-  "below_threshold": $BELOW_THRESHOLD,
-  "overall": "$OVERALL"
+TIMESTAMP="$TIMESTAMP" COVERAGE_PCT="$COVERAGE_PCT" THRESHOLD="$THRESHOLD" \
+BELOW_THRESHOLD="$BELOW_THRESHOLD" OVERALL="$OVERALL" OUTPUT_FILE="$OUTPUT_FILE" \
+python3 << 'PYEOF'
+import json, os
+result = {
+    "autostep": "TestCoverageEnforcer",
+    "timestamp": os.environ["TIMESTAMP"],
+    "line_coverage_pct": float(os.environ["COVERAGE_PCT"]),
+    "threshold_pct": float(os.environ["THRESHOLD"]),
+    "below_threshold": os.environ["BELOW_THRESHOLD"] == "true",
+    "overall": os.environ["OVERALL"]
 }
-EOF
+with open(os.environ["OUTPUT_FILE"], "w") as f:
+    json.dump(result, f, ensure_ascii=False, indent=2)
+PYEOF
 
 [ "$OVERALL" = "PASS" ] && exit 0 || exit 1

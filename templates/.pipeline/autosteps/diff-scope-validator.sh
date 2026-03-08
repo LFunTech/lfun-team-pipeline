@@ -19,7 +19,7 @@ import json, os
 try:
   s = json.load(open(os.environ['PIPELINE_DIR'] + '/state.json'))
   print(s.get('phase_3_base_sha') or '')
-except:
+except Exception:
   print('')
 " 2>/dev/null || echo "")
 fi

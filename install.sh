@@ -164,14 +164,13 @@ cmd_version() {
 }
 
 cmd_update() {
-  # Find the install.sh from the original repo or re-download
-  INSTALL_SCRIPT="$HOME/.local/share/team-pipeline/install.sh"
-  if [ -f "$INSTALL_SCRIPT" ]; then
-    bash "$INSTALL_SCRIPT" --update
-  else
-    echo "❌ Cannot find install.sh. Re-clone the repository and run install.sh manually."
-    exit 1
-  fi
+  echo ""
+  echo "  To update, run install.sh from the team-creator git repository:"
+  echo ""
+  echo "    cd /path/to/team-creator && bash install.sh --update"
+  echo ""
+  echo "  This ensures agents and templates are copied from the latest source."
+  echo ""
 }
 
 cmd_replan() {

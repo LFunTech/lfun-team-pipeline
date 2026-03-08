@@ -391,7 +391,7 @@ FAIL → rollback_to: phase-3
 run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/diff-scope-validator.sh
 ```
 
-写日志：调用 `write_step_log`，step=`"phase-3.2"`，step_type=`"autostep"`，agent=`""`，从 `diff-scope-report.json`（若存在）读取 `overall` 及 `issues` 前 3 条作为 `key_decisions`。
+写日志：调用 `write_step_log`，step=`"phase-3.2"`，step_type=`"autostep"`，agent=`""`，从 `scope-validation-report.json`（若存在）读取 `overall` 及 `unauthorized_changes` 前 3 条作为 `key_decisions`。
 
 ---
 
@@ -401,7 +401,7 @@ run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/regression-guard.sh
 ```
 （new_test_files 排除在外，不纳入回归套件）
 
-写日志：调用 `write_step_log`，step=`"phase-3.3"`，step_type=`"autostep"`，agent=`""`，从 `regression-guard-report.json`（若存在）读取 `overall` 作为 `key_decisions`。
+写日志：调用 `write_step_log`，step=`"phase-3.3"`，step_type=`"autostep"`，agent=`""`，从 `regression-report.json`（若存在）读取 `overall` 作为 `key_decisions`。
 
 ---
 
@@ -426,7 +426,7 @@ run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/post-simplification-verifie
 FAIL → rollback_to: phase-3.5
 标注因果：调用 `mark_rollback_causality(cause_step="phase-3.6", target_step="phase-3.5")`。
 
-写日志：调用 `write_step_log`，step=`"phase-3.6"`，step_type=`"autostep"`，agent=`""`，从 `post-simplification-report.json`（若存在）读取 `overall` 作为 `key_decisions`。
+写日志：调用 `write_step_log`，step=`"phase-3.6"`，step_type=`"autostep"`，agent=`""`，从 `post-simplify-report.json`（若存在）读取 `overall` 作为 `key_decisions`。
 
 ---
 
@@ -630,7 +630,7 @@ run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/changelog-consistency-check
 FAIL → rollback_to: phase-5
 标注因果：调用 `mark_rollback_causality(cause_step="phase-5.1", target_step="phase-5")`。
 
-写日志：调用 `write_step_log`，step=`"phase-5.1"`，step_type=`"autostep"`，agent=`""`，从 `changelog-consistency-report.json`（若存在）读取 `overall` 作为 `key_decisions`。
+写日志：调用 `write_step_log`，step=`"phase-5.1"`，step_type=`"autostep"`，agent=`""`，从 `changelog-check-report.json`（若存在）读取 `overall` 作为 `key_decisions`。
 
 ---
 
@@ -661,7 +661,7 @@ input: .woodpecker/ 目录 + github-repo-info.json
 ```
 FAIL → WARN（不阻断，记录日志后继续 Phase 6.0）
 
-写日志：调用 `write_step_log`，step=`"phase-5.9"`，step_type=`"agent"`，agent=`"github-ops"`，从 `woodpecker-push-report.json`（若存在）读取 `overall` 字段作为 `key_decisions`。
+写日志：调用 `write_step_log`，step=`"phase-5.9"`，step_type=`"agent"`，agent=`"github-ops"`，从 `github-repo-info.json`（若存在）读取 `woodpecker_pushed` 字段作为 `key_decisions`。
 
 ---
 

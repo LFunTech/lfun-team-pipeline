@@ -45,15 +45,20 @@ import sys, json
 print(json.dumps(sys.stdin.read()))
 " 2>/dev/null || echo '"[output unavailable]"')
 
-cat > "$OUTPUT_FILE" << EOF
-{
-  "autostep": "RegressionGuard",
-  "timestamp": "$TIMESTAMP",
-  "test_command": "$CMD",
-  "exit_code": $TEST_EXIT,
-  "output_summary": $ESCAPED_OUTPUT,
-  "overall": "$OVERALL"
+ESCAPED_OUTPUT="$ESCAPED_OUTPUT" CMD="$CMD" TEST_EXIT="$TEST_EXIT" \
+OVERALL="$OVERALL" TIMESTAMP="$TIMESTAMP" OUTPUT_FILE="$OUTPUT_FILE" \
+python3 << 'PYEOF'
+import json, os
+result = {
+    "autostep": "RegressionGuard",
+    "timestamp": os.environ["TIMESTAMP"],
+    "test_command": os.environ["CMD"],
+    "exit_code": int(os.environ["TEST_EXIT"]),
+    "output_summary": json.loads(os.environ["ESCAPED_OUTPUT"]),
+    "overall": os.environ["OVERALL"]
 }
-EOF
+with open(os.environ["OUTPUT_FILE"], "w") as f:
+    json.dump(result, f, ensure_ascii=False, indent=2)
+PYEOF
 
 [ "$OVERALL" = "PASS" ] && exit 0 || exit 1

@@ -340,6 +340,7 @@ Resolver 输出 `resolver_verdict`：
 |------|---------------------|----------------------|
 | Gate A | phase-0, phase-1 | phase-0, phase-1 |
 | Gate B | phase-1, phase-2 | phase-1, phase-2 |
+| Gate C | phase-3 | —（单一审查者） |
 | Gate D | phase-3, phase-4a | phase-3, phase-4a |
 | Gate E | phase-5 | phase-5 |
 

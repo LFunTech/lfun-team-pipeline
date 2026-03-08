@@ -47,7 +47,7 @@ api_changed_count = 0
 try:
   api_report = json.load(open(f'{pipeline_dir}/artifacts/api-change-report.json'))
   api_changed_count = len(api_report.get('changed_contracts', []))
-except: pass
+except Exception: pass
 
 if '## [Unreleased]' not in changelog_content and '## [unreleased]' not in changelog_content.lower():
   fail('unreleased_section', 'CHANGELOG 中缺少 [Unreleased] section')

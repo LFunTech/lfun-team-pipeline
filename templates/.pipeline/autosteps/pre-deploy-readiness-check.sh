@@ -36,7 +36,7 @@ import json, os
 try:
   s = json.load(open(os.environ['STATE_FILE']))
   print('true' if s.get('conditional_agents', {}).get('migrator', False) else 'false')
-except: print('false')
+except Exception: print('false')
 " 2>/dev/null || echo "false")
 
   if [ "$MIGRATION_REQUIRED" = "true" ]; then
@@ -56,7 +56,7 @@ else
 fi
 
 # 使用 python3 生成 JSON（避免手动拼接导致的转义问题）
-TIMESTAMP="$TIMESTAMP" OUTPUT_FILE="$OUTPUT_FILE" python3 -c "
+OVERALL=$(TIMESTAMP="$TIMESTAMP" OUTPUT_FILE="$OUTPUT_FILE" python3 -c "
 import json, os, sys
 checks_raw = sys.stdin.read().strip().splitlines()
 checks = []
@@ -78,7 +78,7 @@ result = {
 with open(os.environ['OUTPUT_FILE'], 'w') as f:
     json.dump(result, f, ensure_ascii=False, indent=2)
 print(overall)
-" <<< "$(printf '%s\n' "${CHECKS[@]}")"
+" <<< "$(printf '%s\n' "${CHECKS[@]}")")
 
-OVERALL=$(python3 -c "import json; print(json.load(open('$OUTPUT_FILE'))['overall'])" 2>/dev/null || echo "FAIL")
+OVERALL="${OVERALL:-FAIL}"
 [ "$OVERALL" = "PASS" ] && exit 0 || exit 1

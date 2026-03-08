@@ -60,7 +60,7 @@
   "gates": {
     "gate-d": {
       "rollback_to_allowed": ["phase-4a", "phase-3"],
-      "rollback_to_max_depth": "phase-2"
+      "rollback_to_max_depth": "phase-3"
     }
   },
   "autosteps": {

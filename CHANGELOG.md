@@ -73,7 +73,6 @@ First public release of lfun-team-pipeline.
 **Pipeline Features**
 - 8 phases (Phase 0–7) with 5 quality gates (A–E)
 - Parallel builder execution via git worktrees
-- Redis-based distributed locking for conversation state
 - GitHub integration + Woodpecker CI three-environment pipeline (test/staging/prod)
 - Credential management via `.depend/` directory
 - `team init` CLI for zero-friction project initialization

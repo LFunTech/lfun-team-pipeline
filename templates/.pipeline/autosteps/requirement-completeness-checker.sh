@@ -28,7 +28,7 @@ import json, os
 try:
   c = json.load(open(os.environ['CONFIG_FILE']))
   print(c.get('requirement_completeness', {}).get('min_words', 200))
-except: print(200)
+except Exception: print(200)
 " 2>/dev/null || echo 200)
 fi
 

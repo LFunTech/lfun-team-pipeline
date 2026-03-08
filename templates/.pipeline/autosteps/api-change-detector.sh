@@ -42,23 +42,30 @@ fi
 
 if [ -f "$STATE_FILE" ] && command -v python3 &>/dev/null; then
   PHASE5_MODE=$( [ "$API_CHANGED" = "true" ] && echo "full" || echo "changelog_only" )
-  python3 -c "
-import json
-state = json.load(open('$STATE_FILE'))
-state['phase_5_mode'] = '$PHASE5_MODE'
-with open('$STATE_FILE', 'w') as f:
-  json.dump(state, f, indent=2, ensure_ascii=False)
-"
+  STATE_FILE="$STATE_FILE" PHASE5_MODE="$PHASE5_MODE" python3 << 'PYEOF'
+import json, os
+state_file = os.environ['STATE_FILE']
+with open(state_file) as f:
+    state = json.load(f)
+state['phase_5_mode'] = os.environ['PHASE5_MODE']
+with open(state_file, 'w') as f:
+    json.dump(state, f, indent=2, ensure_ascii=False)
+PYEOF
 fi
 
-cat > "$OUTPUT_FILE" << EOF
-{
-  "autostep": "APIChangeDetector",
-  "timestamp": "$TIMESTAMP",
-  "api_changed": $API_CHANGED,
-  "changed_contracts": $CHANGED_CONTRACTS,
-  "phase_5_mode": "$( [ "$API_CHANGED" = "true" ] && echo "full" || echo "changelog_only" )"
+PHASE5_MODE=$( [ "$API_CHANGED" = "true" ] && echo "full" || echo "changelog_only" )
+TIMESTAMP="$TIMESTAMP" API_CHANGED="$API_CHANGED" PHASE5_MODE="$PHASE5_MODE" \
+CHANGED_CONTRACTS="$CHANGED_CONTRACTS" OUTPUT_FILE="$OUTPUT_FILE" python3 << 'PYEOF'
+import json, os
+result = {
+    "autostep": "APIChangeDetector",
+    "timestamp": os.environ["TIMESTAMP"],
+    "api_changed": os.environ["API_CHANGED"] == "true",
+    "changed_contracts": json.loads(os.environ.get("CHANGED_CONTRACTS", "[]")),
+    "phase_5_mode": os.environ["PHASE5_MODE"]
 }
-EOF
+with open(os.environ["OUTPUT_FILE"], "w") as f:
+    json.dump(result, f, ensure_ascii=False, indent=2)
+PYEOF
 
 exit 0
