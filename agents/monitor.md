@@ -2,7 +2,7 @@
 name: monitor
 description: "[Pipeline] Phase 7 上线观测员。基于量化阈值观测错误率、性能指标、日志异常，输出 NORMAL/ALERT/CRITICAL。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
-model: inherit
+model: sonnet
 permissionMode: acceptEdits
 ---
 

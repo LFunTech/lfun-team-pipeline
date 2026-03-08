@@ -2,7 +2,7 @@
 name: auditor-tech
 description: "[Pipeline] Gate A/B/E 技术审核官。审核架构合理性、性能、安全；Gate E 审查 API 文档和 ADR 质量。仅在多角色软件交付流水线中使用。"
 tools: Read, Glob, Grep, Bash
-model: inherit
+model: sonnet
 ---
 
 # Auditor-Tech — 技术审核官

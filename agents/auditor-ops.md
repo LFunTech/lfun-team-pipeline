@@ -2,7 +2,7 @@
 name: auditor-ops
 description: "[Pipeline] Gate A/B 运维审核官。审核部署策略、回滚方案、基础设施影响。仅在多角色软件交付流水线中使用。"
 tools: Read, Glob, Grep, Bash
-model: inherit
+model: sonnet
 ---
 
 # Auditor-Ops — 运维审核官

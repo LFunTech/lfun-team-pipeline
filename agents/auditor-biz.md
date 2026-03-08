@@ -2,7 +2,7 @@
 name: auditor-biz
 description: "[Pipeline] Gate A/B 业务审核官。审核业务完整性和合理性，输出结构化审核结论。仅在多角色软件交付流水线中使用。"
 tools: Read, Glob, Grep, Bash
-model: inherit
+model: sonnet
 ---
 
 # Auditor-Biz — 业务审核官

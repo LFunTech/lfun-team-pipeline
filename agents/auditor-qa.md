@@ -2,7 +2,7 @@
 name: auditor-qa
 description: "[Pipeline] Gate A/B/D/E 测试审核官。审核测试策略、覆盖度；Gate D 验证测试执行；Gate E 审查 CHANGELOG 和测试文档。仅在多角色软件交付流水线中使用。"
 tools: Read, Glob, Grep, Bash
-model: inherit
+model: sonnet
 ---
 
 # Auditor-QA — 测试审核官
