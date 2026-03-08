@@ -83,6 +83,7 @@ usage() {
   echo ""
   echo "  Commands:"
   echo "    init      Initialize pipeline in the current project directory"
+  echo "    upgrade   Upgrade playbook + autosteps in-place (preserves state)"
   echo "    version   Print version"
   echo "    replan    Re-plan the proposal queue (keeps completed work)"
   echo "    update    Re-run installer to update agents and templates"
@@ -169,6 +170,71 @@ cmd_update() {
   echo ""
 }
 
+cmd_upgrade() {
+  if [ ! -d "$TEAM_HOME/.pipeline" ]; then
+    echo "❌ Team pipeline not installed. Run: bash install.sh"
+    exit 1
+  fi
+
+  if [ ! -d ".pipeline" ]; then
+    echo "❌ No .pipeline/ directory found. Run: team init"
+    exit 1
+  fi
+
+  echo ""
+  echo "  Upgrading lfun-team-pipeline in: $(pwd)"
+  echo ""
+
+  # Upgrade playbook (always overwrite)
+  cp "$TEAM_HOME/.pipeline/playbook.md" .pipeline/playbook.md
+  echo "  ✓ .pipeline/playbook.md upgraded"
+
+  # Upgrade autosteps (always overwrite)
+  cp "$TEAM_HOME/.pipeline/autosteps/"*.sh .pipeline/autosteps/
+  AUTOSTEP_COUNT=$(ls .pipeline/autosteps/*.sh 2>/dev/null | wc -l)
+  echo "  ✓ $AUTOSTEP_COUNT autosteps upgraded"
+
+  # Upgrade CLAUDE.md (always overwrite)
+  if [ -f "$TEAM_HOME/CLAUDE.md" ]; then
+    cp "$TEAM_HOME/CLAUDE.md" CLAUDE.md
+    echo "  ✓ CLAUDE.md upgraded"
+  fi
+
+  # Preserved files (not touched):
+  echo ""
+  echo "  Preserved (not modified):"
+  echo "    .pipeline/config.json"
+  echo "    .pipeline/state.json"
+  echo "    .pipeline/project-memory.json"
+  echo "    .pipeline/proposal-queue.json"
+  echo "    .pipeline/artifacts/*"
+  echo ""
+
+  # Show version
+  echo "  Upgraded to v${VERSION}"
+
+  # Add execution_log to state.json if missing
+  if [ -f ".pipeline/state.json" ]; then
+    python3 -c "
+import json
+s = json.load(open('.pipeline/state.json'))
+changed = False
+if 'execution_log' not in s:
+    s['execution_log'] = []
+    changed = True
+if changed:
+    json.dump(s, open('.pipeline/state.json', 'w'), ensure_ascii=False, indent=2)
+    print('  ✓ state.json: added execution_log field')
+else:
+    print('  ✓ state.json: already compatible')
+" 2>/dev/null || true
+  fi
+
+  echo ""
+  echo "  Run 'claude --agent orchestrator' to continue from current phase."
+  echo ""
+}
+
 cmd_replan() {
   if [ ! -f ".pipeline/proposal-queue.json" ]; then
     echo "❌ No proposal queue found. Run: claude --agent orchestrator"
@@ -195,6 +261,7 @@ cmd_replan() {
 
 case "${1:-}" in
   init)    cmd_init ;;
+  upgrade) cmd_upgrade ;;
   version) cmd_version ;;
   update)  cmd_update ;;
   replan)  cmd_replan ;;
@@ -223,7 +290,7 @@ fi
 # ── Verify agents ────────────────────────────────────────────────────
 echo ""
 echo "── Verification ────────────────────────────────────────────────"
-REQUIRED=(orchestrator clarifier architect auditor-biz auditor-tech auditor-qa auditor-ops resolver planner contract-formalizer builder-frontend builder-backend builder-dba builder-security builder-infra simplifier inspector tester documenter deployer monitor migrator optimizer translator github-ops)
+REQUIRED=(orchestrator clarifier architect auditor-gate auditor-biz auditor-tech auditor-qa auditor-ops resolver planner contract-formalizer builder-frontend builder-backend builder-dba builder-security builder-infra simplifier inspector tester documenter deployer monitor migrator optimizer translator github-ops)
 MISSING=0
 for agent in "${REQUIRED[@]}"; do
   if [ ! -f "$AGENTS_DST/$agent.md" ]; then
@@ -233,7 +300,7 @@ for agent in "${REQUIRED[@]}"; do
 done
 
 if [ "$MISSING" -eq 0 ]; then
-  echo "  ✓ All 25 agents verified"
+  echo "  ✓ All 26 agents verified"
 else
   echo "  ❌ $MISSING agents missing"
   exit 1

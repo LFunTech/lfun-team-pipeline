@@ -1,6 +1,6 @@
 # lfun-team-pipeline
 
-> A multi-agent software delivery pipeline for Claude Code — from idea to deployed production in a single command.
+> A multi-agent software delivery pipeline for Claude Code — 26 AI agents collaborating from requirements to production.
 
 [中文](README.md) | **English**
 
@@ -8,7 +8,7 @@
 
 ## What is this?
 
-**lfun-team-pipeline** orchestrates **25 specialized AI agents** that collaborate like a real engineering team — requirements analyst, architect, multiple parallel developers, QA engineers, a deployer, and a post-launch monitor — all driven by a single orchestrator.
+**lfun-team-pipeline** orchestrates **26 specialized AI agents** that collaborate like a real engineering team — requirements analyst, architect, multiple parallel developers, QA engineers, a deployer, and a post-launch monitor — all driven by a single orchestrator.
 
 You describe the full system you want to build. The pipeline automatically decomposes it into an ordered proposal queue and delivers each one sequentially. Each proposal runs through the complete requirements-to-production lifecycle independently.
 
@@ -21,15 +21,15 @@ system planning → proposal queue → [P-001: clarify → architect → build �
 ```
 System Plan  System Planning (first run, interactive decomposition into proposal queue)
 Pick Proposal Pick next pending proposal for execution
-Phase 0    Clarifier            Requirements elicitation (up to 5 rounds; pass-through in autonomous mode)
+Phase 0    Clarifier            Requirements elicitation (up to 5 rounds; skipped in autonomous mode)
 Phase 0.5  AutoStep             Requirement completeness check
 Phase 1    Architect            System design and ADR generation
-Gate A     4 Auditors           Business / Technical / QA / Ops review
+Gate A     Auditor-Gate          Business / Technical / QA / Ops review (single spawn)
 Phase 2    Planner              Task breakdown for each builder
 Phase 2.5  Contract Formalizer  OpenAPI contract generation
-Gate B     4 Auditors           Contract and task review
+Gate B     Auditor-Gate          Contract and task review (single spawn)
 Phase 3    Builders (parallel)  Backend · Frontend · DBA · Infra · Security
-Phase 3.x  AutoSteps            Static analysis · Regression · Contract compliance
+Phase 3.x  AutoSteps            Build verify · Static analysis · Regression · Contract compliance
 Gate C     Inspector            Deep code review
 Phase 4    Tester               Integration and unit test generation
 Gate D     QA Auditor           Test coverage enforcement
@@ -84,11 +84,22 @@ $EDITOR .pipeline/config.json
 
 # 3. Start the pipeline — describe the full system you want to build
 claude --agent orchestrator
-# First run enters System Planning automatically, generates a proposal queue, then executes sequentially
-# Restarting after interruption automatically resumes from last progress
+# First run enters System Planning, generates a proposal queue, then starts execution
+# Each run executes one batch and exits; run again to continue the next batch
 ```
 
-On first run, the orchestrator guides you through describing the full system, generates a system blueprint and an ordered proposal queue, then automatically executes each proposal through the complete Phase 0-7 lifecycle.
+The pipeline uses a **batch execution model**: each `claude --agent orchestrator` invocation executes one batch (typically 1-3 phases), then exits. Run it again to continue. 17 batches cover the complete pipeline (Phase 0 through Phase 7).
+
+```bash
+# Continue to the next batch
+claude --agent orchestrator
+
+# Check current progress
+cat .pipeline/state.json | python3 -c "
+import json,sys; s=json.load(sys.stdin)
+print(f'Phase: {s[\"current_phase\"]}, Status: {s[\"status\"]}')
+"
+```
 
 ## Autonomous Mode
 
@@ -123,7 +134,7 @@ The core insight of autonomous mode is **shifting requirement gathering into the
 - Data entities
 - Non-functional requirements
 
-These details are stored in each proposal's `detail` field in `proposal-queue.json`. During execution, the Clarifier transcribes the confirmed details into a requirement document rather than guessing.
+These details are stored in each proposal's `detail` field in `proposal-queue.json`. During execution, the Orchestrator generates the requirement document directly from confirmed details without spawning the Clarifier agent, saving one agent call.
 
 **Usage:**
 
@@ -150,7 +161,7 @@ claude --agent orchestrator
 
 | Pause Point | Interactive Mode | Autonomous Mode |
 |-------------|-----------------|-----------------|
-| Phase 0 Requirements | Up to 5 Q&A rounds | Generated from detail |
+| Phase 0 Requirements | Up to 5 Q&A rounds | Skipped (generated from detail) |
 | Phase 2.0b Credentials | Pauses for user input | Skipped (WARN logged) |
 | Memory Consolidation | Waits for user confirmation | Auto-accepted (conflicts preserve old value) |
 
@@ -234,18 +245,22 @@ On first run, the Orchestrator enters System Planning and guides you through des
 - `.pipeline/artifacts/system-blueprint.md`: System blueprint (tech stack, domain decomposition, data model skeleton)
 - `.pipeline/proposal-queue.json`: Ordered proposal queue
 
-**Step 2 — Auto-execution**
+**Step 2 — Batch execution**
 
-After System Planning completes, the first proposal starts automatically. Each proposal independently runs through the full Phase 0-7 lifecycle.
-
-**Resume after interruption**
+After System Planning completes, the first proposal starts automatically. Each run executes one batch and exits; run again to continue:
 
 ```bash
-# Restart after interruption — automatically resumes from last progress
+# Continue to the next batch
 claude --agent orchestrator
+
+# Check current progress
+cat .pipeline/state.json | python3 -c "
+import json,sys; s=json.load(sys.stdin)
+print(f'Phase: {s[\"current_phase\"]}, Status: {s[\"status\"]}')
+"
 ```
 
-**Check progress**
+**Check proposal progress**
 
 ```bash
 python3 -c "
@@ -254,6 +269,18 @@ q = json.load(open('.pipeline/proposal-queue.json'))
 for p in q['proposals']:
     s = '✓' if p['status'] == 'completed' else ('▶' if p['status'] == 'running' else '○')
     print(f'  {s} [{p[\"id\"]}] {p[\"title\"]}')
+"
+```
+
+**Check execution log**
+
+```bash
+python3 -c "
+import json
+s = json.load(open('.pipeline/state.json'))
+for e in s.get('execution_log', []):
+    rb = f' → {e[\"rollback_to\"]}' if e.get('rollback_to') else ''
+    print(f'[{e[\"step\"]}] {e[\"result\"]}{rb} (attempt {e[\"attempt\"]})')
 "
 ```
 
@@ -274,6 +301,31 @@ The pipeline automatically maintains `.pipeline/project-memory.json`, recording 
 - **Conflict detection**: When a new proposal conflicts with existing constraints, the Clarifier and Architect proactively flag the issue
 
 Project memory ensures that business rules and technical decisions remain consistent across multiple proposals, preventing contradictions.
+
+## CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `team init` | Initialize pipeline in the current project directory |
+| `team upgrade` | In-place upgrade of playbook + autosteps (preserves state.json, artifacts, proposal queue) |
+| `team replan` | Re-plan proposal queue (preserves completed work) |
+| `team version` | Print version |
+| `team update` | Show instructions for updating global installation |
+
+**Upgrading the pipeline version:**
+
+```bash
+# 1. Update global agents and templates
+cd /path/to/lfun-team-pipeline && bash install.sh
+
+# 2. In-place upgrade in your project
+cd /path/to/my-project && team upgrade
+
+# 3. Continue execution
+claude --agent orchestrator
+```
+
+`team upgrade` overwrites `playbook.md` and `autosteps/` while preserving `config.json`, `state.json`, `artifacts/`, and `proposal-queue.json`, ensuring upgrades don't interrupt a running pipeline.
 
 ## `team init` Output
 

@@ -5,14 +5,14 @@
 ## 快速启动
 
 ```bash
-# 启动流水线（从 Phase 0 开始，或从上次中断处继续）
+# 启动流水线（每次执行一个批次，完成后自动退出）
+claude --agent orchestrator
+
+# 流水线会输出 [EXIT] 提示，再次运行即可继续下一批次
 claude --agent orchestrator
 
 # 查看当前状态
-cat .pipeline/state.json | python3 -m json.tool
-
-# 查看最新日志
-ls -t .pipeline/artifacts/*.json | head -5
+cat .pipeline/state.json | python3 -c "import json,sys; s=json.load(sys.stdin); print(f'Phase: {s[\"current_phase\"]}, Status: {s[\"status\"]}')"
 ```
 
 ## 目录结构
@@ -34,7 +34,7 @@ ls -t .pipeline/artifacts/*.json | head -5
     ├── impl-manifest.json
     ├── gate-*.json
     ├── ...
-    └── logs/            ← 执行日志（pipeline.index.json + step-*.log.json）
+    └── ...
 
 .worktrees/              ← Phase 3 临时目录（自动创建和清理，勿手动修改）
 ├── builder-dba/
@@ -56,12 +56,12 @@ Memory Load     → 项目记忆加载（注入约束给 Clarifier/Architect）
 Phase 0    → Clarifier（需求澄清，最多 5 轮）
 Phase 0.5  → Requirement Completeness Checker（AutoStep）
 Phase 1    → Architect（方案设计）
-Gate A     → Auditor-Biz/Tech/QA/Ops（方案审核）
+Gate A     → Auditor-Gate（四视角方案审核）
 Phase 2.0a → GitHub Repo Creator（github-ops Agent）
 Phase 2.0b → Depend Collector（AutoStep + 暂停等凭证）
 Phase 2    → Planner（任务细化）
 Phase 2.1  → Assumption Propagation Validator（AutoStep）
-Gate B     → Auditor-Biz/Tech/QA/Ops（任务审核）
+Gate B     → Auditor-Gate（四视角任务审核）
 Phase 2.5  → Contract Formalizer（契约形式化）
 Phase 2.6  → Schema Completeness Validator（AutoStep）
 Phase 2.7  → Contract Semantic Validator（AutoStep）
@@ -104,13 +104,15 @@ Mark Completed  → 标记提案完成，循环取下一个
 
 ## 常见操作
 
-### 恢复中断的流水线
+### 继续执行流水线
+
+流水线采用批次执行模式，每次启动执行一个批次后自动退出。直接再次运行即可继续：
 
 ```bash
-# 查看中断的阶段
-cat .pipeline/state.json | python3 -c "import json,sys; s=json.load(sys.stdin); print(f'Status: {s[\"status\"]}, Phase: {s[\"current_phase\"]}')"
+# 查看当前阶段
+cat .pipeline/state.json | python3 -c "import json,sys; s=json.load(sys.stdin); print(f'Phase: {s[\"current_phase\"]}, Status: {s[\"status\"]}')"
 
-# 重新启动（Orchestrator 会从 state.json 恢复）
+# 继续下一批次
 claude --agent orchestrator
 ```
 
@@ -126,6 +128,21 @@ s['status'] = 'running'
 with open('.pipeline/state.json', 'w') as f:
   json.dump(s, f, indent=2)
 "
+claude --agent orchestrator
+```
+
+### 升级流水线版本
+
+在正在执行的项目中原地升级（保留 state.json、产物、提案队列）：
+
+```bash
+# 1. 先更新全局 agents 和模板
+cd /path/to/team-creator && bash install.sh
+
+# 2. 在项目目录中升级 playbook 和 autosteps
+cd /path/to/my-project && team upgrade
+
+# 3. 继续执行
 claude --agent orchestrator
 ```
 
@@ -187,22 +204,16 @@ bash install.sh
 
 **注意：** 部署时，将 `.depend/*.env` 中的凭证手动配置到 Woodpecker CI 的 repo secrets 中，与 `.woodpecker/` 中的 secrets 字段对应。
 
-### 查看执行日志
+### 查看执行记录
 
 ```bash
-# 查看完整执行历史（所有步骤的结果和关联）
-cat .pipeline/artifacts/logs/pipeline.index.json | python3 -m json.tool
-
-# 查看某个步骤的详细日志（含 key_decisions 和 retry_history）
-cat .pipeline/artifacts/logs/step-gate-c.log.json | python3 -m json.tool
-
-# 快速查看各步骤结果摘要
+# 查看所有步骤的执行结果
 python3 -c "
 import json
-idx = json.load(open('.pipeline/artifacts/logs/pipeline.index.json'))
-for s in idx['steps']:
-    rollback = f' → rollback:{s[\"caused_rollback_to\"]}' if s.get('caused_rollback_to') else ''
-    print(f'[{s[\"step\"]}] {s[\"result\"]} (attempt {s[\"attempt\"]}){rollback}')
+s = json.load(open('.pipeline/state.json'))
+for e in s.get('execution_log', []):
+    rb = f' → {e[\"rollback_to\"]}' if e.get('rollback_to') else ''
+    print(f'[{e[\"step\"]}] {e[\"result\"]}{rb} (attempt {e[\"attempt\"]})')
 "
 ```
 

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added / 新增
 
+- **`team upgrade` command / `team upgrade` 命令**: In-place upgrade of playbook + autosteps in a running project, preserving state.json, artifacts, and proposal queue. Automatically adds missing `execution_log` field to state.json.
+  在执行中的项目原地升级 playbook + autosteps，保留 state.json、产物和提案队列。自动向 state.json 补充缺失的 `execution_log` 字段。
+
 - **Autonomous Mode / 自治模式**: New `autonomous_mode` config option. After System Planning completes, all proposals execute fully automatically with zero human intervention.
   新增 `autonomous_mode` 配置项，规划阶段完成后全自动执行所有提案，无需人工干预。
   - Phase 0 Clarifier pass-through: skips interactive Q&A, generates requirement.md directly from confirmed detail.
@@ -68,6 +71,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   删除 `.pipeline/` 残留工作副本，加入 `.gitignore`（`templates/` 为唯一源）。
 
 ### Changed / 变更
+
+- **Token optimization: Gate A/B auditor merge / Token 优化：Gate A/B 审计员合并**: Gate A/B now spawn a single `auditor-gate` agent covering all 4 perspectives (Biz/Tech/QA/Ops) in one call, saving 6 agent spawns per pipeline run.
+  Gate A/B 改为 spawn 单个 `auditor-gate` 一次性覆盖四个视角，每次流水线减少 6 次 agent spawn。
+
+- **Token optimization: Phase 0 spawn elimination / Token 优化：Phase 0 spawn 消除**: In autonomous mode, Orchestrator writes requirement.md directly from proposal detail without spawning Clarifier, saving 1 agent spawn.
+  自治模式下 Orchestrator 直接从提案 detail 写 requirement.md，省去 1 次 Clarifier spawn。
+
+- **Token optimization: Remove log system / Token 优化：移除日志系统**: Replaced the entire structured log system (35 step logs + pipeline.index.json + context injection + causality tracking, ~280 lines) with a lightweight `execution_log` array in state.json. Each step appends one line `{step, result, attempt, rollback_to, ts}`. Saves ~100 tool calls per pipeline run.
+  移除整个结构化日志系统（35 个步骤日志 + pipeline.index.json + 上下文注入 + 因果标注，约 280 行），替换为 state.json 内嵌的 `execution_log` 轻量数组。每步追加一行记录。每次流水线减少约 100 次工具调用。
+
+- **Batch execution model / 批次执行模型**: Orchestrator now executes one batch per invocation and exits, instead of running all 30+ phases in a single conversation. Token cost drops from O(n²) to O(n). 17 batches cover the full pipeline; re-run `claude --agent orchestrator` to continue.
+  Orchestrator 每次启动只执行一个批次后退出，而非在单次对话中跑完 30+ 步。Token 消耗从 O(n²) 降至 O(n)。17 个批次覆盖完整流水线，再次运行 `claude --agent orchestrator` 即可继续。
+
+- **Token optimization: Playbook batch read / Token 优化：Playbook 批量读取**: Each batch reads all its playbook sections in one Read call instead of grep+read per step.
+  每个批次一次性读取涉及的所有 playbook 章节，减少 grep+read 往返。
+
+- **Model tiering / 模型分层**: 8 agents (auditor-biz/tech/ops/qa, documenter, monitor, github-ops, simplifier) use `model: sonnet` for cost efficiency; complex agents remain on parent model.
+  8 个 Agent 使用 `model: sonnet` 降低成本；复杂 Agent 保持使用父模型。
 
 - Pipeline version bump to v6.4 / 流水线版本升级至 v6.4
 - `team init` now also copies `playbook.md` and `project-memory.json`, and creates `.pipeline/history/`.

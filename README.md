@@ -1,6 +1,6 @@
 # lfun-team-pipeline
 
-> 基于 Claude Code 的多角色软件交付流水线 — 从需求到上线，一条命令驱动。
+> 基于 Claude Code 的多角色软件交付流水线 — 从需求到上线，26 个 AI 角色协作交付。
 
 **中文** | [English](README-EN.md)
 
@@ -8,7 +8,7 @@
 
 ## 这是什么？
 
-**lfun-team-pipeline** 是基于 [Claude Code](https://claude.ai/code) 构建的生产级软件交付流水线。它编排 **25 个专属 AI 角色**，像真实工程团队一样协作 —— 需求分析师、架构师、多个并行开发者、QA 工程师、部署工程师、上线监控员 —— 由一个总指挥（Orchestrator）统一驱动。
+**lfun-team-pipeline** 是基于 [Claude Code](https://claude.ai/code) 构建的生产级软件交付流水线。它编排 **26 个专属 AI 角色**，像真实工程团队一样协作 —— 需求分析师、架构师、多个并行开发者、QA 工程师、部署工程师、上线监控员 —— 由一个总指挥（Orchestrator）统一驱动。
 
 你描述想构建的完整系统，流水线自动拆解为有序提案队列并逐个交付。支持系统级规划与多提案顺序执行，每个提案独立走完需求到上线全流程。
 
@@ -21,15 +21,15 @@
 ```
 System Plan  系统规划（首次运行，交互式拆解为提案队列）
 Pick Proposal 选取下一个待执行提案
-Phase 0    Clarifier            需求澄清（最多 5 轮，自治模式直通）
+Phase 0    Clarifier            需求澄清（最多 5 轮，自治模式跳过）
 Phase 0.5  AutoStep             需求完整性检查
 Phase 1    Architect            系统设计 + ADR 生成
-Gate A     四位审计员            业务 / 技术 / QA / 运维 四视角评审
+Gate A     Auditor-Gate          业务 / 技术 / QA / 运维 四视角评审（单次 spawn）
 Phase 2    Planner              拆解任务，分配给各 Builder
 Phase 2.5  Contract Formalizer  OpenAPI 契约生成
-Gate B     四位审计员            契约与任务评审
+Gate B     Auditor-Gate          契约与任务评审（单次 spawn）
 Phase 3    Builders（并行）      后端 · 前端 · DBA · Infra · 安全
-Phase 3.x  AutoStep 集群        静态分析 · 回归测试 · 契约合规
+Phase 3.x  AutoStep 集群        编译验证 · 静态分析 · 回归测试 · 契约合规
 Gate C     Inspector            深度代码审查
 Phase 4    Tester               集成测试 + 单元测试生成
 Gate D     QA 审计员             测试覆盖率强制验证
@@ -85,10 +85,21 @@ $EDITOR .pipeline/config.json
 # 3. 启动流水线 —— 描述你要构建的完整系统
 claude --agent orchestrator
 # 首次运行自动进入系统规划，生成提案队列后逐个执行
-# 中断后重新启动会自动恢复到上次进度
+# 每次执行一个批次后自动退出，再次运行即可继续下一批次
 ```
 
-首次运行时，Orchestrator 会引导你描述完整系统，生成系统蓝图和有序提案队列，然后自动逐个执行每个提案的 Phase 0-7 全流程。
+流水线采用**批次执行模式**：每次运行 `claude --agent orchestrator` 执行一个批次（通常包含 1~3 个阶段），然后自动退出。再次运行即可继续下一批次。17 个批次覆盖完整流水线（Phase 0 → Phase 7）。
+
+```bash
+# 继续执行下一批次
+claude --agent orchestrator
+
+# 查看当前进度
+cat .pipeline/state.json | python3 -c "
+import json,sys; s=json.load(sys.stdin)
+print(f'Phase: {s[\"current_phase\"]}, Status: {s[\"status\"]}')
+"
+```
 
 ## 自治模式（Autonomous Mode）
 
@@ -123,7 +134,7 @@ claude --agent orchestrator
 - 数据实体
 - 非功能需求
 
-这些细节写入 `proposal-queue.json` 的 `detail` 字段。后续执行时，Clarifier 直接将已确认的信息转录为需求文档，而非凭空猜测。
+这些细节写入 `proposal-queue.json` 的 `detail` 字段。后续执行时，Orchestrator 直接从已确认的细节生成需求文档，无需 spawn Clarifier，省去一次 Agent 调用。
 
 **使用方法：**
 
@@ -150,7 +161,7 @@ claude --agent orchestrator
 
 | 暂停点 | 交互模式 | 自治模式 |
 |--------|---------|---------|
-| Phase 0 需求澄清 | 最多 5 轮 Q&A | 从 detail 直接生成 |
+| Phase 0 需求澄清 | 最多 5 轮 Q&A | 跳过（直接从 detail 生成） |
 | Phase 2.0b 凭证填写 | 暂停等待填写 | 跳过（WARN 日志） |
 | Memory Consolidation | 等待用户确认约束 | 自动接受（冲突项保留旧值） |
 
@@ -234,18 +245,22 @@ claude --agent orchestrator
 - `.pipeline/artifacts/system-blueprint.md`：系统蓝图（技术栈、域划分、数据模型骨架）
 - `.pipeline/proposal-queue.json`：有序提案队列
 
-**第二步 — 自动执行**
+**第二步 — 批次执行**
 
-系统规划完成后自动开始第一个提案，每个提案独立走完 Phase 0-7 全流程。
-
-**中断恢复**
+系统规划完成后自动开始第一个提案。每次运行执行一个批次后退出，再次运行继续：
 
 ```bash
-# 中断后重新启动，自动继续上次进度
+# 继续下一批次
 claude --agent orchestrator
+
+# 查看当前进度
+cat .pipeline/state.json | python3 -c "
+import json,sys; s=json.load(sys.stdin)
+print(f'Phase: {s[\"current_phase\"]}, Status: {s[\"status\"]}')
+"
 ```
 
-**查看进度**
+**查看提案进度**
 
 ```bash
 python3 -c "
@@ -254,6 +269,18 @@ q = json.load(open('.pipeline/proposal-queue.json'))
 for p in q['proposals']:
     s = '✓' if p['status'] == 'completed' else ('▶' if p['status'] == 'running' else '○')
     print(f'  {s} [{p[\"id\"]}] {p[\"title\"]}')
+"
+```
+
+**查看执行记录**
+
+```bash
+python3 -c "
+import json
+s = json.load(open('.pipeline/state.json'))
+for e in s.get('execution_log', []):
+    rb = f' → {e[\"rollback_to\"]}' if e.get('rollback_to') else ''
+    print(f'[{e[\"step\"]}] {e[\"result\"]}{rb} (attempt {e[\"attempt\"]})')
 "
 ```
 
@@ -274,6 +301,31 @@ claude --agent orchestrator
 - **冲突检测**：新提案与已有约束冲突时，Clarifier 和 Architect 会主动提醒
 
 项目记忆确保多次提案之间的业务规则、技术决策保持一致，不会前后矛盾。
+
+## CLI 命令
+
+| 命令 | 说明 |
+|------|------|
+| `team init` | 在当前项目目录初始化流水线 |
+| `team upgrade` | 原地升级 playbook + autosteps（保留 state.json、产物、提案队列） |
+| `team replan` | 重新规划提案队列（保留已完成的工作） |
+| `team version` | 显示版本号 |
+| `team update` | 提示如何更新全局安装 |
+
+**升级流水线版本：**
+
+```bash
+# 1. 更新全局 agents 和模板
+cd /path/to/lfun-team-pipeline && bash install.sh
+
+# 2. 在项目目录中原地升级
+cd /path/to/my-project && team upgrade
+
+# 3. 继续执行
+claude --agent orchestrator
+```
+
+`team upgrade` 会覆盖 `playbook.md` 和 `autosteps/`，同时保留 `config.json`、`state.json`、`artifacts/` 和 `proposal-queue.json`，确保升级不中断正在执行的流水线。
 
 ## `team init` 初始化内容
 
