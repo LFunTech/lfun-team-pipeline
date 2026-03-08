@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-VERSION="6.3"
+VERSION="6.4"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENTS_SRC="$REPO_DIR/agents"
 AGENTS_DST="$HOME/.claude/agents"
@@ -72,7 +72,7 @@ cat > "$TEAM_CMD" << 'TEAM_SCRIPT'
 # team — lfun-team-pipeline CLI
 set -euo pipefail
 
-VERSION="6.3"
+VERSION="6.4"
 TEAM_HOME="$HOME/.local/share/team-pipeline"
 
 usage() {

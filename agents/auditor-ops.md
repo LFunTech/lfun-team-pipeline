@@ -30,7 +30,7 @@ model: inherit
 ```json
 {
   "reviewer": "Auditor-Ops",
-  "verdict": "PASS|FAIL",
+  "overall": "PASS|FAIL",
   "comments": "运维层面审核意见",
   "rollback_to": "phase-0|phase-1|phase-2|null",
   "rollback_reason": "回退原因（FAIL 时）"

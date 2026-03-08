@@ -43,7 +43,7 @@ skills:
 | MINOR | 代码风格、命名建议 | 否 |
 | INFO | 表扬好的实践 | 否 |
 
-存在任何 CRITICAL 或 MAJOR → verdict: FAIL。仅 MINOR/INFO → verdict: PASS。
+存在任何 CRITICAL 或 MAJOR → overall: FAIL。仅 MINOR/INFO → overall: PASS。
 
 ## 输出
 
@@ -64,7 +64,7 @@ skills:
       "description": "问题描述"
     }
   ],
-  "verdict": "PASS|FAIL",
+  "overall": "PASS|FAIL",
   "rollback_to": "phase-3|null"
 }
 ```

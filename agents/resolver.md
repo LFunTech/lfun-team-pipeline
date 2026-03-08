@@ -13,7 +13,7 @@ model: inherit
 
 ## 输入
 
-- 当前 Gate 的所有 Auditor 输出（verdict、comments、rollback_to）
+- 当前 Gate 的所有 Auditor 输出（overall、comments、rollback_to）
 - Orchestrator 检测到的矛盾描述
 
 ## 仲裁原则

@@ -23,7 +23,7 @@ model: inherit
 - 任务分解是否覆盖所有业务用例？
 - 接口契约是否满足验收标准？
 - 是否遗漏异常处理（404/400/500）？
-- **假设传播 WARN 处理规范（强制）**：`assumption-propagation-report.json` 中的每个 `severity=WARN` 的未覆盖假设，必须满足以下条件之一，否则 verdict: FAIL，rollback_to: phase-2（要求 Planner 补充任务）：
+- **假设传播 WARN 处理规范（强制）**：`assumption-propagation-report.json` 中的每个 `severity=WARN` 的未覆盖假设，必须满足以下条件之一，否则 overall: FAIL，rollback_to: phase-2（要求 Planner 补充任务）：
   1. tasks.json 中存在对应任务明确覆盖该假设（acceptance_criteria 中引用该假设）
   2. 本次 Gate B 审核意见中明确记录"已知假设，风险接受"，并给出接受理由（如：LDAP 为预留接口，本期不实现，下期任务已规划）
   - 不得以"仅供参考"或"信息传递"为由直接忽视 WARN 级假设
@@ -35,7 +35,7 @@ model: inherit
 ```json
 {
   "reviewer": "Auditor-Biz",
-  "verdict": "PASS|FAIL",
+  "overall": "PASS|FAIL",
   "comments": "具体审核意见",
   "rollback_to": "phase-0|phase-1|null（PASS 时为 null）",
   "rollback_reason": "回退原因（FAIL 时）"
@@ -44,6 +44,6 @@ model: inherit
 
 ## 约束
 
-- verdict FAIL 时必须提供 rollback_to 和 rollback_reason
+- overall FAIL 时必须提供 rollback_to 和 rollback_reason
 - 只输出自己的审核结论，Orchestrator 负责合并 gate json
 - 不重复 Auditor-Tech 的技术层面审核内容

@@ -97,28 +97,10 @@ Mark Completed  → 标记提案完成，循环取下一个
 | 字段 | 说明 | 默认值 |
 |------|------|--------|
 | `project_name` | 项目名称 | `YOUR_PROJECT_NAME` |
-| `autonomous_mode` | 自治模式：跳过所有人工确认，全自动执行提案队列 | `false` |
 | `max_attempts.default` | 未单独配置的阶段的最大重试次数（兜底值） | `3` |
 | `requirement_completeness.min_words` | 需求文档最小字数 | `200` |
 | `testing.coverage_tool` | 测试覆盖率工具 | `nyc` |
 | `testing.coverage_threshold` | 覆盖率阈值（百分比） | `80` |
-
-## 自治模式（Autonomous Mode）
-
-设置 `"autonomous_mode": true` 后，流水线在 System Planning 完成（用户确认蓝图）后全自动执行：
-
-- **Phase 0**：Clarifier 跳过交互式 Q&A，直接从提案 scope 生成 requirement.md
-- **Phase 2.0b**：跳过凭证填写等待，输出 WARN 继续执行
-- **Memory Consolidation**：自动接受新约束，冲突约束保留旧值（不自动推翻）
-
-```bash
-# 启用自治模式
-cd your-project
-# 编辑 .pipeline/config.json，设置 "autonomous_mode": true
-claude --agent orchestrator   # System Planning 交互完成后，所有提案自动执行
-```
-
-> **注意**：System Planning 始终需要人工交互（描述系统、确认蓝图）。自治模式仅影响后续提案执行阶段。
 
 ## 常见操作
 

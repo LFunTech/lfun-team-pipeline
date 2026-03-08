@@ -51,7 +51,7 @@ model: inherit
 - 预计/估算覆盖率（如"集成测试环境预计达 80%"）属于**预测性陈述**，不构成不实陈述，判为 `MEDIUM` 或 `LOW`
 
 **Gate E 严重性规则（强制）：**
-- `HIGH` 问题（CHANGELOG 漏记重大变更、ADR 声称"已达到 X%"但实际低于 X%）→ 必须 `verdict: FAIL`，不允许以"下一版本修复"为由通过
+- `HIGH` 问题（CHANGELOG 漏记重大变更、ADR 声称"已达到 X%"但实际低于 X%）→ 必须 `overall: FAIL`，不允许以"下一版本修复"为由通过
 - `MEDIUM` 及以下 → 可 PASS，但须在 comments 中列明
 
 ## 输出格式
@@ -59,7 +59,7 @@ model: inherit
 ```json
 {
   "reviewer": "Auditor-QA",
-  "verdict": "PASS|FAIL",
+  "overall": "PASS|FAIL",
   "comments": "QA 审核意见",
   "rollback_to": "（按 Gate 限定范围：A=phase-0/1, B=phase-1/2, D=phase-3/4a, E=phase-5）|null",
   "rollback_reason": "回退原因（FAIL 时）"
@@ -71,7 +71,7 @@ Gate D 时，输出必须包含结构化 `rollback_to` 字段（Orchestrator 机
 {
   "gate": "D",
   "reviewer": "Auditor-QA",
-  "verdict": "FAIL",
+  "overall": "FAIL",
   "rollback_to": "phase-3",
   "rollback_reason": "关键功能测试未通过"
 }

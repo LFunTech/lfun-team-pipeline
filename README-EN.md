@@ -21,7 +21,7 @@ system planning → proposal queue → [P-001: clarify → architect → build �
 ```
 System Plan  System Planning (first run, interactive decomposition into proposal queue)
 Pick Proposal Pick next pending proposal for execution
-Phase 0    Clarifier            Requirements elicitation (up to 5 rounds)
+Phase 0    Clarifier            Requirements elicitation (up to 5 rounds; pass-through in autonomous mode)
 Phase 0.5  AutoStep             Requirement completeness check
 Phase 1    Architect            System design and ADR generation
 Gate A     4 Auditors           Business / Technical / QA / Ops review
@@ -90,6 +90,72 @@ claude --agent orchestrator
 
 On first run, the orchestrator guides you through describing the full system, generates a system blueprint and an ordered proposal queue, then automatically executes each proposal through the complete Phase 0-7 lifecycle.
 
+## Autonomous Mode
+
+> New in v6.4
+
+Set `"autonomous_mode": true` to have the pipeline **automatically execute all proposals** after System Planning, with zero human intervention.
+
+**Workflow:**
+
+```
+                    ┌─ System Planning (interactive) ──┐
+                    │  Describe the system              │
+                    │  Confirm the blueprint            │
+                    │  Confirm detail for each proposal │
+                    └────────┬──────────────────────────┘
+                             │
+                    ┌────────▼────────┐
+                    │  Fully automatic │
+                    │  P-001 → P-002   │
+                    │  → ... → Done    │
+                    └─────────────────┘
+```
+
+**Key Design: Front-loaded Requirements**
+
+The core insight of autonomous mode is **shifting requirement gathering into the planning phase**. During System Planning, each proposal is not just confirmed with a scope — you also review structured requirement details for each one:
+
+- User stories
+- Business rules
+- Acceptance criteria
+- API overview
+- Data entities
+- Non-functional requirements
+
+These details are stored in each proposal's `detail` field in `proposal-queue.json`. During execution, the Clarifier transcribes the confirmed details into a requirement document rather than guessing.
+
+**Usage:**
+
+```bash
+cd my-project
+team init
+
+# Edit config: set autonomous_mode to true
+cat > .pipeline/config.json << 'EOF'
+{
+  "project_name": "my-app",
+  "autonomous_mode": true,
+  ...
+}
+EOF
+
+# Start the pipeline
+claude --agent orchestrator
+# → System Planning interacts with you (describe system, confirm blueprint, confirm proposal details)
+# → After planning, all proposals execute automatically with no further interaction
+```
+
+**Human interaction points skipped in autonomous mode:**
+
+| Pause Point | Interactive Mode | Autonomous Mode |
+|-------------|-----------------|-----------------|
+| Phase 0 Requirements | Up to 5 Q&A rounds | Generated from detail |
+| Phase 2.0b Credentials | Pauses for user input | Skipped (WARN logged) |
+| Memory Consolidation | Waits for user confirmation | Auto-accepted (conflicts preserve old value) |
+
+> **Note:** System Planning always requires human interaction. Autonomous mode only affects proposal execution phases.
+
 ## Integrating into an Existing Repository
 
 The pipeline can add new features or modules to any existing codebase.
@@ -110,6 +176,7 @@ Edit `.pipeline/config.json` to match your existing stack:
 ```json
 {
   "project_name": "your-repo-name",
+  "autonomous_mode": false,
   "testing": {
     "coverage_tool": "cargo-tarpaulin",   // match your existing test setup
     "coverage_threshold": 70              // adjust to current baseline
@@ -202,7 +269,7 @@ claude --agent orchestrator
 
 The pipeline automatically maintains `.pipeline/project-memory.json`, recording cross-proposal business and architecture constraints:
 
-- **Constraint registry**: Automatically extracted after each proposal completes (in MUST/MUST NOT form), written after user confirmation
+- **Constraint registry**: Automatically extracted after each proposal completes (in MUST/MUST NOT form), written after user confirmation (auto-accepted in autonomous mode)
 - **Implementation footprint**: Records APIs, database tables, and key files implemented by each proposal
 - **Conflict detection**: When a new proposal conflicts with existing constraints, the Clarifier and Architect proactively flag the issue
 
@@ -226,6 +293,7 @@ CLAUDE.md                ← Pipeline instructions for Claude Code
 ```json
 {
   "project_name": "my-app",
+  "autonomous_mode": false,
   "testing": {
     "coverage_tool": "nyc",           // nyc | cargo-tarpaulin | pytest-cov | go test
     "coverage_threshold": 80
@@ -239,6 +307,14 @@ CLAUDE.md                ← Pipeline instructions for Claude Code
   }
 }
 ```
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `project_name` | Project name | `YOUR_PROJECT_NAME` |
+| `autonomous_mode` | Autonomous mode: auto-execute all proposals after planning | `false` |
+| `testing.coverage_tool` | Coverage tool | `nyc` |
+| `testing.coverage_threshold` | Coverage threshold (%) | `80` |
+| `max_attempts.default` | Max retries per phase | `3` |
 
 ## GitHub + Woodpecker CI Integration
 

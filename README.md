@@ -21,7 +21,7 @@
 ```
 System Plan  系统规划（首次运行，交互式拆解为提案队列）
 Pick Proposal 选取下一个待执行提案
-Phase 0    Clarifier            需求澄清（最多 5 轮）
+Phase 0    Clarifier            需求澄清（最多 5 轮，自治模式直通）
 Phase 0.5  AutoStep             需求完整性检查
 Phase 1    Architect            系统设计 + ADR 生成
 Gate A     四位审计员            业务 / 技术 / QA / 运维 四视角评审
@@ -90,6 +90,72 @@ claude --agent orchestrator
 
 首次运行时，Orchestrator 会引导你描述完整系统，生成系统蓝图和有序提案队列，然后自动逐个执行每个提案的 Phase 0-7 全流程。
 
+## 自治模式（Autonomous Mode）
+
+> v6.4 新增
+
+设置 `"autonomous_mode": true` 后，流水线在完成系统规划后**全自动执行所有提案**，无需人工干预。
+
+**工作流程：**
+
+```
+                    ┌─ 系统规划（交互式） ──┐
+                    │  描述系统              │
+                    │  确认蓝图              │
+                    │  逐个提案确认细节      │
+                    └────────┬───────────────┘
+                             │
+                    ┌────────▼────────┐
+                    │  全自动执行       │
+                    │  P-001 → P-002   │
+                    │  → ... → 完成    │
+                    └─────────────────┘
+```
+
+**关键设计：信息前置**
+
+自治模式的核心在于**把需求沟通前置到规划阶段**。System Planning 时，每个提案不仅确认范围（scope），还会逐个与你确认结构化的需求细节：
+
+- 用户故事
+- 业务规则
+- 验收标准
+- API 概览
+- 数据实体
+- 非功能需求
+
+这些细节写入 `proposal-queue.json` 的 `detail` 字段。后续执行时，Clarifier 直接将已确认的信息转录为需求文档，而非凭空猜测。
+
+**使用方法：**
+
+```bash
+cd my-project
+team init
+
+# 编辑配置：设置 autonomous_mode 为 true
+cat > .pipeline/config.json << 'EOF'
+{
+  "project_name": "my-app",
+  "autonomous_mode": true,
+  ...
+}
+EOF
+
+# 启动流水线
+claude --agent orchestrator
+# → 系统规划阶段与你交互（描述系统、确认蓝图、确认每个提案细节）
+# → 规划完成后全自动执行所有提案，无需再次干预
+```
+
+**自治模式跳过的人工暂停点：**
+
+| 暂停点 | 交互模式 | 自治模式 |
+|--------|---------|---------|
+| Phase 0 需求澄清 | 最多 5 轮 Q&A | 从 detail 直接生成 |
+| Phase 2.0b 凭证填写 | 暂停等待填写 | 跳过（WARN 日志） |
+| Memory Consolidation | 等待用户确认约束 | 自动接受（冲突项保留旧值） |
+
+> **注意：** System Planning 始终需要人工交互。自治模式仅影响后续提案的执行阶段。
+
 ## 接入现有项目
 
 流水线支持为任意已有代码库添加新功能或新模块。
@@ -110,6 +176,7 @@ team init
 ```json
 {
   "project_name": "your-repo-name",
+  "autonomous_mode": false,
   "testing": {
     "coverage_tool": "cargo-tarpaulin",   // 与现有测试框架一致
     "coverage_threshold": 70              // 设置为当前覆盖率基准或略高
@@ -202,7 +269,7 @@ claude --agent orchestrator
 
 流水线自动维护 `.pipeline/project-memory.json`，记录跨提案的业务和架构约束：
 
-- **约束清单**：每次提案完成后自动提取（MUST/MUST NOT 形式），经用户确认后写入
+- **约束清单**：每次提案完成后自动提取（MUST/MUST NOT 形式），经用户确认后写入（自治模式下自动接受）
 - **实现足迹**：记录每个提案实现的 API、数据库表、关键文件
 - **冲突检测**：新提案与已有约束冲突时，Clarifier 和 Architect 会主动提醒
 
@@ -226,6 +293,7 @@ CLAUDE.md                ← 流水线对 Claude Code 的指令
 ```json
 {
   "project_name": "my-app",
+  "autonomous_mode": false,
   "testing": {
     "coverage_tool": "nyc",        // nyc | cargo-tarpaulin | pytest-cov | go test
     "coverage_threshold": 80       // 覆盖率阈值（百分比）
@@ -239,6 +307,14 @@ CLAUDE.md                ← 流水线对 Claude Code 的指令
   }
 }
 ```
+
+| 字段 | 说明 | 默认值 |
+|------|------|--------|
+| `project_name` | 项目名称 | `YOUR_PROJECT_NAME` |
+| `autonomous_mode` | 自治模式：规划后全自动执行所有提案 | `false` |
+| `testing.coverage_tool` | 覆盖率工具 | `nyc` |
+| `testing.coverage_threshold` | 覆盖率阈值（%） | `80` |
+| `max_attempts.default` | 阶段最大重试次数 | `3` |
 
 ## GitHub + Woodpecker CI 集成
 

@@ -34,12 +34,30 @@ permissionMode: acceptEdits
 
 无 `=== Project Memory ===` 块时，按正常流程执行。
 
+## 自治模式（Autonomous Mode）
+
+当 spawn 消息中包含 `[AUTONOMOUS_MODE]` 标记时，进入自治模式：
+
+- **不进行任何交互式 Q&A**，直接将输入中已由用户确认的结构化信息（用户故事、业务规则、验收标准、API 概览、数据实体、非功能需求）转录为 requirement.md 格式
+- 输入信息已在 System Planning 阶段经用户逐项确认，**不需要猜测**
+- 仅在输入中确实缺少某细节时才使用 `[ASSUMED: <假设内容>]` 标注
+- **禁止**产生 `[CRITICAL-UNRESOLVED]`
+- 输出的 requirement.md 必须满足 Phase 0.5 完整性检查的所有要求（5 个必需章节非空、字数 ≥ 200）
+- 章节映射规则：
+  - `用户故事` → `### 用户故事`
+  - `业务规则` → `### 业务规则`
+  - `验收标准` → `### 验收标准`
+  - `范围` → `### 范围边界（包含 / 不包含）`
+  - `用户故事` + `API 概览` → `### 功能描述`（综合描述）
+  - `非功能需求` → `### 非功能需求（业务侧）`
+
 ## 澄清规则
 
 - 最多 5 轮澄清（每轮向 Orchestrator 返回问题列表，由 Orchestrator 展示给用户并传回答案）
 - 关键项无法解决时标注 `[CRITICAL-UNRESOLVED: <描述>]`
 - 非关键假设标注 `[ASSUMED: <假设内容>]`（格式：`[ASSUMED:` + 内容 + `]`，方括号内无换行）
 - 5 轮后仍有 `[CRITICAL-UNRESOLVED]` → 告知 Orchestrator 触发 ESCALATION
+- **注意**：以上交互式规则仅在非自治模式下生效
 
 ## 输出
 

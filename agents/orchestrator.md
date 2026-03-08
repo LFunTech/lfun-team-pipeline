@@ -19,7 +19,7 @@ permissionMode: acceptEdits
 
 ## 初始化
 
-1. 读取 `.pipeline/config.json`，获取配置（max_attempts、requirement_completeness 等）。
+1. 读取 `.pipeline/config.json`，获取配置（max_attempts、requirement_completeness、autonomous_mode 等）。
 2. 读取 `.pipeline/state.json`（不存在则初始化），恢复当前阶段。
 3. 读取 `.pipeline/project-memory.json`（不存在则跳过，视为首次运行）。
 4. 初始化日志目录（见"日志系统"节）。
@@ -275,9 +275,16 @@ def build_memory_injection():
    - 明确 `depends_on`（依赖哪些前序提案）
    - 明确 `scope`（包含什么、不包含什么）
    - 第一个提案应包含基础框架搭建（脚手架、CI、认证基础设施）
+   - **自治模式扩展字段**（`autonomous_mode = true` 时必填，交互模式下可选）：每个提案额外包含 `detail` 对象，在规划阶段与用户充分沟通后填写，结构见下方"提案 detail 结构"
 5. 将蓝图中的技术栈和共享约定写入 `project-memory.json` 的 `constraints`（自动分配 id）。
 6. 展示蓝图和提案队列给用户确认，用户可调整顺序、范围、增删提案。
 7. 用户确认后，进入 `pick-next-proposal`。
+
+> **自治模式提示**：System Planning 完成后，若 `config.json` 中 `autonomous_mode = false`，向用户提示：
+> ```
+> 提案队列已就绪。当前为交互模式，每个提案执行过程中会在需求澄清和记忆固化时暂停等待确认。
+> 如需全自动执行所有提案（无人值守），请在 .pipeline/config.json 中设置 "autonomous_mode": true 后重新启动。
+> ```
 
 ### 蓝图模板
 
@@ -310,6 +317,79 @@ def build_memory_injection():
 [提案顺序 + 依赖关系 + 范围边界]
 ```
 
+### 提案 detail 结构
+
+`autonomous_mode = true` 时，每个提案必须包含 `detail` 对象。System Planning 阶段在用户确认蓝图后、写入 proposal-queue.json 前，**逐个提案与用户确认 detail**：
+
+```json
+{
+  "id": "P-001",
+  "title": "基础框架与用户体系",
+  "scope": "包含/不包含描述",
+  "depends_on": [],
+  "status": "pending",
+  "detail": {
+    "user_stories": [
+      "管理员可以创建/编辑/禁用用户账号",
+      "用户使用邮箱+密码登录，获取 JWT Token"
+    ],
+    "business_rules": [
+      "密码最少 8 位，包含大小写和数字",
+      "JWT Token 有效期 24 小时，刷新 Token 有效期 7 天",
+      "超级管理员不可被禁用"
+    ],
+    "acceptance_criteria": [
+      "POST /api/auth/login 返回 200 + JWT Token",
+      "无效密码返回 401",
+      "无权限访问返回 403",
+      "用户 CRUD 四个接口联调通过"
+    ],
+    "api_overview": [
+      "POST /api/auth/login — 登录",
+      "POST /api/auth/refresh — 刷新 Token",
+      "GET /api/users — 用户列表（分页）",
+      "POST /api/users — 创建用户",
+      "PUT /api/users/:id — 更新用户",
+      "DELETE /api/users/:id — 禁用用户"
+    ],
+    "data_entities": [
+      "users(id, email, password_hash, name, role, status, created_at)",
+      "roles(id, name, permissions[])"
+    ],
+    "non_functional": [
+      "API 响应时间 p95 < 200ms",
+      "密码使用 bcrypt 加密存储"
+    ]
+  }
+}
+```
+
+**细化流程**（仅 `autonomous_mode = true` 时执行）：
+
+1. 蓝图和提案列表（含 scope）先展示给用户确认整体结构
+2. 用户确认后，**逐个提案**展示预生成的 `detail` 草案，请用户审阅修改：
+   ```
+   提案 P-001「基础框架与用户体系」的细节如下，请审阅：
+
+   用户故事：
+     1. 管理员可以创建/编辑/禁用用户账号
+     2. ...
+
+   业务规则：
+     1. 密码最少 8 位...
+     2. ...
+
+   验收标准：
+     1. POST /api/auth/login 返回 200 + JWT Token
+     2. ...
+
+   请确认或修改（回复"确认"继续下一个提案，或直接回复修改内容）。
+   ```
+3. 用户确认后，将 detail 写入该提案对象
+4. 所有提案 detail 确认完毕后，写入 proposal-queue.json，进入 `pick-next-proposal`
+
+**交互模式**（`autonomous_mode = false`）：`detail` 字段可选。若存在，Clarifier 可参考；若不存在，通过 Q&A 补充。
+
 ## Pick Next Proposal（提案选取）
 
 读取 `.pipeline/proposal-queue.json`：
@@ -320,7 +400,7 @@ def build_memory_injection():
 4. 重新初始化 `state.json`（新的 pipeline_id，所有 attempt_counts 归零，status: running）。
 5. 将提案的 `title` 和 `scope` 作为用户需求输入，传递给 Phase 0 Clarifier。
 
-**传递格式**：
+**传递格式**（交互模式）：
 ```
 [来自系统规划的提案 P-NNN]
 标题: <title>
@@ -329,6 +409,36 @@ def build_memory_injection():
 
 请基于以上范围进行需求澄清。
 ```
+
+**传递格式**（自治模式，`autonomous_mode = true`）：
+```
+[AUTONOMOUS_MODE]
+[来自系统规划的提案 P-NNN]
+标题: <title>
+范围: <scope>
+依赖提案: <depends_on 列表中已完成提案的 title>
+
+用户故事：
+<逐行列出 detail.user_stories>
+
+业务规则：
+<逐行列出 detail.business_rules>
+
+验收标准：
+<逐行列出 detail.acceptance_criteria>
+
+API 概览：
+<逐行列出 detail.api_overview>
+
+数据实体：
+<逐行列出 detail.data_entities>
+
+非功能需求：
+<逐行列出 detail.non_functional>
+
+请基于以上已确认的需求细节，直接生成 requirement.md。
+```
+Clarifier 收到 `[AUTONOMOUS_MODE]` 标记后跳过 Q&A，将上述结构化信息直接转为 requirement.md 格式输出。
 
 ## Mark Proposal Completed（提案标记完成）
 
@@ -526,11 +636,11 @@ if not os.path.exists(INDEX_PATH):
 
 从已有 artifact 机械提取，字段缺失时忽略不报错。
 
-> **注意**：此表为通用参考。各阶段的**具体提取字段名**以 playbook.md 对应章节的"写日志"指令为准（如 Gate 产物中实际字段可能为 `comments[].detail` 而非 `issues[].message`）。
+> **注意**：此表为通用参考。各阶段的**具体提取字段名**以 playbook.md 对应章节的"写日志"指令为准。
 
 | 步骤 | 提取来源 | 提取内容 |
 |------|----------|----------|
-| Gate（Auditor 类） | `gate-*.json` | `comments[severity=CRITICAL].detail`（全部）+ `overall` + `rollback_to` |
+| Gate（Auditor 类） | `gate-*.json` | `issues[severity=CRITICAL].description`（全部）+ `overall` + `rollback_to` |
 | AutoStep（report 类） | `*-report.json` | `overall` + `issues[severity!=INFO].message`（前 3 条） |
 | Builder | `impl-manifest-<name>.json` | `summary`（若有）或 `"共变更 N 个文件"` |
 | Architect | `proposal.md` | 技术栈段落的前 2 行 |
@@ -731,6 +841,8 @@ Phase 7 返回 `NORMAL` 后、写入 COMPLETED 之前执行。
 
 ### Step 3 — 展示给用户确认
 
+**交互模式**（`autonomous_mode = false`）：
+
 ```
 本次交付产生以下新约束，请确认或修改后回复"确认"：
 
@@ -745,9 +857,14 @@ Phase 7 返回 `NORMAL` 后、写入 COMPLETED 之前执行。
 回复"确认"继续，或修改后回复。
 ```
 
+**自治模式**（`autonomous_mode = true`）：
+- 跳过用户确认，自动接受所有新增约束
+- 存在冲突约束时：**不自动推翻旧约束**，保留旧约束不变，将冲突的新约束标注 `[AUTO-SKIPPED: 与 C-XXX 冲突，需人工确认]` 写入日志但不写入 constraints
+- 输出 `[Pipeline] 自治模式：自动接受 N 条新约束，跳过 M 条冲突约束`
+
 ### Step 4 — 写入 project-memory.json
 
-用户确认后：
+用户确认后（交互模式）或自动接受后（自治模式）：
 1. 首次运行时，从 `requirement.md` 提取项目定位写入 `project_purpose`
 2. 新增约束追加到 `constraints` 数组，自动分配 `id`（格式 `C-NNN`，NNN 为已有最大编号 +1）
 3. 每条约束包含 `id`、`text`、`tags`（从约束内容提取关键业务域标签）、`source`（当前 pipeline_id）

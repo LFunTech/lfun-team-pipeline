@@ -23,5 +23,9 @@ Thumbs.db
 !*.env.example
 !*.env.template
 
+# Pipeline runtime (stale working copy, templates/ is source of truth)
+# Only ignore root-level .pipeline/, not templates/.pipeline/
+/.pipeline/
+
 # Demo projects (not part of distribution)
 demo-*/
