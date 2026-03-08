@@ -15,34 +15,26 @@ TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 mkdir -p "$(dirname "$OUTPUT_FILE")"
 
-OVERALL="PASS"
-CHECKS_LIST="["
-FIRST=true
-
-add_check() {
-  if ! $FIRST; then CHECKS_LIST+=","; fi
-  FIRST=false
-  CHECKS_LIST+="{\"check\":\"$1\",\"result\":\"$2\",\"detail\":\"$3\"}"
-  [ "$2" = "FAIL" ] && OVERALL="FAIL" || true
-}
+# 收集检查结果到数组
+CHECKS=()
 
 if [ -f "$DEPLOY_PLAN" ]; then
-  add_check "deploy_plan_exists" "PASS" "deploy-plan.md 存在"
+  CHECKS+=("deploy_plan_exists|PASS|deploy-plan.md 存在")
 else
-  add_check "deploy_plan_exists" "FAIL" "deploy-plan.md 不存在，Builder-Infra 未生成部署计划"
+  CHECKS+=("deploy_plan_exists|FAIL|deploy-plan.md 不存在，Builder-Infra 未生成部署计划")
 fi
 
 if [ -f "$DEPLOY_PLAN" ] && grep -qi "rollback_command" "$DEPLOY_PLAN"; then
-  add_check "rollback_command_defined" "PASS" "rollback_command 已在 deploy-plan.md 中定义"
+  CHECKS+=("rollback_command_defined|PASS|rollback_command 已在 deploy-plan.md 中定义")
 else
-  add_check "rollback_command_defined" "FAIL" "rollback_command 未在 deploy-plan.md 中定义"
+  CHECKS+=("rollback_command_defined|FAIL|rollback_command 未在 deploy-plan.md 中定义")
 fi
 
 if [ -f "$STATE_FILE" ] && command -v python3 &>/dev/null; then
-  MIGRATION_REQUIRED=$(python3 -c "
-import json
+  MIGRATION_REQUIRED=$(STATE_FILE="$STATE_FILE" python3 -c "
+import json, os
 try:
-  s = json.load(open('$STATE_FILE'))
+  s = json.load(open(os.environ['STATE_FILE']))
   print('true' if s.get('conditional_agents', {}).get('migrator', False) else 'false')
 except: print('false')
 " 2>/dev/null || echo "false")
@@ -50,28 +42,43 @@ except: print('false')
   if [ "$MIGRATION_REQUIRED" = "true" ]; then
     MIGRATION_FILES=$(find . -name "*.sql" -path "*/migrations/*" 2>/dev/null | wc -l)
     if [ "$MIGRATION_FILES" -gt 0 ]; then
-      add_check "migration_scripts_exist" "PASS" "找到 $MIGRATION_FILES 个迁移脚本"
+      CHECKS+=("migration_scripts_exist|PASS|找到 $MIGRATION_FILES 个迁移脚本")
     else
-      add_check "migration_scripts_exist" "FAIL" "data_migration_required=true 但未找到迁移脚本"
+      CHECKS+=("migration_scripts_exist|FAIL|data_migration_required=true 但未找到迁移脚本")
     fi
   fi
 fi
 
 if [ -f ".env.example" ]; then
-  add_check "env_example_exists" "PASS" ".env.example 存在，环境变量已记录"
+  CHECKS+=("env_example_exists|PASS|.env.example 存在，环境变量已记录")
 else
-  add_check "env_example_exists" "WARN" "无 .env.example（建议创建以记录环境变量依赖）"
+  CHECKS+=("env_example_exists|WARN|无 .env.example（建议创建以记录环境变量依赖）")
 fi
 
-CHECKS_LIST+="]"
-
-cat > "$OUTPUT_FILE" << EOF
-{
-  "autostep": "PreDeployReadinessCheck",
-  "timestamp": "$TIMESTAMP",
-  "checks": $CHECKS_LIST,
-  "overall": "$OVERALL"
+# 使用 python3 生成 JSON（避免手动拼接导致的转义问题）
+TIMESTAMP="$TIMESTAMP" OUTPUT_FILE="$OUTPUT_FILE" python3 -c "
+import json, os, sys
+checks_raw = sys.stdin.read().strip().splitlines()
+checks = []
+overall = 'PASS'
+for line in checks_raw:
+    if not line:
+        continue
+    parts = line.split('|', 2)
+    if len(parts) == 3:
+        checks.append({'check': parts[0], 'result': parts[1], 'detail': parts[2]})
+        if parts[1] == 'FAIL':
+            overall = 'FAIL'
+result = {
+    'autostep': 'PreDeployReadinessCheck',
+    'timestamp': os.environ['TIMESTAMP'],
+    'checks': checks,
+    'overall': overall
 }
-EOF
+with open(os.environ['OUTPUT_FILE'], 'w') as f:
+    json.dump(result, f, ensure_ascii=False, indent=2)
+print(overall)
+" <<< "$(printf '%s\n' "${CHECKS[@]}")"
 
+OVERALL=$(python3 -c "import json; print(json.load(open('$OUTPUT_FILE'))['overall'])" 2>/dev/null || echo "FAIL")
 [ "$OVERALL" = "PASS" ] && exit 0 || exit 1

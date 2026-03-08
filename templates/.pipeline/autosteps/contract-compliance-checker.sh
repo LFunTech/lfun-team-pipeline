@@ -14,14 +14,12 @@ SERVICE_BASE_URL="${SERVICE_BASE_URL:-http://localhost:3000}"
 
 mkdir -p "$(dirname "$OUTPUT_FILE")"
 
+# 收集结果到数组（格式：schema|tool|result|detail）
+RESULTS=()
 OVERALL="PASS"
-RESULTS_LIST="["
-FIRST=true
 
 add_result() {
-  if ! $FIRST; then RESULTS_LIST+=","; fi
-  FIRST=false
-  RESULTS_LIST+="{\"schema\":\"$1\",\"tool\":\"$2\",\"result\":\"$3\",\"detail\":\"$4\"}"
+  RESULTS+=("$1|$2|$3|$4")
   [ "$3" = "FAIL" ] && OVERALL="FAIL" || true
 }
 
@@ -41,24 +39,32 @@ fi
 
 # 若仍不可用，整体 FAIL（不允许跳过合约验证）
 if ! command -v schemathesis &>/dev/null; then
-  RESULTS_LIST="["
-  FIRST=true
   for schema_file in "$CONTRACTS_DIR"/*.yaml "$CONTRACTS_DIR"/*.json; do
     [ -f "$schema_file" ] || continue
     add_result "$(basename "$schema_file")" "none" "FAIL" \
       "schemathesis 未安装，无法进行合约验证。请执行: pip install schemathesis"
   done
-  RESULTS_LIST+="]"
-  cat > "$OUTPUT_FILE" << EOF
-{
-  "autostep": "ContractComplianceChecker",
-  "timestamp": "$TIMESTAMP",
-  "service_base_url": "$SERVICE_BASE_URL",
-  "error": "schemathesis 未安装，合约验证无法执行",
-  "results": $RESULTS_LIST,
-  "overall": "FAIL"
+
+  TIMESTAMP="$TIMESTAMP" SERVICE_BASE_URL="$SERVICE_BASE_URL" \
+  OVERALL="$OVERALL" OUTPUT_FILE="$OUTPUT_FILE" python3 -c "
+import json, os, sys
+lines = [l for l in sys.stdin.read().strip().splitlines() if l]
+results = []
+for line in lines:
+    parts = line.split('|', 3)
+    if len(parts) == 4:
+        results.append({'schema': parts[0], 'tool': parts[1], 'result': parts[2], 'detail': parts[3]})
+result = {
+    'autostep': 'ContractComplianceChecker',
+    'timestamp': os.environ['TIMESTAMP'],
+    'service_base_url': os.environ['SERVICE_BASE_URL'],
+    'error': 'schemathesis 未安装，合约验证无法执行',
+    'results': results,
+    'overall': os.environ['OVERALL']
 }
-EOF
+with open(os.environ['OUTPUT_FILE'], 'w') as f:
+    json.dump(result, f, ensure_ascii=False, indent=2)
+" <<< "$(printf '%s\n' "${RESULTS[@]}")"
   exit 1
 fi
 
@@ -78,21 +84,30 @@ for schema_file in "$CONTRACTS_DIR"/*.yaml "$CONTRACTS_DIR"/*.json; do
   if [ "$EXIT_CODE" -eq 0 ]; then
     add_result "$fname" "schemathesis" "PASS" "所有契约测试通过"
   else
-    DETAIL=$(echo "$OUTPUT" | tail -3 | tr '\n' ' ' | sed 's/"/\\"/g')
+    DETAIL=$(echo "$OUTPUT" | tail -3 | tr '\n' ' ')
     add_result "$fname" "schemathesis" "FAIL" "$DETAIL"
   fi
 done
 
-RESULTS_LIST+="]"
-
-cat > "$OUTPUT_FILE" << EOF
-{
-  "autostep": "ContractComplianceChecker",
-  "timestamp": "$TIMESTAMP",
-  "service_base_url": "$SERVICE_BASE_URL",
-  "results": $RESULTS_LIST,
-  "overall": "$OVERALL"
+# 使用 python3 生成 JSON（避免手动拼接导致的转义问题）
+TIMESTAMP="$TIMESTAMP" SERVICE_BASE_URL="$SERVICE_BASE_URL" \
+OVERALL="$OVERALL" OUTPUT_FILE="$OUTPUT_FILE" python3 -c "
+import json, os, sys
+lines = [l for l in sys.stdin.read().strip().splitlines() if l]
+results = []
+for line in lines:
+    parts = line.split('|', 3)
+    if len(parts) == 4:
+        results.append({'schema': parts[0], 'tool': parts[1], 'result': parts[2], 'detail': parts[3]})
+result = {
+    'autostep': 'ContractComplianceChecker',
+    'timestamp': os.environ['TIMESTAMP'],
+    'service_base_url': os.environ['SERVICE_BASE_URL'],
+    'results': results,
+    'overall': os.environ['OVERALL']
 }
-EOF
+with open(os.environ['OUTPUT_FILE'], 'w') as f:
+    json.dump(result, f, ensure_ascii=False, indent=2)
+" <<< "$(printf '%s\n' "${RESULTS[@]}")"
 
 [ "$OVERALL" = "PASS" ] && exit 0 || exit 1

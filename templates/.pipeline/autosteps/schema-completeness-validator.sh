@@ -21,57 +21,71 @@ EOF
   exit 2
 fi
 
-EXPECTED_COUNT=$(python3 -c "
-import json
+TASKS_FILE="$TASKS_FILE" CONTRACTS_DIR="$CONTRACTS_DIR" \
+TIMESTAMP="$TIMESTAMP" OUTPUT_FILE="$OUTPUT_FILE" python3 << 'PYEOF'
+import json, os, sys, glob
+
+tasks_file = os.environ['TASKS_FILE']
+contracts_dir = os.environ['CONTRACTS_DIR']
+timestamp = os.environ['TIMESTAMP']
+output_file = os.environ['OUTPUT_FILE']
+
 try:
-  data = json.load(open('$TASKS_FILE'))
-  contracts = data.get('contracts', None)
-  print(len(contracts) if contracts is not None else -1)
-except Exception:
-  print(-1)
-" 2>/dev/null || echo -1)
+    import yaml
+except ImportError:
+    yaml = None
 
-ACTUAL_COUNT=0
-INVALID_LIST="["
-FIRST=true
-OVERALL="PASS"
-
-if [ -d "$CONTRACTS_DIR" ]; then
-  ACTUAL_COUNT=$(find "$CONTRACTS_DIR" \( -name "*.yaml" -o -name "*.json" \) 2>/dev/null | wc -l)
-
-  while IFS= read -r f; do
-    if ! python3 -c "
-import yaml, json, sys
+# 从 tasks.json 读取期望的 contracts 数量
 try:
-  with open('$f') as fh:
-    data = yaml.safe_load(fh) if '$f'.endswith('.yaml') else json.load(fh)
-  assert str(data.get('openapi', '')).startswith('3.'), 'not openapi 3.x'
-  assert 'paths' in data, 'missing paths'
+    data = json.load(open(tasks_file))
+    contracts = data.get('contracts', None)
+    expected_count = len(contracts) if contracts is not None else -1
 except Exception:
-  sys.exit(1)
-" 2>/dev/null; then
-      if ! $FIRST; then INVALID_LIST+=","; fi
-      FIRST=false
-      fname=$(basename "$f")
-      INVALID_LIST+="\"$fname\""
-      OVERALL="FAIL"
-    fi
-  done < <(find "$CONTRACTS_DIR" \( -name "*.yaml" -o -name "*.json" \) 2>/dev/null)
-fi
+    expected_count = -1
 
-INVALID_LIST+="]"
+actual_count = 0
+invalid_files = []
+overall = 'PASS'
+
+if os.path.isdir(contracts_dir):
+    schema_files = sorted(
+        glob.glob(f'{contracts_dir}/*.yaml') +
+        glob.glob(f'{contracts_dir}/*.json')
+    )
+    actual_count = len(schema_files)
+
+    for schema_file in schema_files:
+        fname = os.path.basename(schema_file)
+        try:
+            with open(schema_file) as fh:
+                if schema_file.endswith('.yaml'):
+                    if yaml is None:
+                        invalid_files.append(fname)
+                        overall = 'FAIL'
+                        continue
+                    file_data = yaml.safe_load(fh)
+                else:
+                    file_data = json.load(fh)
+            assert str(file_data.get('openapi', '')).startswith('3.'), 'not openapi 3.x'
+            assert 'paths' in file_data, 'missing paths'
+        except Exception:
+            invalid_files.append(fname)
+            overall = 'FAIL'
+
 # 仅当 tasks.json 明确声明 contracts 列表时才检查数量（-1 表示未声明，跳过）
-[ "$EXPECTED_COUNT" -ge 0 ] && [ "$ACTUAL_COUNT" -ne "$EXPECTED_COUNT" ] && OVERALL="FAIL" || true
+if expected_count >= 0 and actual_count != expected_count:
+    overall = 'FAIL'
 
-cat > "$OUTPUT_FILE" << EOF
-{
-  "autostep": "SchemaCompletenessValidator",
-  "timestamp": "$TIMESTAMP",
-  "expected_contracts": $EXPECTED_COUNT,
-  "actual_schemas": $ACTUAL_COUNT,
-  "invalid_files": $INVALID_LIST,
-  "overall": "$OVERALL"
+result = {
+    'autostep': 'SchemaCompletenessValidator',
+    'timestamp': timestamp,
+    'expected_contracts': expected_count,
+    'actual_schemas': actual_count,
+    'invalid_files': invalid_files,
+    'overall': overall
 }
-EOF
+with open(output_file, 'w') as f:
+    json.dump(result, f, ensure_ascii=False, indent=2)
 
-[ "$OVERALL" = "PASS" ] && exit 0 || exit 1
+sys.exit(0 if overall == 'PASS' else 1)
+PYEOF

@@ -14,10 +14,10 @@ TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 # 读取 Phase 3 基准 SHA（worktree 模式下使用）
 PHASE3_BASE_SHA=""
 if [ -f "$PIPELINE_DIR/state.json" ] && command -v python3 &>/dev/null; then
-  PHASE3_BASE_SHA=$(python3 -c "
-import json
+  PHASE3_BASE_SHA=$(PIPELINE_DIR="$PIPELINE_DIR" python3 -c "
+import json, os
 try:
-  s = json.load(open('$PIPELINE_DIR/state.json'))
+  s = json.load(open(os.environ['PIPELINE_DIR'] + '/state.json'))
   print(s.get('phase_3_base_sha') or '')
 except:
   print('')
@@ -33,9 +33,9 @@ EOF
   exit 2
 fi
 
-AUTHORIZED_FILES=$(python3 -c "
-import json
-data = json.load(open('$TASKS_FILE'))
+AUTHORIZED_FILES=$(TASKS_FILE="$TASKS_FILE" python3 -c "
+import json, os
+data = json.load(open(os.environ['TASKS_FILE']))
 files = set()
 for task in data.get('tasks', []):
   for f in task.get('files', []):
@@ -58,31 +58,31 @@ else
 fi
 ACTUAL_CHANGES=$(echo "$ACTUAL_CHANGES" | sort -u | grep -v '^$' || echo "")
 
-UNAUTHORIZED_LIST="["
-FIRST=true
+UNAUTHORIZED=()
 OVERALL="PASS"
 
 while IFS= read -r changed_file; do
   [ -z "$changed_file" ] && continue
   [[ "$changed_file" == .pipeline/* ]] && continue
   if ! echo "$AUTHORIZED_FILES" | grep -qxF "$changed_file"; then
-    if ! $FIRST; then UNAUTHORIZED_LIST+=","; fi
-    FIRST=false
-    UNAUTHORIZED_LIST+="\"$changed_file\""
+    UNAUTHORIZED+=("$changed_file")
     OVERALL="FAIL"
   fi
 done <<< "$ACTUAL_CHANGES"
 
-UNAUTHORIZED_LIST+="]"
-
-cat > "$OUTPUT_FILE" << EOF
-{
-  "autostep": "DiffScopeValidator",
-  "timestamp": "$TIMESTAMP",
-  "base_sha": "${PHASE3_BASE_SHA:-HEAD}",
-  "unauthorized_changes": $UNAUTHORIZED_LIST,
-  "overall": "$OVERALL"
+TIMESTAMP="$TIMESTAMP" PHASE3_BASE_SHA="${PHASE3_BASE_SHA:-HEAD}" \
+OVERALL="$OVERALL" OUTPUT_FILE="$OUTPUT_FILE" python3 -c "
+import json, os, sys
+unauthorized = [u for u in sys.stdin.read().strip().splitlines() if u]
+result = {
+    'autostep': 'DiffScopeValidator',
+    'timestamp': os.environ['TIMESTAMP'],
+    'base_sha': os.environ['PHASE3_BASE_SHA'],
+    'unauthorized_changes': unauthorized,
+    'overall': os.environ['OVERALL']
 }
-EOF
+with open(os.environ['OUTPUT_FILE'], 'w') as f:
+    json.dump(result, f, ensure_ascii=False, indent=2)
+" <<< "$(printf '%s\n' "${UNAUTHORIZED[@]+"${UNAUTHORIZED[@]}"}")"
 
 [ "$OVERALL" = "PASS" ] && exit 0 || exit 1

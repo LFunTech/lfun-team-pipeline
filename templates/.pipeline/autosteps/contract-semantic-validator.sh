@@ -21,56 +21,57 @@ EOF
   exit 2
 fi
 
-OVERALL="PASS"
-ERRORS_LIST="["
-FIRST=true
+CONTRACTS_DIR="$CONTRACTS_DIR" TIMESTAMP="$TIMESTAMP" OUTPUT_FILE="$OUTPUT_FILE" python3 << 'PYEOF'
+import json, os, sys, glob
 
-check_error() {
-  if ! $FIRST; then ERRORS_LIST+=","; fi
-  FIRST=false
-  ERRORS_LIST+="{\"file\":\"$1\",\"rule\":\"$2\",\"message\":\"$3\"}"
-  OVERALL="FAIL"
+contracts_dir = os.environ['CONTRACTS_DIR']
+timestamp = os.environ['TIMESTAMP']
+output_file = os.environ['OUTPUT_FILE']
+
+errors = []
+overall = 'PASS'
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
+
+for pattern in [f'{contracts_dir}/*.yaml', f'{contracts_dir}/*.json']:
+    for schema_file in sorted(glob.glob(pattern)):
+        fname = os.path.basename(schema_file)
+        try:
+            with open(schema_file) as f:
+                if schema_file.endswith('.yaml'):
+                    if yaml is None:
+                        errors.append({'file': fname, 'rule': 'yaml-missing', 'message': 'pyyaml not installed'})
+                        overall = 'FAIL'
+                        continue
+                    data = yaml.safe_load(f)
+                else:
+                    data = json.load(f)
+        except Exception as e:
+            errors.append({'file': fname, 'rule': 'parse-error', 'message': str(e)})
+            overall = 'FAIL'
+            continue
+
+        for path, methods in (data.get('paths') or {}).items():
+            if 'get' in methods and 'requestBody' in methods.get('get', {}):
+                errors.append({'file': fname, 'rule': 'no-get-requestbody', 'message': 'GET endpoint must not have requestBody'})
+                overall = 'FAIL'
+            for method, op in methods.items():
+                if isinstance(op, dict) and 'operationId' not in op:
+                    errors.append({'file': fname, 'rule': 'operation-id-required', 'message': 'every operation must have operationId'})
+                    overall = 'FAIL'
+                    break
+
+result = {
+    'autostep': 'ContractSemanticValidator',
+    'timestamp': timestamp,
+    'errors': errors,
+    'overall': overall
 }
+with open(output_file, 'w') as f:
+    json.dump(result, f, ensure_ascii=False, indent=2)
 
-for schema_file in "$CONTRACTS_DIR"/*.yaml "$CONTRACTS_DIR"/*.json; do
-  [ -f "$schema_file" ] || continue
-  fname=$(basename "$schema_file")
-
-  if ! python3 -c "
-import yaml, json, sys
-with open('$schema_file') as f:
-  data = yaml.safe_load(f) if '$schema_file'.endswith('.yaml') else json.load(f)
-for path, methods in data.get('paths', {}).items():
-  if 'get' in methods and 'requestBody' in methods['get']:
-    sys.exit(1)
-sys.exit(0)
-" 2>/dev/null; then
-    check_error "$fname" "no-get-requestbody" "GET endpoint must not have requestBody"
-  fi
-
-  if ! python3 -c "
-import yaml, json, sys
-with open('$schema_file') as f:
-  data = yaml.safe_load(f) if '$schema_file'.endswith('.yaml') else json.load(f)
-for path, methods in data.get('paths', {}).items():
-  for method, op in methods.items():
-    if isinstance(op, dict) and 'operationId' not in op:
-      sys.exit(1)
-sys.exit(0)
-" 2>/dev/null; then
-    check_error "$fname" "operation-id-required" "every operation must have operationId"
-  fi
-done
-
-ERRORS_LIST+="]"
-
-cat > "$OUTPUT_FILE" << EOF
-{
-  "autostep": "ContractSemanticValidator",
-  "timestamp": "$TIMESTAMP",
-  "errors": $ERRORS_LIST,
-  "overall": "$OVERALL"
-}
-EOF
-
-[ "$OVERALL" = "PASS" ] && exit 0 || exit 1
+sys.exit(0 if overall == 'PASS' else 1)
+PYEOF

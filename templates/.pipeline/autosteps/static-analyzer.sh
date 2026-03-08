@@ -25,9 +25,9 @@ LINT_ERRORS=0
 COMPLEXITY_JSON="[]"
 DEPENDENCY_VULNS=0
 
-CHANGED_FILES=$(python3 -c "
-import json
-data = json.load(open('$IMPL_MANIFEST'))
+CHANGED_FILES=$(IMPL_MANIFEST="$IMPL_MANIFEST" python3 -c "
+import json, os
+data = json.load(open(os.environ['IMPL_MANIFEST']))
 files = [f['path'] for f in data.get('files_changed', []) if not f['path'].startswith('tests/')]
 print('\n'.join(files))
 " 2>/dev/null || echo "")
@@ -83,8 +83,15 @@ elif [ -f "go.mod" ]; then
     fi
   fi
 
-elif [ -f "package.json" ] || command -v eslint &>/dev/null || command -v flake8 &>/dev/null; then
-  # Node.js / Python 项目
+elif [ -f "pyproject.toml" ] || [ -f "setup.py" ] || [ -f "requirements.txt" ]; then
+  # Python 项目（优先级高于 Node，与 regression-guard.sh / post-simplification-verifier.sh 一致）
+  if command -v flake8 &>/dev/null; then
+    LINT_ERRORS=$(echo "$CHANGED_FILES" | grep -E '\.py$' | xargs -r flake8 2>/dev/null | wc -l || echo 0)
+    [ "$LINT_ERRORS" -gt 0 ] && OVERALL="FAIL" || true
+  fi
+
+elif [ -f "package.json" ]; then
+  # Node.js 项目
   if command -v eslint &>/dev/null && [ -n "$CHANGED_FILES" ]; then
     LINT_ERRORS=$(echo "$CHANGED_FILES" | xargs -r eslint --format=json 2>/dev/null | python3 -c "
 import json, sys
@@ -94,12 +101,9 @@ try:
 except: print(0)
 " 2>/dev/null || echo 0)
     [ "$LINT_ERRORS" -gt 0 ] && OVERALL="FAIL" || true
-  elif command -v flake8 &>/dev/null; then
-    LINT_ERRORS=$(echo "$CHANGED_FILES" | grep -E '\.py$' | xargs -r flake8 2>/dev/null | wc -l || echo 0)
-    [ "$LINT_ERRORS" -gt 0 ] && OVERALL="FAIL" || true
   fi
 
-  if command -v npm &>/dev/null && [ -f "package.json" ]; then
+  if command -v npm &>/dev/null; then
     # Bug #7 fix: use set +e to avoid pipefail causing both python3 and || echo 0 to output
     set +e
     DEPENDENCY_VULNS=$(npm audit --json 2>/dev/null | python3 -c "

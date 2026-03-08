@@ -61,7 +61,7 @@ model: inherit
   "reviewer": "Auditor-QA",
   "verdict": "PASS|FAIL",
   "comments": "QA 审核意见",
-  "rollback_to": "phase-0|phase-1|phase-2|phase-3|phase-4a|null",
+  "rollback_to": "（按 Gate 限定范围：A=phase-0/1, B=phase-1/2, D=phase-3/4a, E=phase-5）|null",
   "rollback_reason": "回退原因（FAIL 时）"
 }
 ```

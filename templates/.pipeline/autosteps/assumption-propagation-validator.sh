@@ -24,10 +24,10 @@ fi
 ASSUMPTIONS=$(grep -oP '\[ASSUMED:[^\]]+\]' "$REQUIREMENT_FILE" 2>/dev/null || echo "")
 ASSUMED_COUNT=$(echo "$ASSUMPTIONS" | grep -c '\[ASSUMED:' 2>/dev/null || true)
 
-TASKS_TEXT=$(python3 -c "
-import json
+TASKS_TEXT=$(TASKS_FILE="$TASKS_FILE" python3 -c "
+import json, os
 try:
-  data = json.load(open('$TASKS_FILE'))
+  data = json.load(open(os.environ['TASKS_FILE']))
   texts = []
   for t in data.get('tasks', []):
     texts.append(t.get('notes', ''))

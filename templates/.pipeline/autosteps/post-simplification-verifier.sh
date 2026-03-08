@@ -14,14 +14,12 @@ TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 mkdir -p "$(dirname "$OUTPUT_FILE")"
 
+# 收集检查结果到数组（格式：check|result|detail）
+CHECKS=()
 OVERALL="PASS"
-CHECKS_LIST="["
-FIRST=true
 
 add_check() {
-  if ! $FIRST; then CHECKS_LIST+=","; fi
-  FIRST=false
-  CHECKS_LIST+="{\"check\":\"$1\",\"result\":\"$2\",\"detail\":\"$3\"}"
+  CHECKS+=("$1|$2|$3")
   [ "$2" = "FAIL" ] && OVERALL="FAIL" || true
 }
 
@@ -66,15 +64,23 @@ else
   add_check "regression_after_simplification" "FAIL" "回归测试失败，精简可能破坏了现有功能"
 fi
 
-CHECKS_LIST+="]"
-
-cat > "$OUTPUT_FILE" << EOF
-{
-  "autostep": "PostSimplificationVerifier",
-  "timestamp": "$TIMESTAMP",
-  "checks": $CHECKS_LIST,
-  "overall": "$OVERALL"
+# 使用 python3 生成 JSON（避免手动拼接导致的转义问题）
+TIMESTAMP="$TIMESTAMP" OVERALL="$OVERALL" OUTPUT_FILE="$OUTPUT_FILE" python3 -c "
+import json, os, sys
+checks_raw = [l for l in sys.stdin.read().strip().splitlines() if l]
+checks = []
+for line in checks_raw:
+    parts = line.split('|', 2)
+    if len(parts) == 3:
+        checks.append({'check': parts[0], 'result': parts[1], 'detail': parts[2]})
+result = {
+    'autostep': 'PostSimplificationVerifier',
+    'timestamp': os.environ['TIMESTAMP'],
+    'checks': checks,
+    'overall': os.environ['OVERALL']
 }
-EOF
+with open(os.environ['OUTPUT_FILE'], 'w') as f:
+    json.dump(result, f, ensure_ascii=False, indent=2)
+" <<< "$(printf '%s\n' "${CHECKS[@]}")"
 
 [ "$OVERALL" = "PASS" ] && exit 0 || exit 1

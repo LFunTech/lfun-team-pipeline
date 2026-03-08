@@ -23,10 +23,10 @@ fi
 
 MIN_WORDS=200
 if [ -f "$CONFIG_FILE" ] && command -v python3 &>/dev/null; then
-  MIN_WORDS=$(python3 -c "
-import json, sys
+  MIN_WORDS=$(CONFIG_FILE="$CONFIG_FILE" python3 -c "
+import json, os
 try:
-  c = json.load(open('$CONFIG_FILE'))
+  c = json.load(open(os.environ['CONFIG_FILE']))
   print(c.get('requirement_completeness', {}).get('min_words', 200))
 except: print(200)
 " 2>/dev/null || echo 200)
@@ -53,20 +53,24 @@ while IFS= read -r line; do
   fi
 done < "$REQUIREMENT_FILE"
 
-SECTIONS_JSON=""
+SECTIONS_RESULTS=()
 SECTIONS_OVERALL="PASS"
 
 if ! $PARENT_FOUND; then
-  SECTIONS_JSON='"最终需求定义_section_found":false,"功能描述":"MISSING","用户故事":"MISSING","业务规则":"MISSING","范围边界":"MISSING","验收标准":"MISSING"'
+  SECTIONS_RESULTS+=("最终需求定义_section_found|false")
+  for section in "${REQUIRED_SECTIONS[@]}"; do
+    key=$(echo "$section" | sed 's/### //')
+    SECTIONS_RESULTS+=("$key|MISSING")
+  done
   SECTIONS_OVERALL="FAIL"
 else
-  SECTIONS_JSON='"最终需求定义_section_found":true'
+  SECTIONS_RESULTS+=("最终需求定义_section_found|true")
   for section in "${REQUIRED_SECTIONS[@]}"; do
     key=$(echo "$section" | sed 's/### //')
     if echo "$EXTRACTED" | grep -qF "$section"; then
-      SECTIONS_JSON+=",\"$key\":\"PRESENT\""
+      SECTIONS_RESULTS+=("$key|PRESENT")
     else
-      SECTIONS_JSON+=",\"$key\":\"MISSING\""
+      SECTIONS_RESULTS+=("$key|MISSING")
       SECTIONS_OVERALL="FAIL"
     fi
   done
@@ -87,18 +91,28 @@ WORD_COUNT=$(wc -w < "$REQUIREMENT_FILE")
 
 OVERALL="$SECTIONS_OVERALL"
 
-cat > "$OUTPUT_FILE" << EOF
-{
-  "autostep": "RequirementCompletenessChecker",
-  "timestamp": "$TIMESTAMP",
-  "sections_check": {$SECTIONS_JSON},
-  "critical_unresolved_count": $CRITICAL_COUNT,
-  "assumed_items_count": $ASSUMED_COUNT,
-  "assumed_items_valid_format": $ASSUMED_VALID,
-  "word_count": $WORD_COUNT,
-  "word_count_threshold": $MIN_WORDS,
-  "overall": "$OVERALL"
+TIMESTAMP="$TIMESTAMP" CRITICAL_COUNT="$CRITICAL_COUNT" ASSUMED_COUNT="$ASSUMED_COUNT" \
+ASSUMED_VALID="$ASSUMED_VALID" WORD_COUNT="$WORD_COUNT" MIN_WORDS="$MIN_WORDS" \
+OVERALL="$OVERALL" OUTPUT_FILE="$OUTPUT_FILE" python3 -c "
+import json, os, sys
+sections_raw = [l for l in sys.stdin.read().strip().splitlines() if l]
+sections_check = {}
+for line in sections_raw:
+    key, val = line.split('|', 1)
+    sections_check[key] = val if val not in ('true', 'false') else (val == 'true')
+result = {
+    'autostep': 'RequirementCompletenessChecker',
+    'timestamp': os.environ['TIMESTAMP'],
+    'sections_check': sections_check,
+    'critical_unresolved_count': int(os.environ['CRITICAL_COUNT']),
+    'assumed_items_count': int(os.environ['ASSUMED_COUNT']),
+    'assumed_items_valid_format': os.environ['ASSUMED_VALID'] == 'true',
+    'word_count': int(os.environ['WORD_COUNT']),
+    'word_count_threshold': int(os.environ['MIN_WORDS']),
+    'overall': os.environ['OVERALL']
 }
-EOF
+with open(os.environ['OUTPUT_FILE'], 'w') as f:
+    json.dump(result, f, ensure_ascii=False, indent=2)
+" <<< "$(printf '%s\n' "${SECTIONS_RESULTS[@]}")"
 
 [ "$OVERALL" = "PASS" ] && exit 0 || exit 1

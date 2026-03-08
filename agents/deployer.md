@@ -56,7 +56,7 @@ permissionMode: acceptEdits
    ```
    若存在，从 docker-compose.yml 读取前端服务端口，执行可用性检查：
    ```bash
-   FRONTEND_PORT=$(grep -A20 "  $FRONTEND_SERVICE:" docker-compose.yml | grep -E "\"[0-9]+:[0-9]+\"" | head -1 | grep -oE "[0-9]+:" | head -1 | tr -d ':')
+   FRONTEND_PORT=$(grep -A20 "  $FRONTEND_SERVICE:" docker-compose.yml | grep -oE '[0-9]+:[0-9]+' | head -1 | cut -d: -f1)
    FRONTEND_URL="http://localhost:${FRONTEND_PORT:-80}"
    if curl -sf "$FRONTEND_URL/" | grep -qi "<!DOCTYPE html>"; then
      echo "✅ 前端服务可用：$FRONTEND_URL → HTTP 200 + HTML"

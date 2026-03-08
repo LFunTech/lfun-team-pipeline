@@ -15,9 +15,9 @@ mkdir -p "$(dirname "$OUTPUT_FILE")"
 
 NEW_TEST_FILES=""
 if [ -f "$STATE_FILE" ] && command -v python3 &>/dev/null; then
-  NEW_TEST_FILES=$(python3 -c "
-import json
-data = json.load(open('$STATE_FILE'))
+  NEW_TEST_FILES=$(STATE_FILE="$STATE_FILE" python3 -c "
+import json, os
+data = json.load(open(os.environ['STATE_FILE']))
 print('\n'.join(data.get('new_test_files', [])))
 " 2>/dev/null || echo "")
 fi
