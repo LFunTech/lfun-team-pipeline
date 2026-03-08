@@ -747,5 +747,61 @@ cp .pipeline/artifacts/{requirement.md,proposal.md,adr-draft.md,tasks.json} "$AR
 
 ---
 
+## 附录 A — Git Commit Message 规范
+
+| 阶段 | Commit Message |
+|------|----------------|
+| Phase 0 | `docs: add requirement specification` |
+| Phase 1 | `docs: add architecture proposal and ADRs` |
+| Gate A | `ci: gate-a passed` |
+| Phase 2 | `docs: add task breakdown (N tasks, M builders)` |
+| Phase 2.5 | `docs: add OpenAPI contracts for N services` |
+| Gate B | `ci: gate-b passed` |
+| Phase 3 | `feat(builder-<name>): implement <service-name>` |
+| Phase 3.5 | `refactor: simplify implementation per static analysis` |
+| Gate C | `ci: gate-c passed` |
+| Phase 4a | `test: add test suite (N cases, M passed)` |
+| Gate D | `ci: gate-d passed` |
+| Phase 5 | `docs: add README, CHANGELOG and API documentation` |
+| Gate E | `ci: gate-e passed` |
+| Phase 6 | `chore: add deployment configuration and woodpecker pipelines` |
+
+括号内变量从对应产物文件读取真实值。
+
+## 附录 B — state.json 完整 Schema
+
+```json
+{
+  "pipeline_id": "pipe-YYYYMMDD-001",
+  "project_name": "PROJECT",
+  "current_phase": "phase-0",
+  "last_completed_phase": null,
+  "status": "running",
+  "attempt_counts": {
+    "phase-0": 0, "phase-0.5": 0, "phase-1": 0, "gate-a": 0,
+    "phase-2.0a": 0, "phase-2.0b": 0, "phase-2": 0, "phase-2.1": 0, "gate-b": 0,
+    "phase-2.5": 0, "phase-2.6": 0, "phase-2.7": 0,
+    "phase-3": 0, "phase-3.0b": 0, "phase-3.1": 0, "phase-3.2": 0, "phase-3.3": 0,
+    "phase-3.5": 0, "phase-3.6": 0, "gate-c": 0, "phase-3.7": 0,
+    "phase-4a": 0, "phase-4a.1": 0, "phase-4.2": 0, "phase-4b": 0,
+    "gate-d": 0, "api-change-detector": 0,
+    "phase-5": 0, "phase-5.1": 0, "gate-e": 0, "phase-5.9": 0,
+    "phase-6.0": 0, "phase-6": 0, "phase-7": 0,
+    "per_builder": {}
+  },
+  "conditional_agents": { "migrator": false, "optimizer": false, "translator": false },
+  "phase_5_mode": "full",
+  "new_test_files": [],
+  "phase_3_base_sha": null,
+  "phase_3_worktrees": {},
+  "phase_3_branches": {},
+  "phase_3_main_branch": null,
+  "phase_3_merge_order": [],
+  "github_repo_created": false,
+  "github_repo_url": null,
+  "execution_log": []
+}
+```
+
 ---
 

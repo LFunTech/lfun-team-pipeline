@@ -88,7 +88,7 @@ claude --agent orchestrator
 # Each run executes one batch and exits; run again to continue the next batch
 ```
 
-The pipeline uses a **batch execution model**: each `claude --agent orchestrator` invocation executes one batch (typically 1-3 phases), then exits. Run it again to continue. 17 batches cover the complete pipeline (Phase 0 through Phase 7).
+The pipeline uses a **batch execution model**: each `claude --agent orchestrator` invocation executes one batch (typically 1-3 phases), then exits. Run it again to continue. 12 batches cover the complete pipeline (Phase 0 through Phase 7).
 
 ```bash
 # Continue to the next batch

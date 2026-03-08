@@ -81,8 +81,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Token optimization: Remove log system / Token 优化：移除日志系统**: Replaced the entire structured log system (35 step logs + pipeline.index.json + context injection + causality tracking, ~280 lines) with a lightweight `execution_log` array in state.json. Each step appends one line `{step, result, attempt, rollback_to, ts}`. Saves ~100 tool calls per pipeline run.
   移除整个结构化日志系统（35 个步骤日志 + pipeline.index.json + 上下文注入 + 因果标注，约 280 行），替换为 state.json 内嵌的 `execution_log` 轻量数组。每步追加一行记录。每次流水线减少约 100 次工具调用。
 
-- **Batch execution model / 批次执行模型**: Orchestrator now executes one batch per invocation and exits, instead of running all 30+ phases in a single conversation. Token cost drops from O(n²) to O(n). 17 batches cover the full pipeline; re-run `claude --agent orchestrator` to continue.
-  Orchestrator 每次启动只执行一个批次后退出，而非在单次对话中跑完 30+ 步。Token 消耗从 O(n²) 降至 O(n)。17 个批次覆盖完整流水线，再次运行 `claude --agent orchestrator` 即可继续。
+- **Batch execution model / 批次执行模型**: Orchestrator executes one batch per invocation then exits. Token cost drops from O(n²) to O(n). 12 batches cover the full pipeline (merged from 17); re-run `claude --agent orchestrator` to continue.
+  Orchestrator 每次启动只执行一个批次后退出。Token 消耗从 O(n²) 降至 O(n)。12 个批次覆盖完整流水线（从 17 个合并），再次运行即可继续。
+
+- **Token optimization: Orchestrator prompt slimming / Token 优化：Orchestrator 提示词瘦身**: Orchestrator system prompt reduced from 29KB to 6KB (-80%). Phase-specific instructions (System Planning, Memory Load/Consolidation, proposal detail) moved to playbook for on-demand loading.
+  Orchestrator 系统提示词从 29KB 缩减至 6KB（-80%）。阶段特定指令（系统规划、记忆加载/固化、提案细节）移至 playbook 按需加载。
+
+- **Token optimization: builder-infra slimming / Token 优化：builder-infra 瘦身**: builder-infra.md reduced from 9.8KB to 4KB (-60%). Removed redundant YAML templates and verbose comments while preserving all constraints.
+  builder-infra.md 从 9.8KB 缩减至 4KB（-60%）。移除冗余 YAML 模板和详细注释，保留所有约束。
 
 - **Token optimization: Playbook batch read / Token 优化：Playbook 批量读取**: Each batch reads all its playbook sections in one Read call instead of grep+read per step.
   每个批次一次性读取涉及的所有 playbook 章节，减少 grep+read 往返。
