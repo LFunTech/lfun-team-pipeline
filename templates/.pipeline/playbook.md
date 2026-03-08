@@ -7,51 +7,130 @@
 
 ## System Planning — 系统规划
 
-> 仅在 `.pipeline/proposal-queue.json` 不存在时执行。详细规则见 orchestrator.md 中"System Planning"节。
+> 仅在 `.pipeline/proposal-queue.json` 不存在时执行。
 
 本章节由 Orchestrator 内联执行（不 spawn 独立 Agent），交互式与用户对话：
 
-1. 请用户描述完整系统
-2. 最多 3 轮澄清（系统边界、核心域、技术偏好）
-3. 生成系统蓝图 `.pipeline/artifacts/system-blueprint.md`
-4. 拆解为提案队列 `.pipeline/proposal-queue.json`
-5. 将共享约定写入 `project-memory.json` 的 constraints
-6. 用户确认蓝图和提案列表
-7. **自治模式**（`autonomous_mode = true`）：逐个提案与用户确认 `detail`（用户故事、业务规则、验收标准、API 概览、数据实体、非功能需求），全部确认后写入 proposal-queue.json
-8. 进入 `pick-next-proposal`
+1. 向用户提问："请描述你要构建的完整系统（功能、用户角色、核心业务流程）。"
+2. 最多 3 轮澄清（聚焦系统边界、核心域、技术偏好）
+3. 生成系统蓝图 `.pipeline/artifacts/system-blueprint.md`，包含：
+   - 系统定位（一句话）、技术栈选型、域划分（核心业务域列表）
+   - 数据模型骨架（表名 + 核心外键关系，不含完整字段）
+   - 跨域集成协议（域间交互方式）、共享约定（API 前缀、认证方式、错误格式）
+4. 将系统拆解为有序提案队列，写入 `.pipeline/proposal-queue.json`：
+   - 每个提案是一个可独立交付的增量
+   - 明确 `depends_on`（依赖哪些前序提案）和 `scope`（包含/不包含什么）
+   - 第一个提案应包含基础框架搭建（脚手架、CI、认证基础设施）
+5. 将蓝图中的技术栈和共享约定写入 `project-memory.json` 的 `constraints`（自动分配 id）
+6. 展示蓝图和提案队列给用户确认，用户可调整顺序、范围、增删提案
+7. **自治模式**（`autonomous_mode = true`）：逐个提案与用户确认 `detail`（结构见下），全部确认后写入 proposal-queue.json
+8. 用户确认后进入 `pick-next-proposal`
+
+> 自治模式提示：System Planning 完成后，若 `autonomous_mode = false`，提示用户可设置 `"autonomous_mode": true` 以全自动执行。
+
+### 蓝图模板
+
+```markdown
+# 系统蓝图: [系统名称]
+## 系统定位
+[一句话描述]
+## 技术栈
+- 后端: [框架] / 前端: [框架]（如有） / 数据库: [数据库] / 部署: [方式]
+## 域划分与提案归属
+| 业务域 | 负责提案 | 依赖域 |
+## 数据模型骨架
+[表名 + 核心外键关系]
+## 跨域集成协议
+[域间交互方式]
+## 共享约定
+[API 前缀、认证方式、错误格式、日志格式]
+## 交付计划
+[提案顺序 + 依赖关系 + 范围边界]
+```
+
+### 提案 detail 结构（自治模式必填，交互模式可选）
+
+```json
+{
+  "id": "P-001", "title": "基础框架与用户体系",
+  "scope": "包含/不包含描述", "depends_on": [], "status": "pending",
+  "detail": {
+    "user_stories": ["管理员可以创建/编辑/禁用用户账号"],
+    "business_rules": ["密码最少 8 位，包含大小写和数字"],
+    "acceptance_criteria": ["POST /api/auth/login 返回 200 + JWT Token"],
+    "api_overview": ["POST /api/auth/login — 登录"],
+    "data_entities": ["users(id, email, password_hash, name, role, status, created_at)"],
+    "non_functional": ["API 响应时间 p95 < 200ms"]
+  }
+}
+```
+
+细化流程（仅 `autonomous_mode = true`）：蓝图确认后逐个提案展示 detail 草案请用户审阅修改，确认后写入 proposal-queue.json。交互模式下 detail 字段可选。
 
 ---
 
 ## Pick Next Proposal — 提案选取
 
-> 详细规则见 orchestrator.md 中"Pick Next Proposal"节。
-
-1. 读取 proposal-queue.json，找第一个 pending 提案
-2. 检查依赖是否全部 completed
-3. 标记为 running，初始化新 state.json
-4. 将提案 title + scope 作为输入传给 Phase 0
+1. 读取 `proposal-queue.json`，找第一个 `status: "pending"` 的提案
+2. 检查 `depends_on` 中所有提案是否已 `completed`，未满足 → ESCALATION
+3. 将该提案 `status` 改为 `"running"`，`pipeline_id` 设为当前 `state.json.pipeline_id`
+4. 重新初始化 `state.json`（新 pipeline_id，attempt_counts 归零，status: running）
+5. **交互模式**传递格式：
+   ```
+   [来自系统规划的提案 P-NNN]
+   标题: <title>
+   范围: <scope>
+   依赖提案: <depends_on 中已完成提案的 title>
+   请基于以上范围进行需求澄清。
+   ```
+6. **自治模式**（`autonomous_mode = true`）：**不 spawn Clarifier**。Orchestrator 直接将提案 `detail` 字段转写为 `requirement.md`。章节映射：
+   - `user_stories` → `## 用户故事`、`business_rules` → `## 业务规则`
+   - `acceptance_criteria` → `## 验收标准`、`api_overview` → `## API 概览`
+   - `data_entities` → `## 数据实体`、`non_functional` → `## 非功能需求`
+   - 文件头：`# <title>`、`> 范围: <scope>`。无 detail 的字段跳过，不确定项标注 `[ASSUMED]`
 
 ---
 
 ## Mark Proposal Completed — 提案完成标记
 
-> 详细规则见 orchestrator.md 中"Mark Proposal Completed"节。
-
-1. 将当前 running 提案标记为 completed
-2. 输出完成日志
-3. 进入 pick-next-proposal
+1. 读取 `proposal-queue.json`，找到当前 `status: "running"` 的提案
+2. 将其 `status` 改为 `"completed"`，写入文件
+3. 输出 `[Pipeline] 提案 <id> <title> 交付完成`
+4. 进入 `pick-next-proposal`（路由表指向）
 
 ---
 
 ## Memory Load — 项目记忆加载
 
-> 详细规则见 orchestrator.md 中"项目记忆加载（Memory Load）"节。
-
 在 Phase 0 之前执行。读取 `.pipeline/project-memory.json`：
 
 1. 文件不存在 → 跳过（首次运行），直接进入 Phase 0
-2. 文件存在 → 调用 `build_memory_injection()` 生成注入块
-3. 注入块传递给 Phase 0 Clarifier 和 Phase 1 Architect 的 spawn 消息
+2. 文件存在 → 生成注入块，传递给 Phase 0 Clarifier 和 Phase 1 Architect 的 spawn 消息最前方
+3. 其他阶段不注入项目记忆（通过 artifacts 文件传递信息）
+
+**注入块生成规则**（`build_memory_injection`）：
+```python
+lines = [f"项目定位：{memory.get('project_purpose', '未定义')}"]
+# 最近 10 次交付摘要
+runs = memory.get("runs", [])
+if runs:
+    features = "、".join(r["feature"] for r in runs[-10:])
+    lines.append(f"已完成 {len(runs)} 次交付：{features}")
+# 最近 5 次实现足迹（API + DB）
+for r in [r for r in runs if r.get("footprint")][-5:]:
+    fp = r["footprint"]
+    lines.append(f"  [{r['pipeline_id']}] {r['feature']}")
+    if fp.get("api_endpoints"): lines.append(f"    API: {', '.join(fp['api_endpoints'][:5])}")
+    if fp.get("db_tables"): lines.append(f"    DB: {', '.join(fp['db_tables'])}")
+# 现有约束
+for c in memory.get("constraints", []):
+    tags = ", ".join(c.get("tags", []))
+    lines.append(f"  [{c['id']}]({tags}) {c['text']}")
+# 已推翻约束（最近 5 条，仅供参考）
+for s in memory.get("superseded", [])[-5:]:
+    lines.append(f"  [{s['id']}] {s['text']} → 被 {s['superseded_by']} 推翻：{s['reason']}")
+```
+输出格式：`=== Project Memory ===\n<lines>\n=== End Memory ===`。若只有"项目定位：未定义"且无其他内容，跳过注入。
 
 ---
 
@@ -624,33 +703,49 @@ output: .pipeline/artifacts/monitor-report.json
 
 ## Memory Consolidation — 项目记忆固化
 
-> 详细规则见 orchestrator.md 中"项目记忆固化"节。Phase 7 返回 NORMAL 后执行。
+Phase 7 返回 NORMAL 后执行。
 
-1. **提取候选约束**：读取 `requirement.md`、`proposal.md`、`adr-draft.md`，提取 MUST/MUST NOT 形式的约束句
-2. **与已有约束去重**：读取 `project-memory.json`，语义重复跳过，语义冲突标记待确认
-3. **确认约束**：
-   - **交互模式**（`autonomous_mode = false`）：列出新约束和冲突约束，等待用户回复"确认"
-   - **自治模式**（`autonomous_mode = true`）：自动接受新增约束，冲突约束跳过（保留旧约束），输出日志
-4. **写入 project-memory.json**：
-   - 新增约束追加到 `constraints`，自动分配 `id`（C-NNN）
-   - 被推翻约束移入 `superseded`
-   - 追加本次运行到 `runs`（含实现足迹）
-   - 首次运行时写入 `project_purpose`
-5. **归档本次产物**：复制 requirement.md、proposal.md、adr-draft.md、tasks.json 到 `.pipeline/history/<pipeline_id>/`
+### Step 1 — 提取候选约束
+读取 `requirement.md`、`proposal.md`、`adr-draft.md`，提取 **MUST / MUST NOT / 必须 / 禁止 / 统一 / 限制** 形式的约束句。
+
+### Step 2 — 与已有约束去重
+读取 `project-memory.json`（不存在则初始化为 `{"version":1,"project_purpose":"","constraints":[],"superseded":[],"runs":[]}`）。
+- 语义重复 → 跳过
+- 语义冲突 → 标记待确认
+
+### Step 3 — 确认约束
+**交互模式**（`autonomous_mode = false`）：
+```
+本次交付产生以下新约束，请确认或修改后回复"确认"：
+  [C-NNN] <约束文本>
+以下约束可能与已有约束冲突，请确认是否推翻：
+  [C-XXX] <旧约束> ← 与新约束 <新文本> 冲突？
+```
+**自治模式**（`autonomous_mode = true`）：自动接受新增约束，冲突约束跳过（保留旧约束，标注 `[AUTO-SKIPPED]`），输出 `[Pipeline] 自治模式：自动接受 N 条新约束，跳过 M 条冲突约束`。
+
+### Step 4 — 写入 project-memory.json
+1. 首次运行时从 `requirement.md` 提取项目定位写入 `project_purpose`
+2. 新增约束追加到 `constraints`，自动分配 `id`（C-NNN，已有最大编号 +1）
+3. 每条约束：`{id, text, tags, source: <pipeline_id>}`
+4. 被推翻约束从 `constraints` 移入 `superseded`，记录 `superseded_by` 和 `reason`
+5. 追加本次运行到 `runs`：
+   ```json
+   {"pipeline_id":"<id>","date":"<YYYY-MM-DD>","feature":"<标题>",
+    "proposal_ref":"history/<id>/proposal.md","adr_ref":"history/<id>/adr-draft.md",
+    "footprint":{"api_endpoints":["从 impl-manifest-backend.json 提取"],
+                 "db_tables":["从 impl-manifest-dba.json 提取"],
+                 "key_files":["从 impl-manifest.json 提取前 10 个"]}}
+   ```
+6. `constraints` 超 50 条 → 输出 `[WARN] 项目约束已达 50 条上限，建议审查清理`
+
+### Step 5 — 归档本次产物
+```bash
+ARCHIVE_DIR=".pipeline/history/${PIPELINE_ID}"
+mkdir -p "$ARCHIVE_DIR"
+cp .pipeline/artifacts/{requirement.md,proposal.md,adr-draft.md,tasks.json} "$ARCHIVE_DIR/"
+```
 
 ---
-
-## Mark Proposal Completed — 提案完成标记
-
-> 详细规则见 orchestrator.md 中"Mark Proposal Completed"节。
-
-Memory Consolidation 完成后执行：
-
-1. 读取 `proposal-queue.json`，找到当前 `status: "running"` 的提案
-2. 将其 `status` 改为 `"completed"`
-3. 写入 proposal-queue.json
-4. 输出 `[Pipeline] 提案 <id> <title> 交付完成`
-5. 进入 `pick-next-proposal`（路由表指向）
 
 ---
 
