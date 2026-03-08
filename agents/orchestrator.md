@@ -24,6 +24,8 @@ permissionMode: acceptEdits
 3. 读取 `.pipeline/project-memory.json`（不存在则跳过，视为首次运行）。
 4. 初始化日志目录（见"日志系统"节）。
 5. 读取 `.pipeline/proposal-queue.json`（不存在则进入 System Planning）。
+   - JSON 解析失败 → ESCALATION，输出 `[ESCALATION] proposal-queue.json 格式错误，请检查文件内容`
+   - 解析成功后验证 `depends_on` 无循环引用：从每个 pending 提案出发，沿 depends_on 链遍历，若回到自身 → ESCALATION，输出 `[ESCALATION] 提案依赖存在循环: <循环路径>`
 6. 按阶段路由表驱动流水线执行。
 
 ## state.json 模式
@@ -75,6 +77,8 @@ permissionMode: acceptEdits
 ```
 
 每次进入新阶段时递增对应 `attempt_counts`。超过 `max_attempts`（默认 3）→ ESCALATION。
+
+**`conditional_agents` 赋值时机**：Gate A PASS 后、进入 Phase 2 之前，Orchestrator 读取 `proposal.md` 中 Architect 输出的条件标记（`data_migration_required` / `performance_sensitive` / `i18n_required`），映射写入 `state.json.conditional_agents` 对应字段。Planner（Phase 2）据此分配条件角色任务。
 
 ## 阶段路由表
 
@@ -330,13 +334,33 @@ Resolver 输出 `resolver_verdict`：
 
 多 Auditor 指定不同 rollback_to 时，取最深（最早 Phase）目标，除非 Resolver 覆盖（且不为 null）。
 
+**Per-Gate rollback_to 合法范围**（机械校验，超范围时输出 WARN 日志但不拦截，仍取最深值）：
+
+| Gate | Auditor-QA 允许范围 | 其他 Auditor 允许范围 |
+|------|---------------------|----------------------|
+| Gate A | phase-0, phase-1 | phase-0, phase-1 |
+| Gate B | phase-1, phase-2 | phase-1, phase-2 |
+| Gate D | phase-3, phase-4a | phase-3, phase-4a |
+| Gate E | phase-5 | phase-5 |
+
+若某 Auditor 返回的 `rollback_to` 不在对应 Gate 的合法范围内，输出 `[WARN] <reviewer> 在 <gate> 返回超范围 rollback_to: <value>，预期范围: <range>`。
+
 ## ESCALATION 条件
 
 - 任意阶段超过 max_attempts 次 → 暂停，输出 `[ESCALATION] 超过最大重试次数，请求人工介入`
 - Phase 6.0 FAIL → 暂停，输出部署前检查失败详情
 - Clarifier 5 轮后仍有 `[CRITICAL-UNRESOLVED]` → 暂停
+- proposal-queue.json 解析失败或依赖循环 → 暂停
 
 所有 ESCALATION 触发时，均需写索引最终状态：将 `pipeline.index.json` 中 `status` 字段更新为 `"escalation"`，`updated_at` 更新为当前时间。
+
+### ESCALATION 恢复
+
+ESCALATION 暂停后，state.json 保留当前阶段状态（`current_phase` 和 `status: "escalation"`）。用户修复根因后恢复流程：
+
+1. 根据 ESCALATION 消息修复问题（如：修正 proposal-queue.json 格式、手动部署前置条件等）
+2. 将 `state.json` 中 `status` 改回 `"running"`（`current_phase` 保持不变）
+3. 重新运行 `claude --agent orchestrator`，流水线从暂停处继续
 
 ## Git Push 规范
 
@@ -486,7 +510,7 @@ if not os.path.exists(INDEX_PATH):
 | Builder | `impl-manifest-<name>.json` | `summary`（若有）或 `"共变更 N 个文件"` |
 | Architect | `proposal.md` | 技术栈段落的前 2 行 |
 | Clarifier | `requirement.md` | "验收标准"的前 3 条 |
-| Tester | `test-report.json` | `total`、`passed`、`coverage` 三个数字 |
+| Tester | `test-report.json` + `coverage-report.json` | `total`、`passed`（来自 test-report.json）+ `line_coverage_pct`（来自 coverage-report.json，Phase 4.2 生成） |
 | Documenter | `doc-manifest.json` | `docs_updated` 列表（前 3 项） |
 | Deployer | `deploy-report.json` | `status` + `environment` + `failure_type`（如有） |
 | Monitor | `monitor-report.json` | `status` + `error_rate` + `p95_latency`（如有） |

@@ -37,8 +37,7 @@ except: print('')
 " 2>/dev/null || echo "")
 
 COVERED=0
-UNCOVERED_LIST="["
-FIRST=true
+UNCOVERED_ASSUMPTIONS=()
 
 if [ "$ASSUMED_COUNT" -gt 0 ]; then
   while IFS= read -r assumption; do
@@ -47,28 +46,32 @@ if [ "$ASSUMED_COUNT" -gt 0 ]; then
     if echo "$TASKS_TEXT" | grep -qi "$keyword"; then
       COVERED=$((COVERED + 1))
     else
-      if ! $FIRST; then UNCOVERED_LIST+=","; fi
-      FIRST=false
-      UNCOVERED_LIST+="{\"assumption\":\"$assumption\",\"severity\":\"WARN\"}"
+      UNCOVERED_ASSUMPTIONS+=("$assumption")
     fi
   done <<< "$ASSUMPTIONS"
 fi
 
-UNCOVERED_LIST+="]"
 UNCOVERED_COUNT=$((ASSUMED_COUNT - COVERED))
 OVERALL="PASS"
-[ "$UNCOVERED_COUNT" -gt 0 ] && OVERALL="WARN" || true
+[ "$UNCOVERED_COUNT" -gt 0 ] && OVERALL="WARN"
 
-cat > "$OUTPUT_FILE" << EOF
-{
-  "autostep": "AssumptionPropagationValidator",
-  "timestamp": "$TIMESTAMP",
-  "assumptions_found": $ASSUMED_COUNT,
-  "covered": $COVERED,
-  "uncovered_count": $UNCOVERED_COUNT,
-  "uncovered": $UNCOVERED_LIST,
-  "overall": "$OVERALL"
+COVERED="$COVERED" UNCOVERED_COUNT="$UNCOVERED_COUNT" ASSUMED_COUNT="$ASSUMED_COUNT" \
+OVERALL="$OVERALL" TIMESTAMP="$TIMESTAMP" OUTPUT_FILE="$OUTPUT_FILE" \
+python3 -c "
+import json, os, sys
+uncovered_lines = sys.stdin.read().strip().splitlines() if sys.stdin.readable() else []
+uncovered = [{'assumption': a, 'severity': 'WARN'} for a in uncovered_lines if a]
+data = {
+    'autostep': 'AssumptionPropagationValidator',
+    'timestamp': os.environ['TIMESTAMP'],
+    'assumptions_found': int(os.environ['ASSUMED_COUNT']),
+    'covered': int(os.environ['COVERED']),
+    'uncovered_count': int(os.environ['UNCOVERED_COUNT']),
+    'uncovered': uncovered,
+    'overall': os.environ['OVERALL']
 }
-EOF
+with open(os.environ['OUTPUT_FILE'], 'w') as f:
+    json.dump(data, f, ensure_ascii=False, indent=2)
+" <<< "$(printf '%s\n' "${UNCOVERED_ASSUMPTIONS[@]+"${UNCOVERED_ASSUMPTIONS[@]}"}")"
 
 exit 0

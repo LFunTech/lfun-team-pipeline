@@ -44,9 +44,15 @@ permissionMode: acceptEdits
 3. 执行 Smoke Test（deploy-plan.md 中定义的健康检查端点）
 3.5. **前端可用性验证**（若 Docker Compose 中存在 nginx/frontend 服务）
 
-   检查 `docker-compose.yml` 是否存在 nginx 或 frontend 服务：
+   检查 `docker-compose.yml` 是否存在前端服务（匹配常见前端服务名）：
    ```bash
-   FRONTEND_SERVICE=$(grep -E "^\s+(nginx|frontend):" docker-compose.yml | head -1 | tr -d ' :')
+   FRONTEND_SERVICE=$(grep -E "^\s+(nginx|frontend|web-frontend|app-frontend|static):" docker-compose.yml | head -1 | tr -d ' :')
+   ```
+   若以上正则未命中，进一步检查 deploy-plan.md 中是否有 `frontend_service:` 标注（Builder-Infra 可在 deploy-plan.md 中显式声明前端服务名）：
+   ```bash
+   if [ -z "$FRONTEND_SERVICE" ] && [ -f ".pipeline/artifacts/deploy-plan.md" ]; then
+     FRONTEND_SERVICE=$(grep -oP 'frontend_service:\s*\K\S+' .pipeline/artifacts/deploy-plan.md | head -1)
+   fi
    ```
    若存在，从 docker-compose.yml 读取前端服务端口，执行可用性检查：
    ```bash

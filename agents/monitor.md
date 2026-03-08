@@ -39,7 +39,7 @@ fi
 
 ## 前置检查：前端可用性验证
 
-在量化观测开始前，检查前端服务可用性（若项目包含 nginx/frontend 服务）：
+在量化观测开始前，检查前端服务可用性（若项目包含 nginx/frontend/web-frontend/app-frontend/static 等前端服务）：
 
 ```bash
 # 从 deploy-report.json 读取前端检查结果（Deployer 已执行初步验证）
@@ -74,7 +74,7 @@ fi
 ## 判定规则
 
 - **NORMAL**：所有指标在阈值内，无异常 → 流水线 COMPLETED
-- **ALERT**：指标超过 ALERT 阈值但未达 CRITICAL → 触发 Hotfix Scope Analyzer
+- **ALERT**：指标超过 ALERT 阈值但未达 CRITICAL → Orchestrator 分析 `alert_details` 定位受影响模块后 rollback phase-3 精确 hotfix
 - **CRITICAL**：指标超过 CRITICAL 阈值 → Orchestrator 激活 Deployer 执行生产回滚
 
 ## 输出
@@ -92,6 +92,9 @@ fi
     "error_log_rate": "normal"
   },
   "frontend_check": "PASS|WARN|SKIP",
+  "alert_details": [
+    {"module": "affected-module-name", "symptom": "错误描述", "suspected_builder": "builder-backend"}
+  ],
   "status": "NORMAL|ALERT|CRITICAL",
   "status_reason": "所有指标正常|超过 ALERT 阈值：...|超过 CRITICAL 阈值：..."
 }

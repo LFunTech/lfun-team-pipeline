@@ -28,6 +28,7 @@ permissionMode: acceptEdits
 - **写入 impl-manifest**：`$PIPELINE_DIR/artifacts/impl-manifest-translator.json`（主 repo，不在 worktree）
 - **禁止**：不得修改 `$PIPELINE_DIR` 以外、且不在 tasks.json 授权路径下的任何文件
 - 需读取 Frontend 实现代码时，使用 Orchestrator 传入的 `$FRONTEND_WORKTREE` 绝对路径访问 Frontend worktree 内的文件。
+- 若 `$FRONTEND_WORKTREE` 为空字符串，说明项目无 Frontend Builder，跳过前端文案提取，仅处理后端国际化（如 API 响应消息、错误码文案）。
 
 ## 输入
 

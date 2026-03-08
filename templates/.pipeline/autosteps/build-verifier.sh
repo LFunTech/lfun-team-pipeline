@@ -12,6 +12,8 @@ PIPELINE_DIR="${PIPELINE_DIR:-.pipeline}"
 REPORT="$PIPELINE_DIR/artifacts/build-verifier-report.json"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
+mkdir -p "$(dirname "$REPORT")"
+
 write_report() {
   local overall="$1" tool="$2" output="$3" errors="$4" test_compile="$5" test_errors="$6"
   OVERALL="$overall" TOOL="$tool" BUILD_OUTPUT="$output" ERRORS="$errors" \
@@ -124,7 +126,7 @@ print(json.dumps(lines))
     write_report "PASS" "npm-skip" "无 build 脚本，跳过" "[]" "SKIP" "[]"
   fi
 
-elif [ -f "pyproject.toml" ] || [ -f "setup.py" ] || ls *.py 2>/dev/null | grep -q .; then
+elif [ -f "pyproject.toml" ] || [ -f "setup.py" ] || find . -maxdepth 1 -name "*.py" -type f -print -quit 2>/dev/null | grep -q .; then
   echo "[BuildVerifier] 检测到 Python 项目，Python 无需编译验证（PASS）"
   write_report "PASS" "python-skip" "Python 动态语言，无需编译" "[]" "SKIP" "[]"
 

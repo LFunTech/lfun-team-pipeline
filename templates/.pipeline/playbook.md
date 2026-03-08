@@ -277,7 +277,7 @@ cwd: <phase_3_worktrees["name"]>（绝对路径）
 PIPELINE_DIR: <主repo绝对路径>/.pipeline
 BUILDER_NAME: <name>
 ```
-Translator 额外传入：`FRONTEND_WORKTREE: <phase_3_worktrees["frontend"]>`
+Translator 额外传入：`FRONTEND_WORKTREE: <phase_3_worktrees["frontend"]>`（若 `phase_3_worktrees` 中不存在 `"frontend"` key，传空字符串 `FRONTEND_WORKTREE=""`，Translator 仅处理后端文案国际化，跳过前端代码读取）
 
 **完成验证**（每个 Builder 完成后机械检查）：
 1. `$PIPELINE_DIR/artifacts/impl-manifest-<name>.json` 存在且非空
@@ -438,7 +438,7 @@ spawn: inspector
 input: 代码 + 所有 Phase 3 报告
 output: .pipeline/artifacts/gate-c-review.json
 ```
-Inspector 调用前，Orchestrator 在产物中机械设置 `simplifier_verified: true/false`。
+Inspector 调用前，Orchestrator 在 spawn 消息中追加 `simplifier_verified: true`（当 Phase 3.6 Post-Simplification Verifier PASS 时）或 `simplifier_verified: false`（当 Phase 3.6 未执行或 FAIL 时）。此字段通过 spawn 消息传递，不存储在 state.json 或独立文件中。
 FAIL → rollback_to: phase-3（重新经过 3.0b→3.1→3.2→3.3→3.5→3.6→Gate C）
 1. 激活 Resolver 修复 Inspector 报告的 CRITICAL/MAJOR 问题（Resolver 直接在主分支上提交修复）。
 2. Resolver 完成后，**必须更新 `phase_3_base_sha`**（Bug #15 修复）：
@@ -537,7 +537,7 @@ FAIL → 运行 Phase 4a.1（Test Failure Mapper）
 - Phase 4a Tester：**写入** `state.json.new_test_files`（当前运行新增的测试文件）
 - Phase 7 Monitor NORMAL：**毕业**，将 `new_test_files` 条目迁移到 `regression-suite-manifest.json`，然后清空 `new_test_files`
 
-写日志：调用 `write_step_log`，step=`"phase-4a"`，step_type=`"agent"`，agent=`"tester"`，从 `test-report.json` 读取 `total`、`passed`、`coverage` 三个字段作为 `key_decisions`（格式："共 N 用例，通过 M，覆盖率 X%"）。
+写日志：调用 `write_step_log`，step=`"phase-4a"`，step_type=`"agent"`，agent=`"tester"`，从 `test-report.json` 读取 `total`、`passed` 两个字段作为 `key_decisions`（格式："共 N 用例，通过 M"）。覆盖率数据由 Phase 4.2 的 `coverage-report.json` 提供，不在此处提取。
 
 ---
 
@@ -564,7 +564,7 @@ FAIL → rollback_to: phase-4a
 
 PASS 后条件跳转：读取 `state.json.conditional_agents.optimizer`，若为 `true` → 进入 Phase 4b；若为 `false` → 跳过 Phase 4b，直接进入 Gate D。
 
-写日志：调用 `write_step_log`，step=`"phase-4.2"`，step_type=`"autostep"`，agent=`""`，从 `coverage-report.json`（若存在）读取 `overall` 及覆盖率阈值对比结果作为 `key_decisions`。
+写日志：调用 `write_step_log`，step=`"phase-4.2"`，step_type=`"autostep"`，agent=`""`，从 `coverage-report.json`（由 `test-coverage-enforcer.sh` 生成，schema: `{line_coverage_pct, threshold_pct, below_threshold, overall}`）读取 `overall` 及 `line_coverage_pct` vs `threshold_pct` 对比结果作为 `key_decisions`（格式："覆盖率 X%，阈值 Y%，overall"）。
 
 ---
 
@@ -704,7 +704,7 @@ output: .pipeline/artifacts/monitor-report.json
 读取 `status` 字段：
 - `NORMAL` → 写入 state.json `status: COMPLETED`，执行测试文件毕业（new_test_files → regression-suite-manifest.json）
   写索引最终状态：将 `pipeline.index.json` 中 `status` 字段更新为 `"completed"`，`updated_at` 更新为当前时间。
-- `ALERT` → 运行 Hotfix Scope Analyzer → phase-3 hotfix
+- `ALERT` → Orchestrator 分析 `monitor-report.json` 中 `alert_details` 定位受影响模块，映射到对应 Builder，rollback_to: phase-3（精确重跑受影响 Builder）
   标注因果：调用 `mark_rollback_causality(cause_step="phase-7", target_step="phase-3")`。
 - `CRITICAL` → 激活 Deployer 执行生产回滚 → rollback_to: phase-1
   标注因果：调用 `mark_rollback_causality(cause_step="phase-7", target_step="phase-1")`。
@@ -754,7 +754,7 @@ Memory Consolidation 完成后执行：
 | Builder | `impl-manifest-<name>.json` | `summary`（若有）或 `"共变更 N 个文件"` |
 | Architect | `proposal.md` | 技术栈段落的前 2 行 |
 | Clarifier | `requirement.md` | "验收标准"的前 3 条 |
-| Tester | `test-report.json` | `total`、`passed`、`coverage` 三个数字 |
+| Tester | `test-report.json` + `coverage-report.json` | `total`、`passed`（来自 test-report.json）+ `line_coverage_pct`（来自 coverage-report.json，Phase 4.2 生成） |
 | Documenter | `doc-manifest.json` | `docs_updated` 列表（前 3 项） |
 | Deployer | `deploy-report.json` | `status` + `environment` + `failure_type`（如有） |
 | Monitor | `monitor-report.json` | `status` + `error_rate` + `p95_latency`（如有） |

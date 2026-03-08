@@ -48,7 +48,7 @@ elif [ -f "go.mod" ] && command -v go &>/dev/null; then
   go test ./... > /dev/null 2>&1
   REGRESSION_EXIT=$?
   set -e
-elif command -v python3 &>/dev/null && [ -f "pytest.ini" ]; then
+elif command -v python3 &>/dev/null && { [ -f "pyproject.toml" ] || [ -f "pytest.ini" ]; }; then
   set +e
   python3 -m pytest -q > /dev/null 2>&1
   REGRESSION_EXIT=$?

@@ -56,7 +56,12 @@ permissionMode: acceptEdits
 
 ## Smoke Test
 - 健康检查端点: GET /health
+
+## 前端服务标注（若适用）
+frontend_service: <docker-compose.yml 中前端服务的名称，如 nginx / frontend>
 ```
+
+> **注意**：`frontend_service` 字段供 Deployer（Phase 6）和 Monitor（Phase 7）自动识别前端服务名称。若项目包含前端服务但 docker-compose.yml 中服务名不是 `nginx` 或 `frontend`（如 `web`、`static` 等），必须在此标注，否则前端可用性检查将被跳过。
 
 ## .woodpecker/ 目录规范
 
