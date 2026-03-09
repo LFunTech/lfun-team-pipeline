@@ -83,22 +83,19 @@ team init
 $EDITOR .pipeline/config.json
 
 # 3. 启动流水线 —— 描述你要构建的完整系统
-claude --agent orchestrator
+claude --dangerously-skip-permissions --agent orchestrator
 # 首次运行自动进入系统规划，生成提案队列后逐个执行
 # 每次执行一个批次后自动退出，再次运行即可继续下一批次
 ```
 
-流水线采用**批次执行模式**：每次运行 `claude --agent orchestrator` 执行一个批次（通常包含 1~3 个阶段），然后自动退出。再次运行即可继续下一批次。12 个批次覆盖完整流水线（Phase 0 → Phase 7）。
+流水线采用**批次执行模式**：每次运行 `claude --dangerously-skip-permissions --agent orchestrator` 执行一个批次（通常包含 1~3 个阶段），然后自动退出。再次运行即可继续下一批次。12 个批次覆盖完整流水线（Phase 0 → Phase 7）。
 
 ```bash
 # 继续执行下一批次
-claude --agent orchestrator
+claude --dangerously-skip-permissions --agent orchestrator
 
-# 查看当前进度
-cat .pipeline/state.json | python3 -c "
-import json,sys; s=json.load(sys.stdin)
-print(f'Phase: {s[\"current_phase\"]}, Status: {s[\"status\"]}')
-"
+# 查看当前进度（彩色状态面板）
+team status
 ```
 
 ## 自治模式（Autonomous Mode）
@@ -152,7 +149,7 @@ cat > .pipeline/config.json << 'EOF'
 EOF
 
 # 启动流水线
-claude --agent orchestrator
+claude --dangerously-skip-permissions --agent orchestrator
 # → 系统规划阶段与你交互（描述系统、确认蓝图、确认每个提案细节）
 # → 规划完成后全自动执行所有提案，无需再次干预
 ```
@@ -212,7 +209,7 @@ git commit -m "chore: add lfun-team-pipeline"
 **第四步 — 启动流水线**
 
 ```bash
-claude --agent orchestrator
+claude --dangerously-skip-permissions --agent orchestrator
 ```
 
 描述你想新增的功能或完整系统。首次运行时 Orchestrator 会进入系统规划阶段，生成提案队列后逐个执行。各 Builder 会在独立的 git worktree 中读取现有代码，并按现有架构风格实现变更。
@@ -238,7 +235,7 @@ claude --agent orchestrator
 **第一步 — 启动**
 
 ```bash
-claude --agent orchestrator
+claude --dangerously-skip-permissions --agent orchestrator
 ```
 
 首次运行时，Orchestrator 进入系统规划阶段，引导你描述完整系统。完成后自动生成：
@@ -251,13 +248,10 @@ claude --agent orchestrator
 
 ```bash
 # 继续下一批次
-claude --agent orchestrator
+claude --dangerously-skip-permissions --agent orchestrator
 
 # 查看当前进度
-cat .pipeline/state.json | python3 -c "
-import json,sys; s=json.load(sys.stdin)
-print(f'Phase: {s[\"current_phase\"]}, Status: {s[\"status\"]}')
-"
+team status
 ```
 
 **查看提案进度**
@@ -307,6 +301,7 @@ claude --agent orchestrator
 | 命令 | 说明 |
 |------|------|
 | `team init` | 在当前项目目录初始化流水线 |
+| `team status` | 显示流水线执行进度（彩色面板：阶段、提案队列、执行日志） |
 | `team upgrade` | 原地升级 playbook + autosteps（保留 state.json、产物、提案队列） |
 | `team replan` | 重新规划提案队列（保留已完成的工作） |
 | `team version` | 显示版本号 |
@@ -322,7 +317,7 @@ cd /path/to/lfun-team-pipeline && bash install.sh
 cd /path/to/my-project && team upgrade
 
 # 3. 继续执行
-claude --agent orchestrator
+claude --dangerously-skip-permissions --agent orchestrator
 ```
 
 `team upgrade` 会覆盖 `playbook.md` 和 `autosteps/`，同时保留 `config.json`、`state.json`、`artifacts/` 和 `proposal-queue.json`，确保升级不中断正在执行的流水线。

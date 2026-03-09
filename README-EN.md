@@ -83,22 +83,19 @@ team init
 $EDITOR .pipeline/config.json
 
 # 3. Start the pipeline — describe the full system you want to build
-claude --agent orchestrator
+claude --dangerously-skip-permissions --agent orchestrator
 # First run enters System Planning, generates a proposal queue, then starts execution
 # Each run executes one batch and exits; run again to continue the next batch
 ```
 
-The pipeline uses a **batch execution model**: each `claude --agent orchestrator` invocation executes one batch (typically 1-3 phases), then exits. Run it again to continue. 12 batches cover the complete pipeline (Phase 0 through Phase 7).
+The pipeline uses a **batch execution model**: each `claude --dangerously-skip-permissions --agent orchestrator` invocation executes one batch (typically 1-3 phases), then exits. Run it again to continue. 12 batches cover the complete pipeline (Phase 0 through Phase 7).
 
 ```bash
 # Continue to the next batch
-claude --agent orchestrator
+claude --dangerously-skip-permissions --agent orchestrator
 
-# Check current progress
-cat .pipeline/state.json | python3 -c "
-import json,sys; s=json.load(sys.stdin)
-print(f'Phase: {s[\"current_phase\"]}, Status: {s[\"status\"]}')
-"
+# Check current progress (color status panel)
+team status
 ```
 
 ## Autonomous Mode
@@ -152,7 +149,7 @@ cat > .pipeline/config.json << 'EOF'
 EOF
 
 # Start the pipeline
-claude --agent orchestrator
+claude --dangerously-skip-permissions --agent orchestrator
 # → System Planning interacts with you (describe system, confirm blueprint, confirm proposal details)
 # → After planning, all proposals execute automatically with no further interaction
 ```
@@ -212,7 +209,7 @@ git commit -m "chore: add lfun-team-pipeline"
 **Step 4 — Start the pipeline**
 
 ```bash
-claude --agent orchestrator
+claude --dangerously-skip-permissions --agent orchestrator
 ```
 
 Describe the new feature or full system you want to add. On first run, the orchestrator enters System Planning to generate a proposal queue, then executes each proposal sequentially. Builders will read the existing codebase in their git worktrees and implement changes that are consistent with the current architecture.
@@ -238,7 +235,7 @@ Describe system → System Planning → Proposal Queue → [P-001 execute] → [
 **Step 1 — Start**
 
 ```bash
-claude --agent orchestrator
+claude --dangerously-skip-permissions --agent orchestrator
 ```
 
 On first run, the Orchestrator enters System Planning and guides you through describing the full system. Once complete, it generates:
@@ -251,13 +248,10 @@ After System Planning completes, the first proposal starts automatically. Each r
 
 ```bash
 # Continue to the next batch
-claude --agent orchestrator
+claude --dangerously-skip-permissions --agent orchestrator
 
 # Check current progress
-cat .pipeline/state.json | python3 -c "
-import json,sys; s=json.load(sys.stdin)
-print(f'Phase: {s[\"current_phase\"]}, Status: {s[\"status\"]}')
-"
+team status
 ```
 
 **Check proposal progress**
@@ -307,6 +301,7 @@ Project memory ensures that business rules and technical decisions remain consis
 | Command | Description |
 |---------|-------------|
 | `team init` | Initialize pipeline in the current project directory |
+| `team status` | Show pipeline execution progress (color panel: phase, proposal queue, execution log) |
 | `team upgrade` | In-place upgrade of playbook + autosteps (preserves state.json, artifacts, proposal queue) |
 | `team replan` | Re-plan proposal queue (preserves completed work) |
 | `team version` | Print version |
@@ -322,7 +317,7 @@ cd /path/to/lfun-team-pipeline && bash install.sh
 cd /path/to/my-project && team upgrade
 
 # 3. Continue execution
-claude --agent orchestrator
+claude --dangerously-skip-permissions --agent orchestrator
 ```
 
 `team upgrade` overwrites `playbook.md` and `autosteps/` while preserving `config.json`, `state.json`, `artifacts/`, and `proposal-queue.json`, ensuring upgrades don't interrupt a running pipeline.
