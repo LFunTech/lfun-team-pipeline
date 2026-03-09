@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-03-09
+
+### Fixed / 修复
+
+- **`team run` 无回显**: 修正 stream-json 事件解析（使用 `assistant` 快照事件而非不存在的 `content_block_delta`），改回 pipe 方式（claude 向 pipe 实时写入，向文件则块缓冲），恢复实时回显。
+  Fixed blank output in `team run` by using correct `assistant` snapshot event type and restoring direct pipe (claude line-buffers to pipes, block-buffers to files).
+
+- **`team run` 卡在交互**: 改用 `claude -p`（print mode）让 claude 处理完一个批次后自动退出，不再等待用户输入。
+  Fixed `team run` hanging on user input by switching to `claude -p` (print mode), which exits automatically after each batch.
+
+- **嵌套 Claude Code 报错**: 在调用 claude 前执行 `env -u CLAUDECODE`，允许在 Claude Code 会话内部调用 `team run`。
+  Fixed nested Claude Code session error by prepending `env -u CLAUDECODE` to the claude invocation.
+
+- **子 agent 静默期无回显**: 新增后台心跳（每 20 秒输出 `... (still running)`），覆盖 `Agent()` 子 agent 调用期间的静默时段。
+  Added 20s background heartbeat to show activity during silent Agent() subagent call periods.
+
+- **stream-json 需要 `--verbose`**: 补加 `--verbose` 标志，满足 `--output-format=stream-json` 的依赖要求。
+  Added missing `--verbose` flag required by `--output-format=stream-json`.
+
 ## [1.1.0] - 2026-03-08
 
 ### Added / 新增
