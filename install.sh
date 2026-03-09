@@ -478,6 +478,14 @@ def print_report():
 # ── main ─────────────────────────────────────────────────────────────────────
 
 def main():
+    stdin_fd = sys.stdin.fileno()
+    if not os.isatty(stdin_fd):
+        sys.stderr.write(
+            '\n  ❌  team run requires a real terminal (tty).\n'
+            '     Run it directly in your shell, not via a pipe or script.\n\n'
+        )
+        sys.exit(1)
+
     # Create PTY pair: slave is claude's terminal, master is our side
     master_fd, slave_fd = os.openpty()
     resize_pty(master_fd)
@@ -487,7 +495,10 @@ def main():
 
     def child_setup():
         os.setsid()                                   # new session
-        fcntl.ioctl(0, termios.TIOCSCTTY, 0)         # slave PTY → controlling terminal
+        try:
+            fcntl.ioctl(0, termios.TIOCSCTTY, 0)     # slave PTY → controlling terminal
+        except Exception:
+            pass
 
     proc = subprocess.Popen(
         ['claude', '--dangerously-skip-permissions', '--agent', 'orchestrator'],
@@ -500,7 +511,6 @@ def main():
     signal.signal(signal.SIGWINCH, lambda s, f: resize_pty(master_fd))
 
     # Put the user's terminal in raw mode so every keystroke goes straight through
-    stdin_fd = sys.stdin.fileno()
     saved_tty = termios.tcgetattr(stdin_fd)
     tty.setraw(stdin_fd)
 
