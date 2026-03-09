@@ -420,9 +420,29 @@ cmd_run() {
 
     # Run orchestrator in non-interactive mode (-p); exits automatically after one batch
     # Unset CLAUDECODE to allow nested claude invocation (e.g. when run from within Claude Code)
+    # Use stream-json output format and parse text deltas for real-time display
     set +e
-    env -u CLAUDECODE claude --dangerously-skip-permissions --agent orchestrator -p "请执行下一批次"
-    CLAUDE_EXIT=$?
+    env -u CLAUDECODE claude --dangerously-skip-permissions --agent orchestrator \
+      -p "请执行下一批次" --output-format stream-json | \
+      python3 -u -c "
+import sys, json
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        d = json.loads(line)
+        if d.get('type') == 'content_block_delta':
+            t = d.get('delta', {}).get('text', '')
+            if t:
+                sys.stdout.write(t)
+                sys.stdout.flush()
+    except Exception:
+        pass
+sys.stdout.write('\n')
+sys.stdout.flush()
+"
+    CLAUDE_EXIT=${PIPESTATUS[0]}
     set -e
 
     echo ""
