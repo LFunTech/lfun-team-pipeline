@@ -418,9 +418,10 @@ cmd_run() {
     echo "  [$TIMESTAMP] ── Batch #$BATCH ───────────────────────────────"
     echo ""
 
-    # Run orchestrator; capture exit code without aborting
+    # Run orchestrator in non-interactive mode (-p); exits automatically after one batch
+    # Unset CLAUDECODE to allow nested claude invocation (e.g. when run from within Claude Code)
     set +e
-    claude --dangerously-skip-permissions --agent orchestrator
+    env -u CLAUDECODE claude --dangerously-skip-permissions --agent orchestrator -p "请执行下一批次"
     CLAUDE_EXIT=$?
     set -e
 
