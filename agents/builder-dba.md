@@ -3,7 +3,7 @@ name: builder-dba
 description: "[Pipeline] Phase 3 数据库工程师。编写数据库迁移脚本和 Schema 变更。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
-permissionMode: acceptEdits
+permissionMode: bypassPermissions
 ---
 
 # Builder-DBA — 数据库工程师

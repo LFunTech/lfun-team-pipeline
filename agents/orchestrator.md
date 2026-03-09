@@ -10,7 +10,7 @@ tools: >
   documenter, deployer, monitor, migrator, optimizer, translator, github-ops),
   Bash, Read, Write, Edit, Glob, Grep, TodoWrite
 model: inherit
-permissionMode: acceptEdits
+permissionMode: bypassPermissions
 ---
 
 # Orchestrator — 流水线主控

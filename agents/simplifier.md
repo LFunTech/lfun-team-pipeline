@@ -3,7 +3,7 @@ name: simplifier
 description: "[Pipeline] Phase 3.5 代码精简师。以静态分析的量化指标为目标精简代码，使用 code-simplifier skill。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: sonnet
-permissionMode: acceptEdits
+permissionMode: bypassPermissions
 skills:
   - code-simplifier
 ---

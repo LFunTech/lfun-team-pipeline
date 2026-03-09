@@ -3,7 +3,7 @@ name: optimizer
 description: "[Pipeline] Phase 4b 条件 Agent — 性能优化师。激活条件：performance_sensitive: true。性能压测、SQL 慢查询分析、内存 profiling。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
-permissionMode: acceptEdits
+permissionMode: bypassPermissions
 ---
 
 # Optimizer — 性能优化师

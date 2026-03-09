@@ -3,7 +3,7 @@ name: migrator
 description: "[Pipeline] Phase 3 条件 Agent — 数据迁移工程师。激活条件：data_migration_required: true。编写存量数据迁移脚本和校验逻辑。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
-permissionMode: acceptEdits
+permissionMode: bypassPermissions
 ---
 
 # Migrator — 数据迁移工程师

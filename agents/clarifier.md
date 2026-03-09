@@ -3,7 +3,7 @@ name: clarifier
 description: "[Pipeline] Phase 0 需求澄清师。业务域澄清，输出结构化需求文档。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
-permissionMode: acceptEdits
+permissionMode: bypassPermissions
 ---
 
 # Clarifier — 需求澄清师

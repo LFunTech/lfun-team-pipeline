@@ -3,7 +3,7 @@ name: builder-frontend
 description: "[Pipeline] Phase 3 前端工程师。实现前端代码，严格在 tasks.json 授权范围内修改文件。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
-permissionMode: acceptEdits
+permissionMode: bypassPermissions
 skills:
   - frontend-design
 ---

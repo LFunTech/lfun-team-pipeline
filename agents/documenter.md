@@ -3,7 +3,7 @@ name: documenter
 description: "[Pipeline] Phase 5 文档工程师。生成/更新 API 文档、CHANGELOG、用户手册、ADR。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: sonnet
-permissionMode: acceptEdits
+permissionMode: bypassPermissions
 ---
 
 # Documenter — 文档工程师

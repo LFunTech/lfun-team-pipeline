@@ -3,7 +3,7 @@ name: architect
 description: "[Pipeline] Phase 1 方案架构师。技术域澄清，将需求转化为技术方案，输出 proposal.md 和 adr-draft.md。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
-permissionMode: acceptEdits
+permissionMode: bypassPermissions
 ---
 
 # Architect — 方案架构师

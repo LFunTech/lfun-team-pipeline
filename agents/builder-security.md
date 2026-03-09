@@ -3,7 +3,7 @@ name: builder-security
 description: "[Pipeline] Phase 3 安全工程师。权限控制、安全加固、输入校验，产出 security-checklist.json。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
-permissionMode: acceptEdits
+permissionMode: bypassPermissions
 ---
 
 # Builder-Security — 安全工程师

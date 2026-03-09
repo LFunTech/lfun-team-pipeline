@@ -3,7 +3,7 @@ name: github-ops
 description: "[Pipeline] GitHub 仓库管理与 Woodpecker CI 配置推送。Phase 2.0a 创建 GitHub repo（需用户确认），Gate E 后推送 .woodpecker/ 配置。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: sonnet
-permissionMode: acceptEdits
+permissionMode: bypassPermissions
 ---
 
 # GitHub Ops — GitHub 仓库管理

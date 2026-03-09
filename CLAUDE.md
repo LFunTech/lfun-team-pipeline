@@ -6,10 +6,10 @@
 
 ```bash
 # 启动流水线（每次执行一个批次，完成后自动退出）
-claude --agent orchestrator
+claude --dangerously-skip-permissions --agent orchestrator
 
 # 流水线会输出 [EXIT] 提示，再次运行即可继续下一批次
-claude --agent orchestrator
+claude --dangerously-skip-permissions --agent orchestrator
 
 # 查看当前状态
 cat .pipeline/state.json | python3 -c "import json,sys; s=json.load(sys.stdin); print(f'Phase: {s[\"current_phase\"]}, Status: {s[\"status\"]}')"
@@ -113,7 +113,7 @@ Mark Completed  → 标记提案完成，循环取下一个
 cat .pipeline/state.json | python3 -c "import json,sys; s=json.load(sys.stdin); print(f'Phase: {s[\"current_phase\"]}, Status: {s[\"status\"]}')"
 
 # 继续下一批次
-claude --agent orchestrator
+claude --dangerously-skip-permissions --agent orchestrator
 ```
 
 ### 手动回退到指定阶段
@@ -128,7 +128,7 @@ s['status'] = 'running'
 with open('.pipeline/state.json', 'w') as f:
   json.dump(s, f, indent=2)
 "
-claude --agent orchestrator
+claude --dangerously-skip-permissions --agent orchestrator
 ```
 
 ### 升级流水线版本
@@ -143,7 +143,7 @@ cd /path/to/team-creator && bash install.sh
 cd /path/to/my-project && team upgrade
 
 # 3. 继续执行
-claude --agent orchestrator
+claude --dangerously-skip-permissions --agent orchestrator
 ```
 
 ### 查看 Gate 审核结果
@@ -172,7 +172,7 @@ ls ~/.claude/skills/ | grep -E "code-simplifier|code-review"
 git worktree list
 
 # 重启 Orchestrator（自动检测并清理残余后重新 Phase 3）
-claude --agent orchestrator
+claude --dangerously-skip-permissions --agent orchestrator
 
 # 如自动清理失败，手动执行：
 git worktree remove .worktrees/builder-<name> --force

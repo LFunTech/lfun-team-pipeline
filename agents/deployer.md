@@ -3,7 +3,7 @@ name: deployer
 description: "[Pipeline] Phase 6 部署工程师。执行部署、Smoke Test、生产回滚。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
-permissionMode: acceptEdits
+permissionMode: bypassPermissions
 ---
 
 # Deployer — 部署工程师

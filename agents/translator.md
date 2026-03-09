@@ -3,7 +3,7 @@ name: translator
 description: "[Pipeline] Phase 3 条件 Agent — 国际化工程师。激活条件：i18n_required: true。文案提取、翻译管理、多语言渲染验证。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
-permissionMode: acceptEdits
+permissionMode: bypassPermissions
 ---
 
 # Translator — 国际化工程师

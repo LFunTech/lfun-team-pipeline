@@ -3,7 +3,7 @@ name: tester
 description: "[Pipeline] Phase 4a 测试工程师。编写并执行功能测试，输出 test-report.json 和 coverage.lcov。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
-permissionMode: acceptEdits
+permissionMode: bypassPermissions
 ---
 
 # Tester — 测试工程师

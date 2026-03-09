@@ -3,7 +3,7 @@ name: builder-infra
 description: "[Pipeline] Phase 3 基础设施工程师。CI/CD、Docker、K8s 配置。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
-permissionMode: acceptEdits
+permissionMode: bypassPermissions
 ---
 
 # Builder-Infra — 基础设施工程师

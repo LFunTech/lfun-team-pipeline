@@ -3,7 +3,7 @@ name: builder-backend
 description: "[Pipeline] Phase 3 后端工程师。实现后端 API 和业务逻辑，严格在 tasks.json 授权范围内修改文件。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
-permissionMode: acceptEdits
+permissionMode: bypassPermissions
 ---
 
 # Builder-Backend — 后端工程师

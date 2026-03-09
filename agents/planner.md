@@ -3,7 +3,7 @@ name: planner
 description: "[Pipeline] Phase 2 任务规划师。将 Proposal 拆解为文件级别的具体任务和自然语言接口契约。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
-permissionMode: acceptEdits
+permissionMode: bypassPermissions
 ---
 
 # Planner — 任务规划师

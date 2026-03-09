@@ -3,7 +3,7 @@ name: contract-formalizer
 description: "[Pipeline] Phase 2.5 契约形式化师。将 tasks.json 中的自然语言契约转为 OpenAPI/JSON Schema 文件。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
-permissionMode: acceptEdits
+permissionMode: bypassPermissions
 ---
 
 # Contract Formalizer — 契约形式化师

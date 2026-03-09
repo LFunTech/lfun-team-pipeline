@@ -83,6 +83,7 @@ usage() {
   echo ""
   echo "  Commands:"
   echo "    init      Initialize pipeline in the current project directory"
+  echo "    status    Show current pipeline execution progress"
   echo "    upgrade   Upgrade playbook + autosteps in-place (preserves state)"
   echo "    version   Print version"
   echo "    replan    Re-plan the proposal queue (keeps completed work)"
@@ -90,7 +91,8 @@ usage() {
   echo ""
   echo "  Examples:"
   echo "    cd my-project && team init"
-  echo "    claude --agent orchestrator"
+  echo "    claude --dangerously-skip-permissions --agent orchestrator"
+  echo "    team status"
   echo ""
 }
 
@@ -152,7 +154,7 @@ cmd_init() {
   echo "  ✅ Pipeline initialized! Next steps:"
   echo ""
   echo "     1. Edit .pipeline/config.json  ← set project_name and tech stack"
-  echo "     2. claude --agent orchestrator ← start the pipeline"
+  echo "     2. claude --dangerously-skip-permissions --agent orchestrator ← start the pipeline"
   echo ""
 }
 
@@ -231,7 +233,7 @@ else:
   fi
 
   echo ""
-  echo "  Run 'claude --agent orchestrator' to continue from current phase."
+  echo "  Run 'claude --dangerously-skip-permissions --agent orchestrator' to continue from current phase."
   echo ""
 }
 
@@ -259,8 +261,145 @@ cmd_replan() {
   echo ""
 }
 
+cmd_status() {
+  if [ ! -f ".pipeline/state.json" ]; then
+    echo ""
+    echo "  ❌ No pipeline found in current directory."
+    echo "     Run: team init && claude --dangerously-skip-permissions --agent orchestrator"
+    echo ""
+    exit 1
+  fi
+
+  python3 - << 'PYEOF'
+import json, os, sys
+from datetime import datetime, timezone
+
+# ── ANSI colors ────────────────────────────────────────────────────
+RESET  = "\033[0m"
+BOLD   = "\033[1m"
+DIM    = "\033[2m"
+GREEN  = "\033[32m"
+YELLOW = "\033[33m"
+RED    = "\033[31m"
+CYAN   = "\033[36m"
+BLUE   = "\033[34m"
+WHITE  = "\033[37m"
+
+def c(color, text): return f"{color}{text}{RESET}"
+
+# ── Load state.json ────────────────────────────────────────────────
+state = json.load(open(".pipeline/state.json"))
+project   = state.get("project_name", os.path.basename(os.getcwd()))
+phase     = state.get("current_phase", "?")
+last_done = state.get("last_completed_phase", "-")
+status    = state.get("status", "?")
+pipeline_id = state.get("pipeline_id", "-")
+cond      = state.get("conditional_agents", {})
+attempts  = state.get("attempt_counts", {})
+
+# ── Header ─────────────────────────────────────────────────────────
+print()
+print(c(BOLD + CYAN, f"  ╔══ Pipeline Status — {project} ══"))
+print(c(CYAN,         f"  ║"))
+
+status_color = GREEN if status == "completed" else (YELLOW if status == "running" else RED)
+print(c(CYAN, "  ║") + f"  {c(BOLD, 'Pipeline:')}  {pipeline_id}")
+print(c(CYAN, "  ║") + f"  {c(BOLD, 'Status:')}    {c(status_color + BOLD, status.upper())}")
+print(c(CYAN, "  ║") + f"  {c(BOLD, 'Phase:')}     {c(BOLD, phase)}  {c(DIM, f'(last done: {last_done})')}")
+
+# ── Conditional agents ─────────────────────────────────────────────
+if cond:
+    active = [k for k, v in cond.items() if v]
+    inactive = [k for k, v in cond.items() if not v]
+    parts = [c(GREEN, f"+{k}") for k in active] + [c(DIM, f"-{k}") for k in inactive]
+    print(c(CYAN, "  ║") + f"  {c(BOLD, 'Agents:')}    {', '.join(parts)}")
+
+# ── Proposal queue ─────────────────────────────────────────────────
+queue_file = ".pipeline/proposal-queue.json"
+if os.path.exists(queue_file):
+    q = json.load(open(queue_file))
+    proposals = q.get("proposals", [])
+    system_name = q.get("system_name", "")
+    total = len(proposals)
+    done  = sum(1 for p in proposals if p.get("status") == "completed")
+    running = [p for p in proposals if p.get("status") == "running"]
+
+    print(c(CYAN, "  ║"))
+    print(c(CYAN, "  ║") + f"  {c(BOLD, 'System:')}    {system_name}")
+    bar_filled = int(done / total * 20) if total else 0
+    bar = c(GREEN, "█" * bar_filled) + c(DIM, "░" * (20 - bar_filled))
+    print(c(CYAN, "  ║") + f"  {c(BOLD, 'Proposals:')} [{bar}{RESET}] {c(BOLD, str(done))}/{total}")
+    print(c(CYAN, "  ║"))
+
+    for p in proposals:
+        pid    = p.get("id", "?")
+        title  = p.get("title", "")
+        pst    = p.get("status", "pending")
+        if pst == "completed":
+            icon = c(GREEN, "✓")
+            color = DIM
+        elif pst == "running":
+            icon = c(YELLOW + BOLD, "▶")
+            color = BOLD
+        else:
+            icon = c(DIM, "○")
+            color = ""
+        deps = p.get("depends_on", [])
+        dep_str = c(DIM, f"  ← {', '.join(deps)}") if deps else ""
+        print(c(CYAN, "  ║") + f"    {icon} {c(color, f'[{pid}] {title}')}{dep_str}")
+
+# ── Step execution log ─────────────────────────────────────────────
+index_file = ".pipeline/artifacts/logs/pipeline.index.json"
+ex_log = state.get("execution_log", [])
+
+steps = []
+if os.path.exists(index_file):
+    idx = json.load(open(index_file))
+    steps = idx.get("steps", [])
+elif ex_log:
+    steps = ex_log
+
+if steps:
+    print(c(CYAN, "  ║"))
+    print(c(CYAN, "  ║") + f"  {c(BOLD, 'Execution Log:')}  ({len(steps)} steps)")
+
+    RESULT_COLOR = {"PASS": GREEN, "WARN": YELLOW, "FAIL": RED, "SKIP": DIM, "ERROR": RED}
+
+    # Show all steps; mark rollbacks
+    for i, s in enumerate(steps):
+        step   = s.get("step", "?")
+        result = s.get("result", "?")
+        attempt = s.get("attempt", 1)
+        rollback_to = s.get("caused_rollback_to") or s.get("rollback_to")
+        triggered_by = s.get("rollback_triggered_by")
+
+        rc = RESULT_COLOR.get(result, WHITE)
+        attempt_str = c(DIM, f" ×{attempt}") if attempt > 1 else ""
+        rollback_str = c(YELLOW, f" → rollback to {rollback_to}") if rollback_to else ""
+        triggered_str = c(DIM, f" [by {triggered_by}]") if triggered_by else ""
+
+        is_last = (i == len(steps) - 1)
+        prefix = c(CYAN, "  ║") + ("  └─" if is_last else "  ├─")
+        print(f"{prefix} {c(rc + BOLD, result):>6}  {step}{attempt_str}{rollback_str}{triggered_str}")
+
+# ── Retry counts (phases with >1 attempts) ─────────────────────────
+notable = {k: v for k, v in attempts.items() if isinstance(v, int) and v > 1}
+if notable:
+    print(c(CYAN, "  ║"))
+    print(c(CYAN, "  ║") + f"  {c(BOLD, 'Retried phases:')}")
+    for k, v in sorted(notable.items()):
+        print(c(CYAN, "  ║") + f"    {c(YELLOW, k)}: {v} attempts")
+
+# ── Footer ─────────────────────────────────────────────────────────
+print(c(CYAN, "  ║"))
+print(c(BOLD + CYAN, "  ╚" + "═" * 40))
+print()
+PYEOF
+}
+
 case "${1:-}" in
   init)    cmd_init ;;
+  status)  cmd_status ;;
   upgrade) cmd_upgrade ;;
   version) cmd_version ;;
   update)  cmd_update ;;
@@ -314,6 +453,6 @@ echo "║                                                      ║"
 echo "║  Quick start:                                        ║"
 echo "║    cd your-project                                   ║"
 echo "║    team init                                         ║"
-echo "║    claude --agent orchestrator                       ║"
+echo "║    claude --dangerously-skip-permissions --agent orchestrator  ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""
