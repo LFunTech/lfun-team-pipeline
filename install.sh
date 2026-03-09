@@ -446,7 +446,7 @@ cmd_run() {
     set -e
 
     # Tear down this instance's feeder + FIFO (PID-paired cleanup)
-    kill "$_FEEDER_PID" 2>/dev/null
+    kill "$_FEEDER_PID" 2>/dev/null || true
     wait "$_FEEDER_PID" 2>/dev/null || true
     rm -f "$_FIFO"
 
