@@ -404,144 +404,202 @@ cmd_run() {
     exit 1
   fi
 
-  echo ""
-  echo "  lfun-team-pipeline — Autonomous Run"
-  echo "  ─────────────────────────────────────────────────────"
-  echo "  Single Claude session. Daemon injects 继续 on [EXIT]."
-  echo "  You can type at any time. Press Ctrl+C to abort."
-  echo ""
+  # Write the PTY runner to a temp file and execute it.
+  # Architecture: Python opens a PTY pair, runs claude with the slave end
+  # (so claude sees a real terminal and its full TUI works), proxies all
+  # I/O between the user's real terminal and the master end, and monitors
+  # the output stream for [EXIT] — injecting 继续 when found.
+  _RUNNER=$(mktemp /tmp/team-runner-XXXXXX.py)
+  trap 'rm -f "$_RUNNER"' EXIT
 
-  _LOG=$(mktemp /tmp/team-session-XXXXXX.log)
-  # PID-paired FIFO: unique per team run instance, no conflicts with concurrent runs
-  _FIFO="/tmp/team-input-$$.fifo"
-  rm -f "$_FIFO"
-  mkfifo "$_FIFO"
+  cat > "$_RUNNER" << 'PYEOF'
+#!/usr/bin/env python3
+"""
+team run — PTY daemon
 
-  # ── Start claude in background so we can open the write end without blocking ──
-  # Output goes to terminal AND the log (for daemon to grep).
-  env -u CLAUDECODE claude --dangerously-skip-permissions --agent orchestrator \
-    < "$_FIFO" 2>&1 | tee -a "$_LOG" &
-  _PIPELINE_PID=$!
+Claude runs with its slave PTY as stdin/stdout/stderr, so it sees a real
+terminal and its full TUI is preserved.  This process:
+  1. Proxies the user's terminal ↔ claude's PTY (bidirectional, raw mode)
+  2. Monitors the byte stream for [EXIT] keywords
+  3. Injects 继续 into claude's stdin when a batch completes
+  4. On ALL-COMPLETED, prints the final report and exits claude
+"""
+import os, sys, select, signal, termios, tty, fcntl, time, json, subprocess
 
-  # Open write end (non-blocking now that read end is open)
-  exec 3>"$_FIFO"
+# ── helpers ──────────────────────────────────────────────────────────────────
 
-  # Pass user's terminal input through to claude (best-effort; fails silently without tty)
-  cat /dev/tty >&3 2>/dev/null &
-  _TTY_PID=$!
+def get_state():
+    try:
+        s = json.load(open('.pipeline/state.json'))
+        dep = s.get('depend_collector_result', {})
+        return s.get('status', 'running'), len(dep.get('unfilled_deps', []))
+    except Exception:
+        return 'unknown', 0
 
-  # Send initial prompt into claude's stdin
-  printf '请执行下一批次\n' >&3
+def resize_pty(master_fd):
+    try:
+        ws = fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, b'\x00' * 8)
+        fcntl.ioctl(master_fd, termios.TIOCSWINSZ, ws)
+    except Exception:
+        pass
 
-  # ── Cleanup: close FIFO write end → claude reads EOF → exits ──
-  _close_fifo() {
-    kill "$_TTY_PID" 2>/dev/null || true
-    wait "$_TTY_PID" 2>/dev/null || true
-    exec 3>&-
-  }
+def emit(master_fd, msg, color=33):
+    """Print a status line over the PTY without disrupting claude's TUI."""
+    os.write(master_fd, f'\r\n\033[{color}m{msg}\033[0m\r\n'.encode())
 
-  _cleanup() {
-    _close_fifo
-    rm -f "$_FIFO" "$_LOG"
-  }
+def print_report():
+    try:
+        G="\033[32m"; Y="\033[33m"; R="\033[31m"; C="\033[36m"; B="\033[1m"; E="\033[0m"
+        s = json.load(open('.pipeline/state.json'))
+        q = json.load(open('.pipeline/proposal-queue.json')) if os.path.exists('.pipeline/proposal-queue.json') else []
+        props = q if isinstance(q, list) else q.get('proposals', [])
+        steps = s.get('execution_log', [])
+        done  = sum(1 for p in props if p.get('status') == 'completed')
+        ps    = sum(1 for e in steps if e.get('result') == 'PASS')
+        fs    = sum(1 for e in steps if e.get('result') == 'FAIL')
+        ws    = sum(1 for e in steps if e.get('result') == 'WARN')
+        lines = [
+            f"\r\n{B}{C}  ╔══ Pipeline Final Report ══════════════════════╗{E}",
+            f"{C}  ║{E}  {B}Project:{E}    {s.get('project_name', os.path.basename(os.getcwd()))}",
+            f"{C}  ║{E}  {B}Proposals:{E}  {G}{done}/{len(props)} completed{E}",
+            f"{C}  ║{E}  {B}Steps:{E}      {G}{ps} PASS{E}  {Y}{ws} WARN{E}  {R}{fs} FAIL{E}  (total {len(steps)})",
+            f"{C}  ║{E}",
+        ]
+        for p in props:
+            icon = f"{G}✓{E}" if p.get('status') == 'completed' else f"{Y}○{E}"
+            lines.append(f"{C}  ║{E}    {icon}  {p.get('title', '')}")
+        lines.append(f"{B}{C}  ╚═══════════════════════════════════════════════╝{E}\r\n")
+        sys.stdout.buffer.write('\r\n'.join(lines).encode())
+        sys.stdout.buffer.flush()
+    except Exception as ex:
+        sys.stdout.write(f'\r\n[report error: {ex}]\r\n')
+        sys.stdout.flush()
 
-  # SIGUSR1 from daemon signals all-done: close FIFO so claude exits cleanly
-  trap '_close_fifo' USR1
-  trap '_cleanup' EXIT INT TERM
+# ── main ─────────────────────────────────────────────────────────────────────
 
-  # ── Daemon: watch log for [EXIT], inject 继续 or signal done ──
-  _PARENT=$$
-  {
-    _exit_count=0
-    while kill -0 "$_PIPELINE_PID" 2>/dev/null; do
-      sleep 1
-      _new=$(grep -cF '[EXIT]' "$_LOG" 2>/dev/null; true); _new=${_new:-0}
-      if [ "$_new" -gt "$_exit_count" ]; then
-        _exit_count=$_new
-        _parsed=$(python3 -c "
-import json
-try:
-    s = json.load(open('.pipeline/state.json'))
-    dep = s.get('depend_collector_result', {})
-    u = len(dep.get('unfilled_deps', []))
-    print(s.get('status', 'running') + '|' + str(u))
-except:
-    print('error|0')
-" 2>/dev/null || echo 'error|0')
-        _st=$(echo "$_parsed" | cut -d'|' -f1 | tr -d '[:space:]')
-        _unfilled=$(echo "$_parsed" | cut -d'|' -f2 | tr -d '[:space:]')
+def main():
+    # Create PTY pair: slave is claude's terminal, master is our side
+    master_fd, slave_fd = os.openpty()
+    resize_pty(master_fd)
 
-        if [ "$_st" = "ALL-COMPLETED" ] || [ "$_st" = "escalation" ]; then
-          exec 3>&-              # close daemon's copy of write end
-          kill -USR1 "$_PARENT" 2>/dev/null   # tell parent to close its copy too
-          break
-        elif [ "${_unfilled:-0}" -gt 0 ]; then
-          echo ""
-          echo "  ⏸  Credentials needed ($_unfilled unfilled). Fill .depend/*.env then type 继续 and Enter."
-          # Do NOT auto-inject; wait for user to type
-        else
-          # Normal batch done — inject next prompt
-          printf '继续\n' >&3 2>/dev/null || break
-        fi
-      fi
-    done
-  } &
-  _DAEMON_PID=$!
+    # Inherit env without CLAUDECODE so nested invocation is allowed
+    env = {k: v for k, v in os.environ.items() if k != 'CLAUDECODE'}
 
-  # ── Wait for claude to finish (blocked here; daemon runs in background) ──
-  wait "$_PIPELINE_PID" 2>/dev/null || true
+    def child_setup():
+        os.setsid()                                   # new session
+        fcntl.ioctl(0, termios.TIOCSCTTY, 0)         # slave PTY → controlling terminal
 
-  kill "$_DAEMON_PID" 2>/dev/null || true
-  wait "$_DAEMON_PID" 2>/dev/null || true
+    proc = subprocess.Popen(
+        ['claude', '--dangerously-skip-permissions', '--agent', 'orchestrator'],
+        stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
+        env=env, preexec_fn=child_setup, close_fds=True,
+    )
+    os.close(slave_fd)
 
-  echo ""
-  echo "  ─────────────────────────────────────────────────────"
+    # Forward window resize to PTY
+    signal.signal(signal.SIGWINCH, lambda s, f: resize_pty(master_fd))
 
-  # Final state report
-  if [ ! -f ".pipeline/state.json" ]; then
-    echo "  ⚠  state.json not found."
-    exit 1
-  fi
+    # Put the user's terminal in raw mode so every keystroke goes straight through
+    stdin_fd = sys.stdin.fileno()
+    saved_tty = termios.tcgetattr(stdin_fd)
+    tty.setraw(stdin_fd)
 
-  _FINAL=$(python3 -c "
-import json
-try:
-    s = json.load(open('.pipeline/state.json'))
-    print(s.get('status', 'running'))
-except:
-    print('error')
-" 2>/dev/null)
+    buf          = b''          # cumulative output buffer for [EXIT] counting
+    exit_count   = 0
+    prompt_sent  = False
+    t0           = time.monotonic()
+    t_last_out   = t0
+    exit_seen_at = None         # timestamp of most-recent new [EXIT]
+    finished     = False
 
-  if [ "$_FINAL" = "ALL-COMPLETED" ]; then
-    echo "  ✅ All proposals completed! Pipeline finished."
-    echo ""
-    python3 - << 'REPORT_EOF'
-import json, os
-RESET="\033[0m"; BOLD="\033[1m"; GREEN="\033[32m"; YELLOW="\033[33m"; RED="\033[31m"; CYAN="\033[36m"
-s = json.load(open(".pipeline/state.json"))
-q = json.load(open(".pipeline/proposal-queue.json")) if os.path.exists(".pipeline/proposal-queue.json") else []
-proposals = q if isinstance(q, list) else q.get("proposals", [])
-total = len(proposals); done = sum(1 for p in proposals if p.get("status") == "completed")
-steps = s.get("execution_log", [])
-passed = sum(1 for e in steps if e.get("result") == "PASS")
-failed = sum(1 for e in steps if e.get("result") == "FAIL")
-warned = sum(1 for e in steps if e.get("result") == "WARN")
-print(f"\n{BOLD}{CYAN}  ╔══ Pipeline Final Report ══════════════════════╗{RESET}")
-print(f"{CYAN}  ║{RESET}  {BOLD}Project:{RESET}    {s.get('project_name', os.path.basename(os.getcwd()))}")
-print(f"{CYAN}  ║{RESET}  {BOLD}Proposals:{RESET}  {GREEN}{done}/{total} completed{RESET}")
-print(f"{CYAN}  ║{RESET}  {BOLD}Steps:{RESET}      {GREEN}{passed} PASS{RESET}  {YELLOW}{warned} WARN{RESET}  {RED}{failed} FAIL{RESET}  (total {len(steps)})")
-print(f"{CYAN}  ║{RESET}")
-for p in proposals:
-    icon = f"{GREEN}✓{RESET}" if p.get("status") == "completed" else f"{YELLOW}○{RESET}"
-    print(f"{CYAN}  ║{RESET}    {icon}  {p.get('title','')}")
-print(f"{BOLD}{CYAN}  ╚═══════════════════════════════════════════════╝{RESET}\n")
-REPORT_EOF
-  elif [ "$_FINAL" = "escalation" ]; then
-    echo "  ❌ ESCALATION — manual intervention required. Run: team status"
-    exit 1
-  else
-    echo "  ℹ  Session ended (status: $_FINAL). Run 'team run' to resume."
-  fi
+    try:
+        while not finished and proc.poll() is None:
+            try:
+                r, _, _ = select.select([master_fd, stdin_fd], [], [], 0.2)
+            except (select.error, ValueError):
+                break
+
+            now = time.monotonic()
+
+            # ── Send initial prompt ──────────────────────────────────────────
+            # Wait for 2 s of silence after startup, or 5 s absolute, then fire.
+            if not prompt_sent and (
+                (now - t_last_out > 2.0 and now - t0 > 1.0) or now - t0 > 5.0
+            ):
+                os.write(master_fd, '请执行下一批次\n'.encode())
+                prompt_sent = True
+
+            # ── Process pending [EXIT] (after 2 s settling time) ─────────────
+            if exit_seen_at is not None and now - exit_seen_at >= 2.0:
+                exit_seen_at = None
+                st, unfilled = get_state()
+                if st == 'ALL-COMPLETED':
+                    print_report()
+                    finished = True
+                    break
+                elif st == 'escalation':
+                    sys.stdout.write('\r\n\033[31m  ❌ ESCALATION — run: team status\033[0m\r\n')
+                    sys.stdout.flush()
+                    finished = True
+                    break
+                elif unfilled > 0:
+                    sys.stdout.write(f'\r\n\033[33m  ⏸  Credentials needed ({unfilled} unfilled).'
+                                     f' Fill .depend/*.env then type: 继续\033[0m\r\n')
+                    sys.stdout.flush()
+                else:
+                    os.write(master_fd, '继续\n'.encode())
+
+            # ── I/O forwarding ───────────────────────────────────────────────
+            for fd in r:
+                if fd == master_fd:
+                    try:
+                        data = os.read(master_fd, 4096)
+                    except OSError:
+                        finished = True
+                        break
+                    # Forward to user's real terminal
+                    os.write(sys.stdout.fileno(), data)
+                    buf += data
+                    t_last_out = time.monotonic()
+
+                    # Detect new [EXIT] occurrences
+                    new_count = buf.count(b'[EXIT]')
+                    if new_count > exit_count:
+                        exit_count   = new_count
+                        exit_seen_at = time.monotonic()   # start settling timer
+
+                elif fd == stdin_fd:
+                    try:
+                        data = os.read(stdin_fd, 1024)
+                    except OSError:
+                        break
+                    if data:
+                        os.write(master_fd, data)   # forward keystrokes to claude
+
+    except KeyboardInterrupt:
+        pass
+    finally:
+        # Restore the user's terminal unconditionally
+        try:
+            termios.tcsetattr(stdin_fd, termios.TCSADRAIN, saved_tty)
+        except Exception:
+            pass
+
+    # Shut down claude
+    try:
+        proc.terminate()
+        proc.wait(timeout=3)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+if __name__ == '__main__':
+    main()
+PYEOF
+
+  python3 "$_RUNNER"
 }
 
 case "${1:-}" in
