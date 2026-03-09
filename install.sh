@@ -408,21 +408,23 @@ cmd_run() {
   # Architecture: Python opens a PTY pair, runs claude with the slave end
   # (so claude sees a real terminal and its full TUI works), proxies all
   # I/O between the user's real terminal and the master end, and monitors
-  # the output stream for [EXIT] — injecting 继续 when found.
+  # the output stream for [EXIT].
+  # On [EXIT]: terminate the current claude process and start a FRESH one
+  # for the next batch — matching the intended `claude --agent orchestrator`
+  # single-batch-then-exit contract described in CLAUDE.md.
   _RUNNER=$(mktemp /tmp/team-runner-XXXXXX.py)
   trap 'rm -f "$_RUNNER"' EXIT
 
   cat > "$_RUNNER" << 'PYEOF'
 #!/usr/bin/env python3
 """
-team run — PTY daemon
+team run — PTY daemon (multi-batch loop)
 
-Claude runs with its slave PTY as stdin/stdout/stderr, so it sees a real
-terminal and its full TUI is preserved.  This process:
-  1. Proxies the user's terminal ↔ claude's PTY (bidirectional, raw mode)
-  2. Monitors the byte stream for [EXIT] keywords
-  3. Injects 继续 into claude's stdin when a batch completes
-  4. On ALL-COMPLETED, prints the final report and exits claude
+Each pipeline batch runs as a FRESH `claude --agent orchestrator` process.
+When [EXIT] appears in the output:
+  1. The current claude process is terminated.
+  2. Pipeline state is checked.
+  3. If not done, a new claude process is spawned for the next batch.
 """
 import os, sys, select, signal, termios, tty, fcntl, time, json, subprocess
 
@@ -442,10 +444,6 @@ def resize_pty(master_fd):
         fcntl.ioctl(master_fd, termios.TIOCSWINSZ, ws)
     except Exception:
         pass
-
-def emit(master_fd, msg, color=33):
-    """Print a status line over the PTY without disrupting claude's TUI."""
-    os.write(master_fd, f'\r\n\033[{color}m{msg}\033[0m\r\n'.encode())
 
 def print_report():
     try:
@@ -472,8 +470,12 @@ def print_report():
         sys.stdout.buffer.write('\r\n'.join(lines).encode())
         sys.stdout.buffer.flush()
     except Exception as ex:
-        sys.stdout.write(f'\r\n[report error: {ex}]\r\n')
-        sys.stdout.flush()
+        sys.stdout.buffer.write(f'\r\n[report error: {ex}]\r\n'.encode())
+        sys.stdout.buffer.flush()
+
+def write_status(msg, color=36):
+    sys.stdout.buffer.write(f'\r\n\033[{color}m{msg}\033[0m\r\n'.encode())
+    sys.stdout.buffer.flush()
 
 # ── main ─────────────────────────────────────────────────────────────────────
 
@@ -486,122 +488,135 @@ def main():
         )
         sys.exit(1)
 
-    # Create PTY pair: slave is claude's terminal, master is our side
-    master_fd, slave_fd = os.openpty()
-    resize_pty(master_fd)
-
     # Inherit env without CLAUDECODE so nested invocation is allowed
     env = {k: v for k, v in os.environ.items() if k != 'CLAUDECODE'}
+    saved_tty = termios.tcgetattr(stdin_fd)
 
-    def child_setup():
-        os.setsid()                                   # new session
+    def start_claude():
+        """Spawn a fresh claude process with its own PTY slave."""
+        mfd, sfd = os.openpty()
+        resize_pty(mfd)
+
+        def child_setup():
+            os.setsid()
+            try:
+                fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+            except Exception:
+                pass
+
+        p = subprocess.Popen(
+            ['claude', '--dangerously-skip-permissions', '--agent', 'orchestrator'],
+            stdin=sfd, stdout=sfd, stderr=sfd,
+            env=env, preexec_fn=child_setup, close_fds=True,
+        )
+        os.close(sfd)
+        return p, mfd
+
+    def kill_claude(p, mfd):
+        """Terminate claude and close the master PTY fd."""
         try:
-            fcntl.ioctl(0, termios.TIOCSCTTY, 0)     # slave PTY → controlling terminal
+            p.terminate()
+            p.wait(timeout=5)
+        except Exception:
+            try:
+                p.kill()
+            except Exception:
+                pass
+        try:
+            os.close(mfd)
         except Exception:
             pass
 
-    proc = subprocess.Popen(
-        ['claude', '--dangerously-skip-permissions', '--agent', 'orchestrator'],
-        stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
-        env=env, preexec_fn=child_setup, close_fds=True,
-    )
-    os.close(slave_fd)
-
-    # Forward window resize to PTY
-    signal.signal(signal.SIGWINCH, lambda s, f: resize_pty(master_fd))
-
-    # Put the user's terminal in raw mode so every keystroke goes straight through
-    saved_tty = termios.tcgetattr(stdin_fd)
     tty.setraw(stdin_fd)
-
-    buf          = b''          # cumulative output buffer for [EXIT] counting
-    exit_count   = 0
-    prompt_sent  = False
-    t0           = time.monotonic()
-    t_last_out   = t0
-    exit_seen_at = None         # timestamp of most-recent new [EXIT]
-    finished     = False
+    batch_num = 0
 
     try:
-        while not finished and proc.poll() is None:
-            try:
-                r, _, _ = select.select([master_fd, stdin_fd], [], [], 0.2)
-            except (select.error, ValueError):
+        while True:
+            batch_num += 1
+            proc, master_fd = start_claude()
+            signal.signal(signal.SIGWINCH, lambda s, f: resize_pty(master_fd))
+
+            buf          = b''
+            exit_count   = 0
+            prompt_sent  = False
+            t0           = time.monotonic()
+            t_last_out   = t0
+            exit_seen_at = None
+
+            # ── Run this batch until [EXIT] or natural claude exit ────────────
+            while proc.poll() is None:
+                try:
+                    r, _, _ = select.select([master_fd, stdin_fd], [], [], 0.2)
+                except (select.error, ValueError):
+                    break
+
+                now = time.monotonic()
+
+                # Send initial prompt after settling (2 s silence or 5 s absolute)
+                if not prompt_sent and (
+                    (now - t_last_out > 2.0 and now - t0 > 1.0) or now - t0 > 5.0
+                ):
+                    os.write(master_fd, '请执行下一批次\r'.encode())
+                    prompt_sent = True
+
+                # [EXIT] detected and settled for 2 s → end this batch
+                if exit_seen_at is not None and now - exit_seen_at >= 2.0:
+                    break
+
+                for fd in r:
+                    if fd == master_fd:
+                        try:
+                            data = os.read(master_fd, 4096)
+                        except OSError:
+                            break
+                        os.write(sys.stdout.fileno(), data)
+                        buf += data
+                        t_last_out = time.monotonic()
+
+                        new_count = buf.count(b'[EXIT]')
+                        if new_count > exit_count:
+                            exit_count   = new_count
+                            exit_seen_at = time.monotonic()
+
+                    elif fd == stdin_fd:
+                        try:
+                            data = os.read(stdin_fd, 1024)
+                        except OSError:
+                            break
+                        if data:
+                            os.write(master_fd, data)
+
+            # ── Terminate this claude instance ────────────────────────────────
+            kill_claude(proc, master_fd)
+
+            # ── Check pipeline state and decide what to do next ───────────────
+            st, unfilled = get_state()
+
+            if st == 'ALL-COMPLETED':
+                print_report()
                 break
-
-            now = time.monotonic()
-
-            # ── Send initial prompt ──────────────────────────────────────────
-            # Wait for 2 s of silence after startup, or 5 s absolute, then fire.
-            if not prompt_sent and (
-                (now - t_last_out > 2.0 and now - t0 > 1.0) or now - t0 > 5.0
-            ):
-                os.write(master_fd, '请执行下一批次\r'.encode())
-                prompt_sent = True
-
-            # ── Process pending [EXIT] (after 2 s settling time) ─────────────
-            if exit_seen_at is not None and now - exit_seen_at >= 2.0:
-                exit_seen_at = None
-                st, unfilled = get_state()
-                if st == 'ALL-COMPLETED':
-                    print_report()
-                    finished = True
-                    break
-                elif st == 'escalation':
-                    sys.stdout.write('\r\n\033[31m  ❌ ESCALATION — run: team status\033[0m\r\n')
-                    sys.stdout.flush()
-                    finished = True
-                    break
-                elif unfilled > 0:
-                    sys.stdout.write(f'\r\n\033[33m  ⏸  Credentials needed ({unfilled} unfilled).'
-                                     f' Fill .depend/*.env then type: 继续\033[0m\r\n')
-                    sys.stdout.flush()
-                else:
-                    os.write(master_fd, '继续\r'.encode())
-
-            # ── I/O forwarding ───────────────────────────────────────────────
-            for fd in r:
-                if fd == master_fd:
-                    try:
-                        data = os.read(master_fd, 4096)
-                    except OSError:
-                        finished = True
-                        break
-                    # Forward to user's real terminal
-                    os.write(sys.stdout.fileno(), data)
-                    buf += data
-                    t_last_out = time.monotonic()
-
-                    # Detect new [EXIT] occurrences
-                    new_count = buf.count(b'[EXIT]')
-                    if new_count > exit_count:
-                        exit_count   = new_count
-                        exit_seen_at = time.monotonic()   # start settling timer
-
-                elif fd == stdin_fd:
-                    try:
-                        data = os.read(stdin_fd, 1024)
-                    except OSError:
-                        break
-                    if data:
-                        os.write(master_fd, data)   # forward keystrokes to claude
+            elif st == 'escalation':
+                write_status('  ❌ ESCALATION — run: team status', 31)
+                break
+            elif unfilled > 0:
+                # Restore terminal so the user can type the credentials path
+                termios.tcsetattr(stdin_fd, termios.TCSADRAIN, saved_tty)
+                sys.stdout.write(
+                    f'\r\n\033[33m  ⏸  Credentials needed ({unfilled} unfilled).\r\n'
+                    f'     Fill .depend/*.env then press Enter to continue.\033[0m\r\n'
+                )
+                sys.stdout.flush()
+                sys.stdin.readline()
+                tty.setraw(stdin_fd)
+            else:
+                write_status(f'  ↩  Batch {batch_num} complete — starting next batch...', 36)
+                time.sleep(1)
 
     except KeyboardInterrupt:
         pass
     finally:
-        # Restore the user's terminal unconditionally
         try:
             termios.tcsetattr(stdin_fd, termios.TCSADRAIN, saved_tty)
-        except Exception:
-            pass
-
-    # Shut down claude
-    try:
-        proc.terminate()
-        proc.wait(timeout=3)
-    except Exception:
-        try:
-            proc.kill()
         except Exception:
             pass
 
