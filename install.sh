@@ -423,7 +423,7 @@ cmd_run() {
     # Use stream-json output format and parse text deltas for real-time display
     set +e
     env -u CLAUDECODE claude --dangerously-skip-permissions --agent orchestrator \
-      -p "请执行下一批次" --output-format stream-json | \
+      -p "请执行下一批次" --output-format stream-json --verbose | \
       python3 -u -c "
 import sys, json
 for line in sys.stdin:
