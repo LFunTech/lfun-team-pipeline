@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2026-03-09
+
+### Changed / 变更
+
+- **`team run` 架构重写：PTY + 守护进程 IPC**: `team run` 不再 kill/restart claude，改为通过 PTY（伪终端）启动一个完整的 claude 交互会话，守护进程监控 PTY 输出流，检测到 `[EXIT]` 后向 master 端写入 `继续\r`（模拟物理回车），整个流水线在同一个 claude 进程中运行完毕。用户可以看到完整的 claude TUI 并随时交互。
+  Rewrote `team run` with PTY-based IPC: instead of kill/restarting claude per batch, one claude process runs the full pipeline. A Python daemon opens a PTY pair, starts claude on the slave end (full TUI preserved), proxies all I/O between the real terminal and the master end, and injects `继续\r` on `[EXIT]` detection.
+
+### Fixed / 修复
+
+- **`team run` Enter 键不触发**: PTY raw 模式下 Enter 键产生 `\r`（0x0D）而非 `\n`，守护进程注入时也须用 `\r`，否则文字出现在输入框但不触发提交。
+  Fixed Enter key not submitting in PTY raw mode: injected prompts now use `\r` (0x0D) to match physical Enter key behavior.
+
+- **无 tty 环境友好报错**: `team run` 在 pipe 或脚本中调用时，检测到 stdin 非 tty 会立即输出清晰错误提示而非 termios 崩溃。
+  Added `os.isatty()` guard with a clear error message when `team run` is invoked without a real terminal.
+
+- **`proposal-queue.json` 列表格式兼容**: `team status` 和完成报告同时支持列表格式（旧）和带 `proposals` 键的字典格式（新）。
+  `team status` and final report now handle both list-format and dict-format `proposal-queue.json`.
+
+- **`kill $FEEDER_PID` 缺 `|| true`**: feeder 进程提前退出（如用户按 Ctrl+D）时 `kill` 返回非零，触发 `set -e` 静默终止 `team run`。
+  Added `|| true` to `kill $FEEDER_PID` to prevent `set -e` from exiting when the feeder process already terminated.
+
+- **`grep -c || echo 0` 双输出**: `grep -c` 无匹配时退出码为 1，触发 `|| echo 0`，但 grep 已输出 `0`，变量值变成 `0\n0`，导致整数比较报错。改用 `(grep -cF ...; true)` 解决。
+  Fixed double-output bug in `grep -c || echo 0` pattern causing integer comparison errors.
+
 ## [1.1.2] - 2026-03-09
 
 ### Fixed / 修复
