@@ -407,80 +407,115 @@ cmd_run() {
   echo ""
   echo "  lfun-team-pipeline — Autonomous Run"
   echo "  ─────────────────────────────────────────────────────"
-  echo "  Claude runs interactively. You can type at any time."
-  echo "  Auto-restarts on [EXIT]. Press Ctrl+C to abort."
+  echo "  Single Claude session. Daemon injects 继续 on [EXIT]."
+  echo "  You can type at any time. Press Ctrl+C to abort."
   echo ""
 
-  # Session log — shared across all restarts; used to detect [EXIT] keyword.
-  # Each claude instance is paired with its own FIFO (by PID) for controlled stdin.
-  _SESSION_LOG=$(mktemp /tmp/team-session-XXXXXX.log)
-  trap 'rm -f "$_SESSION_LOG"' EXIT
+  _LOG=$(mktemp /tmp/team-session-XXXXXX.log)
+  # PID-paired FIFO: unique per team run instance, no conflicts with concurrent runs
+  _FIFO="/tmp/team-input-$$.fifo"
+  rm -f "$_FIFO"
+  mkfifo "$_FIFO"
 
-  _PROMPT="请执行下一批次"
-  _BATCH=0
+  # ── Start claude in background so we can open the write end without blocking ──
+  # Output goes to terminal AND the log (for daemon to grep).
+  env -u CLAUDECODE claude --dangerously-skip-permissions --agent orchestrator \
+    < "$_FIFO" 2>&1 | tee -a "$_LOG" &
+  _PIPELINE_PID=$!
 
-  while true; do
-    _BATCH=$((_BATCH + 1))
-    _TIMESTAMP=$(date "+%H:%M:%S")
-    echo "  [$_TIMESTAMP] ── Batch #$_BATCH ──────────────────────────────"
-    echo ""
+  # Open write end (non-blocking now that read end is open)
+  exec 3>"$_FIFO"
 
-    # Per-instance FIFO — named after the parent shell PID + batch counter
-    # so concurrent team run invocations never share the same FIFO.
-    _FIFO="/tmp/team-input-$$-${_BATCH}.fifo"
-    rm -f "$_FIFO"
-    mkfifo "$_FIFO"
+  # Pass user's terminal input through to claude (best-effort; fails silently without tty)
+  cat /dev/tty >&3 2>/dev/null &
+  _TTY_PID=$!
 
-    # Feeder process (PID-paired with the FIFO):
-    #   1. Write the automatic prompt
-    #   2. Then pass /dev/tty through so the user can interact freely
-    { printf '%s\n' "$_PROMPT"; cat /dev/tty; } > "$_FIFO" &
-    _FEEDER_PID=$!
+  # Send initial prompt into claude's stdin
+  printf '请执行下一批次\n' >&3
 
-    # Run claude interactively.  Output goes to terminal AND the session log.
-    # tee -a ensures we can grep for [EXIT] after claude exits.
-    set +e
-    env -u CLAUDECODE claude --dangerously-skip-permissions --agent orchestrator \
-      < "$_FIFO" 2>&1 | tee -a "$_SESSION_LOG"
-    _CLAUDE_EXIT=$?
-    set -e
+  # ── Cleanup: close FIFO write end → claude reads EOF → exits ──
+  _close_fifo() {
+    kill "$_TTY_PID" 2>/dev/null || true
+    wait "$_TTY_PID" 2>/dev/null || true
+    exec 3>&-
+  }
 
-    # Tear down this instance's feeder + FIFO (PID-paired cleanup)
-    kill "$_FEEDER_PID" 2>/dev/null || true
-    wait "$_FEEDER_PID" 2>/dev/null || true
-    rm -f "$_FIFO"
+  _cleanup() {
+    _close_fifo
+    rm -f "$_FIFO" "$_LOG"
+  }
 
-    echo ""
-    echo "  ─────────────────────────────────────────────────────"
+  # SIGUSR1 from daemon signals all-done: close FIFO so claude exits cleanly
+  trap '_close_fifo' USR1
+  trap '_cleanup' EXIT INT TERM
 
-    if [ ! -f ".pipeline/state.json" ]; then
-      echo "  ⚠  state.json not found. Run 'team init' first."
-      exit 1
-    fi
-
-    # Read pipeline state
-    _PARSED=$(python3 -c "
-import json, sys
+  # ── Daemon: watch log for [EXIT], inject 继续 or signal done ──
+  _PARENT=$$
+  {
+    _exit_count=0
+    while kill -0 "$_PIPELINE_PID" 2>/dev/null; do
+      sleep 1
+      _new=$(grep -c '\[EXIT\]' "$_LOG" 2>/dev/null || echo 0)
+      if [ "$_new" -gt "$_exit_count" ]; then
+        _exit_count=$_new
+        _parsed=$(python3 -c "
+import json
 try:
     s = json.load(open('.pipeline/state.json'))
     dep = s.get('depend_collector_result', {})
-    print(s.get('status','running') + '|' + s.get('current_phase','?') + '|' + str(len(dep.get('unfilled_deps',[]))))
+    u = len(dep.get('unfilled_deps', []))
+    print(s.get('status', 'running') + '|' + str(u))
 except:
-    print('error|?|0')
-")
-    _STATUS=$(echo "$_PARSED" | cut -d'|' -f1)
-    _PHASE=$(echo "$_PARSED"  | cut -d'|' -f2)
-    _UNFILLED=$(echo "$_PARSED" | cut -d'|' -f3)
+    print('error|0')
+" 2>/dev/null || echo 'error|0')
+        _st=$(echo "$_parsed" | cut -d'|' -f1 | tr -d '[:space:]')
+        _unfilled=$(echo "$_parsed" | cut -d'|' -f2 | tr -d '[:space:]')
 
-    # ── Decision: did the batch complete normally? ────────────────────────
-    # The orchestrator always outputs [EXIT] at the end of a successful batch.
-    # If [EXIT] is NOT in the recent log, the user interacted or an error occurred.
-    if tail -60 "$_SESSION_LOG" | grep -qF '[EXIT]'; then
-      # Normal batch completion — check pipeline state
-      if [ "$_STATUS" = "ALL-COMPLETED" ]; then
-        echo "  ✅ All proposals completed! Pipeline finished."
-        echo ""
-        python3 - << 'REPORT_EOF'
+        if [ "$_st" = "ALL-COMPLETED" ] || [ "$_st" = "escalation" ]; then
+          exec 3>&-              # close daemon's copy of write end
+          kill -USR1 "$_PARENT" 2>/dev/null   # tell parent to close its copy too
+          break
+        elif [ "${_unfilled:-0}" -gt 0 ]; then
+          echo ""
+          echo "  ⏸  Credentials needed ($_unfilled unfilled). Fill .depend/*.env then type 继续 and Enter."
+          # Do NOT auto-inject; wait for user to type
+        else
+          # Normal batch done — inject next prompt
+          printf '继续\n' >&3 2>/dev/null || break
+        fi
+      fi
+    done
+  } &
+  _DAEMON_PID=$!
+
+  # ── Wait for claude to finish (blocked here; daemon runs in background) ──
+  wait "$_PIPELINE_PID" 2>/dev/null || true
+
+  kill "$_DAEMON_PID" 2>/dev/null || true
+  wait "$_DAEMON_PID" 2>/dev/null || true
+
+  echo ""
+  echo "  ─────────────────────────────────────────────────────"
+
+  # Final state report
+  if [ ! -f ".pipeline/state.json" ]; then
+    echo "  ⚠  state.json not found."
+    exit 1
+  fi
+
+  _FINAL=$(python3 -c "
+import json
+try:
+    s = json.load(open('.pipeline/state.json'))
+    print(s.get('status', 'running'))
+except:
+    print('error')
+" 2>/dev/null)
+
+  if [ "$_FINAL" = "ALL-COMPLETED" ]; then
+    echo "  ✅ All proposals completed! Pipeline finished."
+    echo ""
+    python3 - << 'REPORT_EOF'
 import json, os
 RESET="\033[0m"; BOLD="\033[1m"; GREEN="\033[32m"; YELLOW="\033[33m"; RED="\033[31m"; CYAN="\033[36m"
 s = json.load(open(".pipeline/state.json"))
@@ -501,36 +536,12 @@ for p in proposals:
     print(f"{CYAN}  ║{RESET}    {icon}  {p.get('title','')}")
 print(f"{BOLD}{CYAN}  ╚═══════════════════════════════════════════════╝{RESET}\n")
 REPORT_EOF
-        break
-      fi
-
-      if [ "$_STATUS" = "escalation" ]; then
-        echo "  ❌ ESCALATION — manual intervention required. Run: team status"
-        exit 1
-      fi
-
-      if [ "${_UNFILLED:-0}" -gt "0" ]; then
-        echo "  ⏸  Credentials needed ($_UNFILLED unfilled). Fill .depend/*.env then: team run"
-        exit 0
-      fi
-
-      # Continue to next batch automatically
-      echo "  ✓ Batch #$_BATCH done (phase: $_PHASE) — continuing..."
-      echo ""
-      _PROMPT="继续"
-
-    else
-      # No [EXIT] found — claude exited without completing a batch.
-      # This means the user interacted, or the orchestrator is waiting for input.
-      # Stay silent and let the user decide whether to continue.
-      if [ "$_CLAUDE_EXIT" -ne 0 ]; then
-        echo "  ⚠  Claude exited with code $_CLAUDE_EXIT. Run 'team run' to resume."
-        exit 1
-      fi
-      echo "  ℹ  Session ended (no [EXIT] detected). Run 'team run' to resume."
-      break
-    fi
-  done
+  elif [ "$_FINAL" = "escalation" ]; then
+    echo "  ❌ ESCALATION — manual intervention required. Run: team status"
+    exit 1
+  else
+    echo "  ℹ  Session ended (status: $_FINAL). Run 'team run' to resume."
+  fi
 }
 
 case "${1:-}" in
