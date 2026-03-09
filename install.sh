@@ -455,7 +455,7 @@ cmd_run() {
     _exit_count=0
     while kill -0 "$_PIPELINE_PID" 2>/dev/null; do
       sleep 1
-      _new=$(grep -c '\[EXIT\]' "$_LOG" 2>/dev/null || echo 0)
+      _new=$(grep -cF '[EXIT]' "$_LOG" 2>/dev/null; true); _new=${_new:-0}
       if [ "$_new" -gt "$_exit_count" ]; then
         _exit_count=$_new
         _parsed=$(python3 -c "
