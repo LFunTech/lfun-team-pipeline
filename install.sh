@@ -319,8 +319,8 @@ if cond:
 queue_file = ".pipeline/proposal-queue.json"
 if os.path.exists(queue_file):
     q = json.load(open(queue_file))
-    proposals = q.get("proposals", [])
-    system_name = q.get("system_name", "")
+    proposals = q if isinstance(q, list) else q.get("proposals", [])
+    system_name = q.get("system_name", "") if isinstance(q, dict) else ""
     total = len(proposals)
     done  = sum(1 for p in proposals if p.get("status") == "completed")
     running = [p for p in proposals if p.get("status") == "running"]
@@ -484,8 +484,8 @@ except:
 import json, os
 RESET="\033[0m"; BOLD="\033[1m"; GREEN="\033[32m"; YELLOW="\033[33m"; RED="\033[31m"; CYAN="\033[36m"
 s = json.load(open(".pipeline/state.json"))
-q = json.load(open(".pipeline/proposal-queue.json")) if os.path.exists(".pipeline/proposal-queue.json") else {}
-proposals = q.get("proposals", [])
+q = json.load(open(".pipeline/proposal-queue.json")) if os.path.exists(".pipeline/proposal-queue.json") else []
+proposals = q if isinstance(q, list) else q.get("proposals", [])
 total = len(proposals); done = sum(1 for p in proposals if p.get("status") == "completed")
 steps = s.get("execution_log", [])
 passed = sum(1 for e in steps if e.get("result") == "PASS")
