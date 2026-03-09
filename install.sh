@@ -418,32 +418,66 @@ cmd_run() {
     echo "  [$TIMESTAMP] ── Batch #$BATCH ───────────────────────────────"
     echo ""
 
-    # Run orchestrator in non-interactive mode (-p); exits automatically after one batch
-    # Unset CLAUDECODE to allow nested claude invocation (e.g. when run from within Claude Code)
-    # Use stream-json output format and parse text deltas for real-time display
+    # Run orchestrator in non-interactive mode (-p); exits automatically after one batch.
+    # Unset CLAUDECODE to allow nested claude invocation (e.g. when run from within Claude Code).
+    # Pipe to python parser: claude line-buffers to pipes (real-time), not to files (block-buffered).
+    # Background heartbeat covers silent periods when Agent() subagent calls block for minutes.
+    ( while true; do sleep 20; printf "  ... (still running)\n"; done ) &
+    _HEARTBEAT_PID=$!
+
     set +e
     env -u CLAUDECODE claude --dangerously-skip-permissions --agent orchestrator \
       -p "请执行下一批次" --output-format stream-json --verbose | \
       python3 -u -c "
 import sys, json
+
+prev_text  = {}
+prev_tools = {}
+
 for line in sys.stdin:
     line = line.strip()
     if not line:
         continue
     try:
         d = json.loads(line)
-        if d.get('type') == 'content_block_delta':
-            t = d.get('delta', {}).get('text', '')
-            if t:
-                sys.stdout.write(t)
-                sys.stdout.flush()
     except Exception:
-        pass
-sys.stdout.write('\n')
-sys.stdout.flush()
+        continue
+    if d.get('type') != 'assistant':
+        continue
+    msg     = d.get('message', {})
+    msg_id  = msg.get('id', 'x')
+    content = msg.get('content', [])
+    prev_text.setdefault(msg_id, 0)
+    prev_tools.setdefault(msg_id, set())
+    for block in content:
+        btype = block.get('type', '')
+        if btype == 'text':
+            full     = block.get('text', '')
+            new_part = full[prev_text[msg_id]:]
+            if new_part:
+                sys.stdout.write(new_part)
+                sys.stdout.flush()
+            prev_text[msg_id] = len(full)
+        elif btype == 'tool_use':
+            tid = block.get('id', '')
+            if tid not in prev_tools[msg_id]:
+                prev_tools[msg_id].add(tid)
+                name = block.get('name', '')
+                inp  = block.get('input', {})
+                hint = ''
+                for key in ('file_path', 'pattern', 'command', 'prompt', 'description'):
+                    if key in inp:
+                        v    = str(inp[key])
+                        hint = (v.split('/')[-1] if key == 'file_path' else v)[:50]
+                        break
+                sys.stdout.write(f'  [tool] {name}({hint})\n')
+                sys.stdout.flush()
 "
     CLAUDE_EXIT=${PIPESTATUS[0]}
     set -e
+
+    kill "$_HEARTBEAT_PID" 2>/dev/null
+    wait "$_HEARTBEAT_PID" 2>/dev/null
 
     echo ""
     echo "  ─────────────────────────────────────────────────────"
@@ -476,6 +510,38 @@ PYEOF2
     if [ "$STATUS" = "ALL-COMPLETED" ]; then
       echo "  ✅ All proposals completed! Pipeline finished."
       echo ""
+      # Print final report
+      python3 - << 'REPORT_EOF'
+import json, os
+from datetime import datetime, timezone
+
+RESET="\033[0m"; BOLD="\033[1m"; GREEN="\033[32m"; YELLOW="\033[33m"
+RED="\033[31m"; CYAN="\033[36m"; DIM="\033[2m"
+
+s = json.load(open(".pipeline/state.json"))
+q_file = ".pipeline/proposal-queue.json"
+q = json.load(open(q_file)) if os.path.exists(q_file) else {}
+
+proposals = q.get("proposals", [])
+total = len(proposals)
+done  = sum(1 for p in proposals if p.get("status") == "completed")
+steps = s.get("execution_log", [])
+passed = sum(1 for e in steps if e.get("result") == "PASS")
+failed = sum(1 for e in steps if e.get("result") == "FAIL")
+warned = sum(1 for e in steps if e.get("result") == "WARN")
+
+print(f"\n{BOLD}{CYAN}  ╔══ Pipeline Final Report ══════════════════════╗{RESET}")
+print(f"{CYAN}  ║{RESET}")
+print(f"{CYAN}  ║{RESET}  {BOLD}Project:{RESET}    {s.get('project_name', os.path.basename(os.getcwd()))}")
+print(f"{CYAN}  ║{RESET}  {BOLD}Proposals:{RESET}  {GREEN}{done}/{total} completed{RESET}")
+print(f"{CYAN}  ║{RESET}  {BOLD}Steps:{RESET}      {GREEN}{passed} PASS{RESET}  {YELLOW}{warned} WARN{RESET}  {RED}{failed} FAIL{RESET}  (total {len(steps)})")
+print(f"{CYAN}  ║{RESET}")
+for p in proposals:
+    icon = f"{GREEN}✓{RESET}" if p.get("status") == "completed" else f"{YELLOW}○{RESET}"
+    print(f"{CYAN}  ║{RESET}    {icon}  {p.get('title','')}")
+print(f"{CYAN}  ║{RESET}")
+print(f"{BOLD}{CYAN}  ╚═══════════════════════════════════════════════╝{RESET}\n")
+REPORT_EOF
       break
     fi
 
