@@ -87,11 +87,12 @@ usage() {
   echo "    upgrade   Upgrade playbook + autosteps in-place (preserves state)"
   echo "    version   Print version"
   echo "    replan    Re-plan the proposal queue (keeps completed work)"
+  echo "    run       Auto-run pipeline batches until done or intervention needed"
   echo "    update    Re-run installer to update agents and templates"
   echo ""
   echo "  Examples:"
   echo "    cd my-project && team init"
-  echo "    claude --dangerously-skip-permissions --agent orchestrator"
+  echo "    team run"
   echo "    team status"
   echo ""
 }
@@ -397,12 +398,101 @@ print()
 PYEOF
 }
 
+cmd_run() {
+  if [ ! -d ".pipeline" ]; then
+    echo "❌ No .pipeline/ directory found. Run: team init"
+    exit 1
+  fi
+
+  echo ""
+  echo "  lfun-team-pipeline — Autonomous Run"
+  echo "  ─────────────────────────────────────────────────────"
+  echo "  Batches run automatically. Stops on: completion,"
+  echo "  escalation, or credentials needed. Press Ctrl+C to abort."
+  echo ""
+
+  BATCH=0
+  while true; do
+    BATCH=$((BATCH + 1))
+    TIMESTAMP=$(date "+%H:%M:%S")
+    echo "  [$TIMESTAMP] ── Batch #$BATCH ───────────────────────────────"
+    echo ""
+
+    # Run orchestrator; capture exit code without aborting
+    set +e
+    claude --dangerously-skip-permissions --agent orchestrator
+    CLAUDE_EXIT=$?
+    set -e
+
+    echo ""
+    echo "  ─────────────────────────────────────────────────────"
+
+    # state.json must exist after each run
+    if [ ! -f ".pipeline/state.json" ]; then
+      echo "  ⚠  state.json not found. Run 'team init' first."
+      exit 1
+    fi
+
+    # Parse state via python3
+    PARSED=$(python3 - << 'PYEOF2'
+import json, sys
+try:
+    s = json.load(open(".pipeline/state.json"))
+    status = s.get("status", "running")
+    phase  = s.get("current_phase", "?")
+    dep    = s.get("depend_collector_result", {})
+    unfilled = len(dep.get("unfilled_deps", []))
+    print(f"{status}|{phase}|{unfilled}")
+except Exception as e:
+    print(f"error|?|0")
+PYEOF2
+)
+
+    STATUS=$(echo "$PARSED" | cut -d'|' -f1)
+    PHASE=$(echo "$PARSED"  | cut -d'|' -f2)
+    UNFILLED=$(echo "$PARSED" | cut -d'|' -f3)
+
+    if [ "$STATUS" = "ALL-COMPLETED" ]; then
+      echo "  ✅ All proposals completed! Pipeline finished."
+      echo ""
+      break
+    fi
+
+    if [ "$STATUS" = "escalation" ]; then
+      echo "  ❌ ESCALATION — manual intervention required."
+      echo "     Run: team status"
+      echo ""
+      exit 1
+    fi
+
+    if [ "${UNFILLED:-0}" -gt "0" ]; then
+      echo "  ⏸  Credentials needed ($UNFILLED unfilled dependency)."
+      echo "     1. Fill in the .depend/*.env files"
+      echo "     2. Then resume: team run"
+      echo ""
+      exit 0
+    fi
+
+    if [ "$CLAUDE_EXIT" -ne 0 ]; then
+      echo "  ⚠  claude exited with code $CLAUDE_EXIT (phase: $PHASE)."
+      echo "     Check output above. Resume: team run"
+      echo ""
+      exit 1
+    fi
+
+    echo "  ✓ Batch #$BATCH done (phase: $PHASE) — continuing..."
+    sleep 1
+    echo ""
+  done
+}
+
 case "${1:-}" in
   init)    cmd_init ;;
   status)  cmd_status ;;
   upgrade) cmd_upgrade ;;
   version) cmd_version ;;
   update)  cmd_update ;;
+  run)     cmd_run ;;
   replan)  cmd_replan ;;
   *)       usage ;;
 esac
