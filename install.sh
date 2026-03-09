@@ -536,7 +536,7 @@ def main():
             if not prompt_sent and (
                 (now - t_last_out > 2.0 and now - t0 > 1.0) or now - t0 > 5.0
             ):
-                os.write(master_fd, '请执行下一批次\n'.encode())
+                os.write(master_fd, '请执行下一批次\r'.encode())
                 prompt_sent = True
 
             # ── Process pending [EXIT] (after 2 s settling time) ─────────────
@@ -557,7 +557,7 @@ def main():
                                      f' Fill .depend/*.env then type: 继续\033[0m\r\n')
                     sys.stdout.flush()
                 else:
-                    os.write(master_fd, '继续\n'.encode())
+                    os.write(master_fd, '继续\r'.encode())
 
             # ── I/O forwarding ───────────────────────────────────────────────
             for fd in r:
