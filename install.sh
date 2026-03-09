@@ -407,131 +407,91 @@ cmd_run() {
   echo ""
   echo "  lfun-team-pipeline — Autonomous Run"
   echo "  ─────────────────────────────────────────────────────"
-  echo "  Batches run automatically. Stops on: completion,"
-  echo "  escalation, or credentials needed. Press Ctrl+C to abort."
+  echo "  Claude runs interactively. You can type at any time."
+  echo "  Auto-restarts on [EXIT]. Press Ctrl+C to abort."
   echo ""
 
-  BATCH=0
+  # Session log — shared across all restarts; used to detect [EXIT] keyword.
+  # Each claude instance is paired with its own FIFO (by PID) for controlled stdin.
+  _SESSION_LOG=$(mktemp /tmp/team-session-XXXXXX.log)
+  trap 'rm -f "$_SESSION_LOG"' EXIT
+
+  _PROMPT="请执行下一批次"
+  _BATCH=0
+
   while true; do
-    BATCH=$((BATCH + 1))
-    TIMESTAMP=$(date "+%H:%M:%S")
-    echo "  [$TIMESTAMP] ── Batch #$BATCH ───────────────────────────────"
+    _BATCH=$((_BATCH + 1))
+    _TIMESTAMP=$(date "+%H:%M:%S")
+    echo "  [$_TIMESTAMP] ── Batch #$_BATCH ──────────────────────────────"
     echo ""
 
-    # Run orchestrator in non-interactive mode (-p); exits automatically after one batch.
-    # Unset CLAUDECODE to allow nested claude invocation (e.g. when run from within Claude Code).
-    # Pipe to python parser: claude line-buffers to pipes (real-time), not to files (block-buffered).
-    # Background heartbeat covers silent periods when Agent() subagent calls block for minutes.
-    ( while true; do sleep 20; printf "  ... (still running)\n"; done ) &
-    _HEARTBEAT_PID=$!
+    # Per-instance FIFO — named after the parent shell PID + batch counter
+    # so concurrent team run invocations never share the same FIFO.
+    _FIFO="/tmp/team-input-$$-${_BATCH}.fifo"
+    rm -f "$_FIFO"
+    mkfifo "$_FIFO"
 
+    # Feeder process (PID-paired with the FIFO):
+    #   1. Write the automatic prompt
+    #   2. Then pass /dev/tty through so the user can interact freely
+    { printf '%s\n' "$_PROMPT"; cat /dev/tty; } > "$_FIFO" &
+    _FEEDER_PID=$!
+
+    # Run claude interactively.  Output goes to terminal AND the session log.
+    # tee -a ensures we can grep for [EXIT] after claude exits.
     set +e
     env -u CLAUDECODE claude --dangerously-skip-permissions --agent orchestrator \
-      -p "请执行下一批次" --output-format stream-json --verbose | \
-      python3 -u -c "
-import sys, json
-
-prev_text  = {}
-prev_tools = {}
-
-for line in sys.stdin:
-    line = line.strip()
-    if not line:
-        continue
-    try:
-        d = json.loads(line)
-    except Exception:
-        continue
-    if d.get('type') != 'assistant':
-        continue
-    msg     = d.get('message', {})
-    msg_id  = msg.get('id', 'x')
-    content = msg.get('content', [])
-    prev_text.setdefault(msg_id, 0)
-    prev_tools.setdefault(msg_id, set())
-    for block in content:
-        btype = block.get('type', '')
-        if btype == 'text':
-            full     = block.get('text', '')
-            new_part = full[prev_text[msg_id]:]
-            if new_part:
-                sys.stdout.write(new_part)
-                sys.stdout.flush()
-            prev_text[msg_id] = len(full)
-        elif btype == 'tool_use':
-            tid = block.get('id', '')
-            if tid not in prev_tools[msg_id]:
-                prev_tools[msg_id].add(tid)
-                name = block.get('name', '')
-                inp  = block.get('input', {})
-                hint = ''
-                for key in ('file_path', 'pattern', 'command', 'prompt', 'description'):
-                    if key in inp:
-                        v    = str(inp[key])
-                        hint = (v.split('/')[-1] if key == 'file_path' else v)[:50]
-                        break
-                sys.stdout.write(f'  [tool] {name}({hint})\n')
-                sys.stdout.flush()
-"
-    CLAUDE_EXIT=${PIPESTATUS[0]}
+      < "$_FIFO" 2>&1 | tee -a "$_SESSION_LOG"
+    _CLAUDE_EXIT=$?
     set -e
 
-    kill "$_HEARTBEAT_PID" 2>/dev/null
-    wait "$_HEARTBEAT_PID" 2>/dev/null
+    # Tear down this instance's feeder + FIFO (PID-paired cleanup)
+    kill "$_FEEDER_PID" 2>/dev/null
+    wait "$_FEEDER_PID" 2>/dev/null || true
+    rm -f "$_FIFO"
 
     echo ""
     echo "  ─────────────────────────────────────────────────────"
 
-    # state.json must exist after each run
     if [ ! -f ".pipeline/state.json" ]; then
       echo "  ⚠  state.json not found. Run 'team init' first."
       exit 1
     fi
 
-    # Parse state via python3
-    PARSED=$(python3 - << 'PYEOF2'
+    # Read pipeline state
+    _PARSED=$(python3 -c "
 import json, sys
 try:
-    s = json.load(open(".pipeline/state.json"))
-    status = s.get("status", "running")
-    phase  = s.get("current_phase", "?")
-    dep    = s.get("depend_collector_result", {})
-    unfilled = len(dep.get("unfilled_deps", []))
-    print(f"{status}|{phase}|{unfilled}")
-except Exception as e:
-    print(f"error|?|0")
-PYEOF2
-)
+    s = json.load(open('.pipeline/state.json'))
+    dep = s.get('depend_collector_result', {})
+    print(s.get('status','running') + '|' + s.get('current_phase','?') + '|' + str(len(dep.get('unfilled_deps',[]))))
+except:
+    print('error|?|0')
+")
+    _STATUS=$(echo "$_PARSED" | cut -d'|' -f1)
+    _PHASE=$(echo "$_PARSED"  | cut -d'|' -f2)
+    _UNFILLED=$(echo "$_PARSED" | cut -d'|' -f3)
 
-    STATUS=$(echo "$PARSED" | cut -d'|' -f1)
-    PHASE=$(echo "$PARSED"  | cut -d'|' -f2)
-    UNFILLED=$(echo "$PARSED" | cut -d'|' -f3)
-
-    if [ "$STATUS" = "ALL-COMPLETED" ]; then
-      echo "  ✅ All proposals completed! Pipeline finished."
-      echo ""
-      # Print final report
-      python3 - << 'REPORT_EOF'
+    # ── Decision: did the batch complete normally? ────────────────────────
+    # The orchestrator always outputs [EXIT] at the end of a successful batch.
+    # If [EXIT] is NOT in the recent log, the user interacted or an error occurred.
+    if tail -60 "$_SESSION_LOG" | grep -qF '[EXIT]'; then
+      # Normal batch completion — check pipeline state
+      if [ "$_STATUS" = "ALL-COMPLETED" ]; then
+        echo "  ✅ All proposals completed! Pipeline finished."
+        echo ""
+        python3 - << 'REPORT_EOF'
 import json, os
-from datetime import datetime, timezone
-
-RESET="\033[0m"; BOLD="\033[1m"; GREEN="\033[32m"; YELLOW="\033[33m"
-RED="\033[31m"; CYAN="\033[36m"; DIM="\033[2m"
-
+RESET="\033[0m"; BOLD="\033[1m"; GREEN="\033[32m"; YELLOW="\033[33m"; RED="\033[31m"; CYAN="\033[36m"
 s = json.load(open(".pipeline/state.json"))
-q_file = ".pipeline/proposal-queue.json"
-q = json.load(open(q_file)) if os.path.exists(q_file) else {}
-
+q = json.load(open(".pipeline/proposal-queue.json")) if os.path.exists(".pipeline/proposal-queue.json") else {}
 proposals = q.get("proposals", [])
-total = len(proposals)
-done  = sum(1 for p in proposals if p.get("status") == "completed")
+total = len(proposals); done = sum(1 for p in proposals if p.get("status") == "completed")
 steps = s.get("execution_log", [])
 passed = sum(1 for e in steps if e.get("result") == "PASS")
 failed = sum(1 for e in steps if e.get("result") == "FAIL")
 warned = sum(1 for e in steps if e.get("result") == "WARN")
-
 print(f"\n{BOLD}{CYAN}  ╔══ Pipeline Final Report ══════════════════════╗{RESET}")
-print(f"{CYAN}  ║{RESET}")
 print(f"{CYAN}  ║{RESET}  {BOLD}Project:{RESET}    {s.get('project_name', os.path.basename(os.getcwd()))}")
 print(f"{CYAN}  ║{RESET}  {BOLD}Proposals:{RESET}  {GREEN}{done}/{total} completed{RESET}")
 print(f"{CYAN}  ║{RESET}  {BOLD}Steps:{RESET}      {GREEN}{passed} PASS{RESET}  {YELLOW}{warned} WARN{RESET}  {RED}{failed} FAIL{RESET}  (total {len(steps)})")
@@ -539,37 +499,37 @@ print(f"{CYAN}  ║{RESET}")
 for p in proposals:
     icon = f"{GREEN}✓{RESET}" if p.get("status") == "completed" else f"{YELLOW}○{RESET}"
     print(f"{CYAN}  ║{RESET}    {icon}  {p.get('title','')}")
-print(f"{CYAN}  ║{RESET}")
 print(f"{BOLD}{CYAN}  ╚═══════════════════════════════════════════════╝{RESET}\n")
 REPORT_EOF
+        break
+      fi
+
+      if [ "$_STATUS" = "escalation" ]; then
+        echo "  ❌ ESCALATION — manual intervention required. Run: team status"
+        exit 1
+      fi
+
+      if [ "${_UNFILLED:-0}" -gt "0" ]; then
+        echo "  ⏸  Credentials needed ($_UNFILLED unfilled). Fill .depend/*.env then: team run"
+        exit 0
+      fi
+
+      # Continue to next batch automatically
+      echo "  ✓ Batch #$_BATCH done (phase: $_PHASE) — continuing..."
+      echo ""
+      _PROMPT="继续"
+
+    else
+      # No [EXIT] found — claude exited without completing a batch.
+      # This means the user interacted, or the orchestrator is waiting for input.
+      # Stay silent and let the user decide whether to continue.
+      if [ "$_CLAUDE_EXIT" -ne 0 ]; then
+        echo "  ⚠  Claude exited with code $_CLAUDE_EXIT. Run 'team run' to resume."
+        exit 1
+      fi
+      echo "  ℹ  Session ended (no [EXIT] detected). Run 'team run' to resume."
       break
     fi
-
-    if [ "$STATUS" = "escalation" ]; then
-      echo "  ❌ ESCALATION — manual intervention required."
-      echo "     Run: team status"
-      echo ""
-      exit 1
-    fi
-
-    if [ "${UNFILLED:-0}" -gt "0" ]; then
-      echo "  ⏸  Credentials needed ($UNFILLED unfilled dependency)."
-      echo "     1. Fill in the .depend/*.env files"
-      echo "     2. Then resume: team run"
-      echo ""
-      exit 0
-    fi
-
-    if [ "$CLAUDE_EXIT" -ne 0 ]; then
-      echo "  ⚠  claude exited with code $CLAUDE_EXIT (phase: $PHASE)."
-      echo "     Check output above. Resume: team run"
-      echo ""
-      exit 1
-    fi
-
-    echo "  ✓ Batch #$BATCH done (phase: $PHASE) — continuing..."
-    sleep 1
-    echo ""
   done
 }
 
