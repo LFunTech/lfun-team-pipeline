@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.4] - 2026-03-14
+
+### Added / 新增
+
+- **Phase 3.0d Duplicate Detector / 重复组件检测阶段**: 新增 Phase 3.0d（Duplicate Detector），在 Builder 实现完成后自动检测跨 Builder 产生的重复代码和重复组件。
+  Added Phase 3.0d (Duplicate Detector) to detect cross-builder duplicate code and components after parallel implementation.
+  - `duplicate_analyzer.py`：Layer 1（文件级精确/近似匹配）+ Layer 2（函数级语义重复检测），含完整单元测试。
+    `duplicate_analyzer.py`: Layer 1 (file-level exact/near-duplicate) + Layer 2 (function-level semantic duplicate detection) with full unit tests.
+  - `duplicate-detector.sh`：AutoStep 脚本，调用 analyzer 并生成结构化报告。
+    `duplicate-detector.sh`: AutoStep script invoking analyzer and producing structured report.
+  - `duplicate-auditor` Agent：独立审计 remediation plan，确保整改方案合理。
+    `duplicate-auditor` agent: independently audits the remediation plan for soundness.
+  - Orchestrator 路由更新：Phase 3.0d 插入 Phase 3.0b（Build Verifier）之后。
+    Orchestrator routing updated: Phase 3.0d inserted after Phase 3.0b (Build Verifier).
+
+- **Component Registry 配置块 / 组件注册表配置**: `config.json` 模板新增 `component_registry` 配置块，为组件注册表功能预留配置入口。
+  Added `component_registry` config block to `config.json` template for future component registry support.
+
+- **`team scan` 命令 / `team scan` command**: 新增 `team scan` 子命令，支持手动触发项目扫描。`install.sh` 新增 `.py` autostep 文件支持。
+  Added `team scan` subcommand for manual project scanning. `install.sh` now supports `.py` autostep files.
+
+### Fixed / 修复
+
+- **`duplicate_analyzer` 代码审查修复**: 修复三项代码审查问题（错误处理、边界条件、输出格式）。
+  Fixed three code review issues in `duplicate_analyzer` (error handling, edge cases, output formatting).
+
+- **`mktemp` 并发冲突**: 修复多个 autostep 并发执行时 `mktemp` 模板冲突问题，安装时自动启用依赖 plugins。
+  Fixed `mktemp` template conflicts during concurrent autostep execution; install now auto-enables dependent plugins.
+
+- **`team run` 批次间进程复用问题**: `team run` 每个批次启动独立 claude 进程，而非注入"继续"到现有进程，避免上下文累积导致的不稳定。
+  `team run` now spawns a fresh claude process per batch instead of injecting prompts into an existing session, preventing context accumulation instability.
+
 ## [1.1.3] - 2026-03-09
 
 ### Changed / 变更
