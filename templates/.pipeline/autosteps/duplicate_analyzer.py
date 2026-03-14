@@ -11,6 +11,7 @@ Layer 2: 近似重复（名称相似 + 参数类型兼容）
 """
 
 import argparse
+import copy
 import json
 import re
 from collections import defaultdict
@@ -158,16 +159,15 @@ def find_exact_duplicates(components, exclude_pairs=None):
     for sig, members in sig_groups.items():
         if len(members) < 2:
             continue
-        # 过滤排除对
-        skip_ids = set()
-        for i, c1 in enumerate(members):
-            for c2 in members[i + 1:]:
-                if is_excluded(c1, c2, exclude_pairs):
-                    skip_ids.add(c1["id"])
-                    skip_ids.add(c2["id"])
-        filtered = [c for c in members if c["id"] not in skip_ids]
-        if len(filtered) < 2:
-            continue
+        # 过滤排除对：仅当组恰好为 2 成员且该对被排除时才跳过整组
+        # 对于 3+ 成员组，排除对不适用（组比排除对大，仍有真正重复）
+        if len(members) == 2:
+            if is_excluded(members[0], members[1], exclude_pairs):
+                continue
+            filtered = members
+        else:
+            # 3+ 成员：保留所有成员，排除对不影响整组
+            filtered = members
 
         groups.append({
             "level": "exact",
@@ -230,10 +230,10 @@ def find_similar_duplicates(components, exact_ids=None, threshold=0.7, exclude_p
             seen.add(c1["id"])
             sim_val = name_similarity(cluster[0]["name"], cluster[1]["name"])
             # 置信度：0.7 ~ 0.89，按相似度线性插值
-            if sim_val < 1.0:
-                confidence = round(0.7 + (sim_val - threshold) * 0.3 / (1 - threshold), 2)
-            else:
+            if threshold >= 1.0 or sim_val >= 1.0:
                 confidence = 0.89
+            else:
+                confidence = round(0.7 + (sim_val - threshold) * 0.3 / (1 - threshold), 2)
             groups.append({
                 "level": "similar",
                 "confidence": confidence,
@@ -249,6 +249,8 @@ def find_similar_duplicates(components, exact_ids=None, threshold=0.7, exclude_p
 
 def build_candidates_report(groups, total_scanned, mode):
     """构建 duplicate-candidates.json 报告"""
+    # 深拷贝避免修改调用者的原始数据
+    groups = copy.deepcopy(groups)
     # 分配 group_id
     for i, g in enumerate(groups, 1):
         g["group_id"] = f"DUP-{i:03d}"

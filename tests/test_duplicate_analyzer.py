@@ -144,6 +144,93 @@ class TestExclusionRules(unittest.TestCase):
         self.assertEqual(len(groups), 0)
 
 
+class TestExcludePairWithThreeMembers(unittest.TestCase):
+    """3+ 成员组中排除对不应移除整个组"""
+
+    def test_three_members_with_one_exclude_pair_keeps_group(self):
+        """A, B, C 签名相同，(A, B) 被排除 → 组仍保留全部 3 成员"""
+        components = [
+            {"id": "L-001", "name": "hash", "type": "function",
+             "path": "src/a.ts:1", "signature": "hash(s: string): string",
+             "tags": [], "exported": True, "shard": "LEGACY"},
+            {"id": "L-002", "name": "hash", "type": "function",
+             "path": "src/b.ts:1", "signature": "hash(s: string): string",
+             "tags": [], "exported": True, "shard": "LEGACY"},
+            {"id": "L-003", "name": "hash", "type": "function",
+             "path": "src/c.ts:1", "signature": "hash(s: string): string",
+             "tags": [], "exported": True, "shard": "LEGACY"},
+        ]
+        exclude = [{"a": "hash@src/a.ts", "b": "hash@src/b.ts"}]
+        groups = find_exact_duplicates(components, exclude_pairs=exclude)
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(len(groups[0]["components"]), 3)
+
+    def test_two_members_with_exclude_pair_removes_group(self):
+        """A, B 签名相同，(A, B) 被排除 → 组被过滤"""
+        components = [
+            {"id": "L-001", "name": "hash", "type": "function",
+             "path": "src/a.ts:1", "signature": "hash(s: string): string",
+             "tags": [], "exported": True, "shard": "LEGACY"},
+            {"id": "L-002", "name": "hash", "type": "function",
+             "path": "src/b.ts:1", "signature": "hash(s: string): string",
+             "tags": [], "exported": True, "shard": "LEGACY"},
+        ]
+        exclude = [{"a": "hash@src/a.ts", "b": "hash@src/b.ts"}]
+        groups = find_exact_duplicates(components, exclude_pairs=exclude)
+        self.assertEqual(len(groups), 0)
+
+
+class TestThresholdEdgeCases(unittest.TestCase):
+    """阈值边界情况"""
+
+    def test_threshold_1_0_no_division_by_zero(self):
+        """threshold=1.0 时不应产生除零错误"""
+        components = [
+            {"id": "L-001", "name": "validateEmail", "type": "function",
+             "path": "src/a.ts:1",
+             "signature": "validateEmail(email: string): boolean",
+             "tags": [], "exported": True, "shard": "LEGACY"},
+            {"id": "L-002", "name": "validateEmail", "type": "function",
+             "path": "src/b.ts:1",
+             "signature": "validateEmail(email: string): boolean",
+             "tags": [], "exported": True, "shard": "LEGACY"},
+        ]
+        # 不应抛出 ZeroDivisionError
+        groups = find_similar_duplicates(components, exact_ids=set(), threshold=1.0)
+        # 名称完全相同，相似度 = 1.0 >= threshold，应检测到
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0]["confidence"], 0.89)
+
+
+class TestBuildReportNoMutation(unittest.TestCase):
+    """build_candidates_report 不应修改输入"""
+
+    def test_does_not_mutate_input(self):
+        groups = [
+            {"level": "exact", "confidence": 0.98,
+             "components": [
+                 {"id": "L-001", "name": "fn", "path": "a.ts:1", "signature": "fn(): void"},
+                 {"id": "L-002", "name": "fn", "path": "b.ts:1", "signature": "fn(): void"},
+             ],
+             "reason": "签名完全相同"}
+        ]
+        # 调用前不应有 group_id
+        self.assertNotIn("group_id", groups[0])
+        build_candidates_report(groups, total_scanned=10, mode="full")
+        # 调用后原始数据不应被修改
+        self.assertNotIn("group_id", groups[0])
+
+    def test_second_call_produces_consistent_ids(self):
+        groups = [
+            {"level": "exact", "confidence": 0.98,
+             "components": [], "reason": "test"}
+        ]
+        r1 = build_candidates_report(groups, total_scanned=5, mode="full")
+        r2 = build_candidates_report(groups, total_scanned=5, mode="full")
+        self.assertEqual(r1["candidates"][0]["group_id"], "DUP-001")
+        self.assertEqual(r2["candidates"][0]["group_id"], "DUP-001")
+
+
 class TestBuildReport(unittest.TestCase):
     """候选报告生成"""
 
