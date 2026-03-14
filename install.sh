@@ -88,6 +88,7 @@ usage() {
   echo "    version   Print version"
   echo "    replan    Re-plan the proposal queue (keeps completed work)"
   echo "    run       Auto-run pipeline batches until done or intervention needed"
+  echo "    scan      Scan codebase for components and detect duplicates"
   echo "    update    Re-run installer to update agents and templates"
   echo ""
   echo "  Examples:"
@@ -140,7 +141,7 @@ cmd_init() {
     dest=".pipeline/autosteps/$(basename "$f")"
     cp "$f" "$dest"
     STEP_COUNT=$((STEP_COUNT + 1))
-  done < <(find "$TEAM_HOME/.pipeline/autosteps" -name "*.sh" | sort)
+  done < <(find "$TEAM_HOME/.pipeline/autosteps" \( -name "*.sh" -o -name "*.py" \) | sort)
   echo "  ✓ .pipeline/autosteps/ ($STEP_COUNT scripts)"
 
   # Copy CLAUDE.md
@@ -193,8 +194,8 @@ cmd_upgrade() {
   echo "  ✓ .pipeline/playbook.md upgraded"
 
   # Upgrade autosteps (always overwrite)
-  cp "$TEAM_HOME/.pipeline/autosteps/"*.sh .pipeline/autosteps/
-  AUTOSTEP_COUNT=$(ls .pipeline/autosteps/*.sh 2>/dev/null | wc -l)
+  for ext in sh py; do cp "$TEAM_HOME/.pipeline/autosteps/"*."$ext" .pipeline/autosteps/ 2>/dev/null || true; done
+  AUTOSTEP_COUNT=$(ls .pipeline/autosteps/*.sh .pipeline/autosteps/*.py 2>/dev/null | wc -l)
   echo "  ✓ $AUTOSTEP_COUNT autosteps upgraded"
 
   # Upgrade CLAUDE.md (always overwrite)
@@ -627,6 +628,38 @@ PYEOF
   python3 "$_RUNNER"
 }
 
+cmd_scan() {
+  if [ ! -d ".pipeline" ]; then
+    echo "❌ No .pipeline/ directory found. Run: team init"
+    exit 1
+  fi
+
+  if [ ! -f ".pipeline/artifacts/component-registry.json" ]; then
+    echo "❌ No component registry found. Run the pipeline first to generate component-registry.json"
+    exit 1
+  fi
+
+  local SCAN_MODE="full"
+  case "${1:-}" in
+    --refresh)    SCAN_MODE="refresh" ;;
+    --check-only) SCAN_MODE="check-only" ;;
+    "")           SCAN_MODE="full" ;;
+    *)
+      echo "Usage: team scan [--refresh|--check-only]"
+      exit 1
+      ;;
+  esac
+
+  echo ""
+  echo "  ▶ Duplicate Detector — mode: $SCAN_MODE"
+  echo ""
+
+  MODE="$SCAN_MODE" PIPELINE_DIR=".pipeline" \
+    bash .pipeline/autosteps/duplicate-detector.sh
+
+  echo ""
+}
+
 case "${1:-}" in
   init)    cmd_init ;;
   status)  cmd_status ;;
@@ -634,6 +667,7 @@ case "${1:-}" in
   version) cmd_version ;;
   update)  cmd_update ;;
   run)     cmd_run ;;
+  scan)    cmd_scan "${2:-}" ;;
   replan)  cmd_replan ;;
   *)       usage ;;
 esac
