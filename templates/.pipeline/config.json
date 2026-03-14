@@ -70,5 +70,22 @@
       "service_base_url": "http://localhost:3000",
       "health_path": "/health"
     }
+  },
+  "component_registry": {
+    "enabled": true,
+    "summary_provider": "auto",
+    "ollama_model": "qwen2.5-coder:7b",
+    "ollama_url": "http://localhost:11434",
+    "exclude_patterns": ["test/**", "bench/**", "examples/**"],
+    "min_complexity": 3,
+    "duplicate_detection": {
+      "enabled": true,
+      "generator_model": "auto",
+      "similarity_threshold": 0.7,
+      "tag_overlap_threshold": 0.7,
+      "max_retries_per_tier": 3,
+      "exclude_pairs": [],
+      "auto_apply": false
+    }
   }
 }
