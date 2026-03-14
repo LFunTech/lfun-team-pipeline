@@ -412,7 +412,7 @@ cmd_run() {
   # On [EXIT]: terminate the current claude process and start a FRESH one
   # for the next batch — matching the intended `claude --agent orchestrator`
   # single-batch-then-exit contract described in CLAUDE.md.
-  _RUNNER=$(mktemp /tmp/team-runner-XXXXXX.py)
+  _RUNNER=$(mktemp "${TMPDIR:-/tmp}/team-runner-XXXXXX")
   trap 'rm -f "$_RUNNER"' EXIT
 
   cat > "$_RUNNER" << 'PYEOF'
@@ -674,6 +674,57 @@ if [ "$MISSING" -eq 0 ]; then
 else
   echo "  ❌ $MISSING agents missing"
   exit 1
+fi
+
+# ── Verify & enable required plugins ──────────────────────────────────
+echo ""
+echo "── Required Plugins ────────────────────────────────────────────"
+
+SETTINGS_FILE="$HOME/.claude/settings.json"
+REQUIRED_PLUGINS=("code-review" "code-simplifier")
+
+# Ensure settings.json exists with basic structure
+if [ ! -f "$SETTINGS_FILE" ]; then
+  mkdir -p "$HOME/.claude"
+  echo '{"enabledPlugins":{}}' > "$SETTINGS_FILE"
+  echo "  ✓ Created $SETTINGS_FILE"
+fi
+
+PLUGINS_CHANGED=false
+for plugin in "${REQUIRED_PLUGINS[@]}"; do
+  PLUGIN_KEY="${plugin}@claude-plugins-official"
+  # Check if plugin is already enabled
+  if python3 -c "
+import json, sys
+s = json.load(open('$SETTINGS_FILE'))
+ep = s.get('enabledPlugins', {})
+sys.exit(0 if ep.get('$PLUGIN_KEY') == True else 1)
+" 2>/dev/null; then
+    echo "  ✓ $plugin (enabled)"
+  else
+    # Enable the plugin
+    python3 -c "
+import json
+s = json.load(open('$SETTINGS_FILE'))
+if 'enabledPlugins' not in s:
+    s['enabledPlugins'] = {}
+s['enabledPlugins']['$PLUGIN_KEY'] = True
+with open('$SETTINGS_FILE', 'w') as f:
+    json.dump(s, f, indent=2)
+" 2>/dev/null
+    if [ $? -eq 0 ]; then
+      echo "  ✓ $plugin (auto-enabled)"
+      PLUGINS_CHANGED=true
+    else
+      echo "  ⚠  $plugin — failed to enable, please enable manually:"
+      echo "     Add '\"$PLUGIN_KEY\": true' to enabledPlugins in $SETTINGS_FILE"
+    fi
+  fi
+done
+
+if [ "$PLUGINS_CHANGED" = true ]; then
+  echo ""
+  echo "  ℹ  Plugins enabled. Restart Claude Code for changes to take effect."
 fi
 
 # ── Done ─────────────────────────────────────────────────────────────
