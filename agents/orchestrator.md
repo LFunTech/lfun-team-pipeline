@@ -32,7 +32,7 @@ permissionMode: bypassPermissions
 | batch-plan | phase-2 + phase-2.1 + gate-b |
 | batch-contract | phase-2.5 + phase-2.6 + phase-2.7 |
 | batch-build | phase-3 + phase-3.0b |
-| batch-post-build | phase-3.1 + phase-3.2 + phase-3.3 + phase-3.5 + phase-3.6 |
+| batch-post-build | phase-3.0d + phase-3.1 + phase-3.2 + phase-3.3 + phase-3.5 + phase-3.6 |
 | batch-review | gate-c + phase-3.7 |
 | batch-test | phase-4a（+ 4a.1 若 FAIL）+ phase-4.2（+ 4b 若条件） |
 | batch-qa-docs | gate-d + api-change-detector + phase-5 + phase-5.1 + gate-e + phase-5.9 |
@@ -62,7 +62,7 @@ conditional_agents 赋值：Gate A PASS 后从 proposal.md 读取条件标记写
 > **最高优先级指令：每完成一个阶段必须查此表。**
 
 **线性流（PASS 时的默认下一步）：**
-system-planning → pick-next-proposal → memory-load → phase-0 → phase-0.5 → phase-1 → gate-a → phase-2.0a → phase-2.0b → phase-2 → phase-2.1 → gate-b → phase-2.5 → phase-2.6 → phase-2.7 → phase-3 → phase-3.0b → phase-3.1 → phase-3.2 → phase-3.3 → phase-3.5 → phase-3.6 → gate-c → phase-3.7 → phase-4a → phase-4.2 → gate-d → api-change-detector → phase-5 → phase-5.1 → gate-e → phase-5.9 → phase-6.0 → phase-6 → phase-7 → memory-consolidation → mark-proposal-completed → pick-next-proposal
+system-planning → pick-next-proposal → memory-load → phase-0 → phase-0.5 → phase-1 → gate-a → phase-2.0a → phase-2.0b → phase-2 → phase-2.1 → gate-b → phase-2.5 → phase-2.6 → phase-2.7 → phase-3 → phase-3.0b → phase-3.0d → phase-3.1 → phase-3.2 → phase-3.3 → phase-3.5 → phase-3.6 → gate-c → phase-3.7 → phase-4a → phase-4.2 → gate-d → api-change-detector → phase-5 → phase-5.1 → gate-e → phase-5.9 → phase-6.0 → phase-6 → phase-7 → memory-consolidation → mark-proposal-completed → pick-next-proposal
 
 **分支与回滚：**
 - pick-next-proposal: 依赖未完成→ESCALATION, 全部completed→ALL-COMPLETED
@@ -72,6 +72,7 @@ system-planning → pick-next-proposal → memory-load → phase-0 → phase-0.5
 - gate-b FAIL → rollback_to(取最深)
 - phase-2.6/2.7 FAIL → phase-2.5
 - phase-3.0b FAIL → phase-3（禁止 Orchestrator 自行修复）
+- phase-3.0d FAIL → WARN 继续 phase-3.1（非阻塞，不触发回滚）
 - phase-3.1 FAIL → phase-3
 - phase-3.6 FAIL → phase-3.5
 - gate-c FAIL → phase-3（先激活 Resolver）
@@ -87,6 +88,12 @@ system-planning → pick-next-proposal → memory-load → phase-0 → phase-0.5
 - phase-6.0 FAIL → ESCALATION
 - phase-6 FAIL(deployment) → phase-3, FAIL(smoke_test) → phase-1(先回滚生产)
 - phase-7 ALERT → phase-3, CRITICAL → phase-1(先回滚生产)
+
+## AutoStep 调用参考
+
+各 AutoStep 阶段的执行命令（实际调用详见 playbook.md 对应章节）：
+
+- phase-3.0d: `MODE="incremental" PIPELINE_DIR=".pipeline" bash .pipeline/autosteps/duplicate-detector.sh`
 
 ## Playbook 加载
 
