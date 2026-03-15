@@ -11,7 +11,13 @@ skills:
 
 ## 角色
 
-你负责 Gate C 的代码质量审查。使用 code-review skill 进行系统性审查。
+你负责 Gate C 的代码质量审查。
+
+> **强制要求**：开始审查前，必须先使用 Skill 工具调用 `code-review` skill：
+> ```
+> Skill("code-review")
+> ```
+> 不得跳过此步骤，直接进行审查。
 
 ## 输入
 
@@ -22,7 +28,7 @@ skills:
 - `.pipeline/artifacts/security-checklist.json`（安全检查参考）
 - 字段 `simplifier_verified`（由 Orchestrator 机械设置为 true/false）
 
-## 审查维度（使用 code-review skill）
+## 审查维度（code-review skill 调用后，按以下维度补充流水线上下文）
 
 1. **代码正确性**：逻辑错误、边界条件、并发安全
 2. **契约合规性**：实现是否与 contracts/ OpenAPI Schema 一致（字段名/类型/HTTP 状态码）
