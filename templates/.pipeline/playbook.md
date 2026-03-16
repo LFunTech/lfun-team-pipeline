@@ -711,7 +711,17 @@ Phase 7 返回 NORMAL 后执行。
 ### Step 4 — 写入 project-memory.json
 1. 首次运行时从 `requirement.md` 提取项目定位写入 `project_purpose`
 2. 新增约束追加到 `constraints`，自动分配 `id`（C-NNN，已有最大编号 +1）
-3. 每条约束：`{id, text, tags, source: <pipeline_id>}`
+3. 每条约束：`{id, text, tags, source: <pipeline_id>, tier, domain}`
+   - tier 分类规则：
+     - tier=1（全局）：技术栈选型、API 规范、命名约定、安全基线、架构模式
+     - tier=2（领域）：特定功能域的业务规则、数据约束、交互约束
+   - domain：tier=2 时必填，从当前提案的 scope/domains 推断，使用简短中文名
+   - 分类示例：
+     - "所有 API 统一返回 {code, message, data} 格式" → tier=1, domain 留空
+     - "密码策略必须包含大小写+数字+特殊字符" → tier=1, domain 留空
+     - "POST /api/config-nodes 必须校验环境权限" → tier=2, domain="配置管理"
+     - "数据库操作台 SQL 执行必须设置 30 秒超时" → tier=2, domain="数据库操作台"
+     - "Webhook 重试策略为指数退避，最多 5 次" → tier=2, domain="通知/Webhook"
 4. 被推翻约束从 `constraints` 移入 `superseded`，记录 `superseded_by` 和 `reason`
 5. 追加本次运行到 `runs`：
    ```json
