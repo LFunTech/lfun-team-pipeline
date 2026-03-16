@@ -102,35 +102,20 @@
 
 ## Memory Load — 项目记忆加载
 
-在 Phase 0 之前执行。读取 `.pipeline/project-memory.json`：
+在 Phase 0 之前执行。通过 AutoStep 脚本按 tier/domain 分层过滤约束：
 
-1. 文件不存在 → 跳过（首次运行），直接进入 Phase 0
-2. 文件存在 → 生成注入块，传递给 Phase 0 Clarifier 和 Phase 1 Architect 的 spawn 消息最前方
+run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/memory-load.sh
+
+输出: `.pipeline/artifacts/memory-injection.txt`
+
+1. 文件不存在或无 running 提案 → SKIP，直接进入 Phase 0
+2. PASS → Orchestrator 读取 `memory-injection.txt` 全文，作为 Phase 0 Clarifier 和 Phase 1 Architect 的 spawn 消息最前方内容
 3. 其他阶段不注入项目记忆（通过 artifacts 文件传递信息）
 
-**注入块生成规则**（`build_memory_injection`）：
-```python
-lines = [f"项目定位：{memory.get('project_purpose', '未定义')}"]
-# 最近 10 次交付摘要
-runs = memory.get("runs", [])
-if runs:
-    features = "、".join(r["feature"] for r in runs[-10:])
-    lines.append(f"已完成 {len(runs)} 次交付：{features}")
-# 最近 5 次实现足迹（API + DB）
-for r in [r for r in runs if r.get("footprint")][-5:]:
-    fp = r["footprint"]
-    lines.append(f"  [{r['pipeline_id']}] {r['feature']}")
-    if fp.get("api_endpoints"): lines.append(f"    API: {', '.join(fp['api_endpoints'][:5])}")
-    if fp.get("db_tables"): lines.append(f"    DB: {', '.join(fp['db_tables'])}")
-# 现有约束
-for c in memory.get("constraints", []):
-    tags = ", ".join(c.get("tags", []))
-    lines.append(f"  [{c['id']}]({tags}) {c['text']}")
-# 已推翻约束（最近 5 条，仅供参考）
-for s in memory.get("superseded", [])[-5:]:
-    lines.append(f"  [{s['id']}] {s['text']} → 被 {s['superseded_by']} 推翻：{s['reason']}")
-```
-输出格式：`=== Project Memory ===\n<lines>\n=== End Memory ===`。若只有"项目定位：未定义"且无其他内容，跳过注入。
+**过滤规则**：
+- `tier: 1`（或缺少 tier 字段）：全局约束，每次必注入
+- `tier: 2`：领域约束，仅当约束的 `domain` 匹配当前提案时注入
+- 匹配策略：proposal 的 `domains` 字段（显式声明）+ `scope` 文本匹配取并集
 
 ---
 
