@@ -20,6 +20,7 @@
 4. 将系统拆解为有序提案队列，写入 `.pipeline/proposal-queue.json`：
    - 每个提案是一个可独立交付的增量
    - 明确 `depends_on`（依赖哪些前序提案）和 `scope`（包含/不包含什么）
+   - `domains`（可选但推荐）：该提案涉及的业务领域列表，从已有约束的 domain 值中选取或新建简短中文领域名
    - 第一个提案应包含基础框架搭建（脚手架、CI、认证基础设施）
 5. 将蓝图中的技术栈和共享约定写入 `project-memory.json` 的 `constraints`（自动分配 id）
 6. 展示蓝图和提案队列给用户确认，用户可调整顺序、范围、增删提案
@@ -53,7 +54,9 @@
 ```json
 {
   "id": "P-001", "title": "基础框架与用户体系",
-  "scope": "包含/不包含描述", "depends_on": [], "status": "pending",
+  "scope": "包含/不包含描述",
+  "domains": ["用户/团队/环境"],
+  "depends_on": [], "status": "pending",
   "detail": {
     "user_stories": ["管理员可以创建/编辑/禁用用户账号"],
     "business_rules": ["密码最少 8 位，包含大小写和数字"],
