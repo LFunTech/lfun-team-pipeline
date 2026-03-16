@@ -64,6 +64,26 @@
 
 新建 `.pipeline/autosteps/memory-load.sh`，内嵌 Python 脚本。
 
+### Shell 包装
+
+```bash
+#!/bin/bash
+# Phase: memory-load
+# 输入: PIPELINE_DIR, project-memory.json, proposal-queue.json
+# 输出: .pipeline/artifacts/memory-injection.txt
+set -euo pipefail
+PIPELINE_DIR="${PIPELINE_DIR:-.pipeline}"
+
+if [ ! -f "$PIPELINE_DIR/project-memory.json" ]; then
+  echo "SKIP"
+  exit 0
+fi
+
+python3 - "$PIPELINE_DIR" << 'PYTHON_SCRIPT'
+# ... Python 核心流程见下方 ...
+PYTHON_SCRIPT
+```
+
 ### 输入/输出
 
 | 输入 | 文件 |
@@ -77,9 +97,14 @@
 ### Python 核心流程
 
 ```python
-import json, sys
+import json, sys, os
 
 PIPELINE_DIR = sys.argv[1]  # 从 shell 传入
+
+# 文件不存在检查（shell 层已处理 project-memory.json，这里处理 proposal-queue.json）
+if not os.path.exists(f"{PIPELINE_DIR}/proposal-queue.json"):
+    print("SKIP")
+    sys.exit(0)
 
 memory = json.load(open(f"{PIPELINE_DIR}/project-memory.json"))
 queue = json.load(open(f"{PIPELINE_DIR}/proposal-queue.json"))
@@ -119,17 +144,18 @@ for domain in all_domains:
     if domain.lower() in scope:
         matched_domains.add(domain)
 
-# 5. 取并集
+# 5. 取并集，统一小写用于匹配
 relevant_domains = explicit_domains | matched_domains
+relevant_domains_lower = {d.lower() for d in relevant_domains}
 
-# 6. 过滤约束
+# 6. 过滤约束（大小写无关比较）
 injected = []
 skipped = 0
 for c in memory.get("constraints", []):
     tier = c.get("tier", 1)
     if tier == 1 or not c.get("domain"):
         injected.append(c)
-    elif c.get("domain") in relevant_domains:
+    elif c.get("domain", "").lower() in relevant_domains_lower:
         injected.append(c)
     else:
         skipped += 1
@@ -204,9 +230,9 @@ run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/memory-load.sh
          作为 Phase 0（Clarifier）和 Phase 1（Architect）spawn 消息的最前方内容
 ```
 
-### orchestrator.md 改动
+### orchestrator.md
 
-Memory Load 步骤从"自己执行 build_memory_injection 伪代码"改为"运行 autostep 脚本 + 读取输出文件"，与其他 autostep 执行模式一致。
+Orchestrator 通过加载 playbook 章节来执行 Memory Load。`build_memory_injection` 伪代码在 playbook.md 中而非 orchestrator.md 中，因此 **orchestrator.md 本身无需改动**。playbook 替换后，Orchestrator 自然切换到 autostep 模式。
 
 ### Clarifier / Architect 无改动
 
@@ -223,13 +249,26 @@ Phase 7 后写入新约束时，Orchestrator 自动标注 `tier` 和 `domain`：
 
 新领域处理：使用简短中文名（如"Kafka操作台"），memory-load.sh 的自动 fallback 机制（从 memory 提取所有 domain 值做精确子串匹配）确保新领域无需改脚本即可生效。
 
-playbook Memory Consolidation Step 4 中，约束对象格式从：
-```json
-{id, text, tags, source}
+### playbook Memory Consolidation Step 4 具体替换
+
+原文（playbook.md 第 729 行）：
 ```
-扩展为：
-```json
-{id, text, tags, source, tier, domain}
+3. 每条约束：`{id, text, tags, source: <pipeline_id>}`
+```
+
+替换为：
+```
+3. 每条约束：`{id, text, tags, source: <pipeline_id>, tier, domain}`
+   - tier 分类规则：
+     - tier=1（全局）：技术栈选型、API 规范、命名约定、安全基线、架构模式
+     - tier=2（领域）：特定功能域的业务规则、数据约束、交互约束
+   - domain：tier=2 时必填，从当前提案的 scope/domains 推断，使用简短中文名
+   - 分类示例：
+     - "所有 API 统一返回 {code, message, data} 格式" → tier=1, domain=空
+     - "密码策略必须包含大小写+数字+特殊字符" → tier=1, domain=空
+     - "POST /api/config-nodes 必须校验环境权限" → tier=2, domain="配置管理"
+     - "数据库操作台 SQL 执行必须设置 30 秒超时" → tier=2, domain="数据库操作台"
+     - "Webhook 重试策略为指数退避，最多 5 次" → tier=2, domain="通知/Webhook"
 ```
 
 ## §6 System Planning 改动
