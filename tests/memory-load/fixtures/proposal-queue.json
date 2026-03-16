@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "system_name": "ops-platform",
+  "proposals": [
+    {"id": "P-001", "title": "基础框架", "scope": "基础框架搭建", "status": "completed"},
+    {"id": "P-002", "title": "配置管理", "scope": "配置节点 CRUD、配置快照对比、配置推进", "domains": ["配置管理", "审批流"], "status": "running"},
+    {"id": "P-003", "title": "通知系统", "scope": "Webhook 管理和通知推送", "status": "pending"}
+  ]
+}
