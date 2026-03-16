@@ -90,7 +90,6 @@ PYTHON_SCRIPT
 |------|------|
 | 约束库 | `$PIPELINE_DIR/project-memory.json` |
 | 提案队列 | `$PIPELINE_DIR/proposal-queue.json` |
-| 当前状态 | `$PIPELINE_DIR/state.json` |
 
 **输出**：`$PIPELINE_DIR/artifacts/memory-injection.txt`
 
