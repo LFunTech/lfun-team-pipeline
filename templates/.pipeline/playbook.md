@@ -20,6 +20,7 @@
 4. 将系统拆解为有序提案队列，写入 `.pipeline/proposal-queue.json`：
    - 每个提案是一个可独立交付的增量
    - 明确 `depends_on`（依赖哪些前序提案）和 `scope`（包含/不包含什么）
+   - `domains`（可选但推荐）：该提案涉及的业务领域列表，从已有约束的 domain 值中选取或新建简短中文领域名
    - 第一个提案应包含基础框架搭建（脚手架、CI、认证基础设施）
 5. 将蓝图中的技术栈和共享约定写入 `project-memory.json` 的 `constraints`（自动分配 id）
 6. 展示蓝图和提案队列给用户确认，用户可调整顺序、范围、增删提案
@@ -53,7 +54,9 @@
 ```json
 {
   "id": "P-001", "title": "基础框架与用户体系",
-  "scope": "包含/不包含描述", "depends_on": [], "status": "pending",
+  "scope": "包含/不包含描述",
+  "domains": ["用户/团队/环境"],
+  "depends_on": [], "status": "pending",
   "detail": {
     "user_stories": ["管理员可以创建/编辑/禁用用户账号"],
     "business_rules": ["密码最少 8 位，包含大小写和数字"],
@@ -102,35 +105,20 @@
 
 ## Memory Load — 项目记忆加载
 
-在 Phase 0 之前执行。读取 `.pipeline/project-memory.json`：
+在 Phase 0 之前执行。通过 AutoStep 脚本按 tier/domain 分层过滤约束：
 
-1. 文件不存在 → 跳过（首次运行），直接进入 Phase 0
-2. 文件存在 → 生成注入块，传递给 Phase 0 Clarifier 和 Phase 1 Architect 的 spawn 消息最前方
+run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/memory-load.sh
+
+输出: `.pipeline/artifacts/memory-injection.txt`
+
+1. 文件不存在或无 running 提案 → SKIP，直接进入 Phase 0
+2. PASS → Orchestrator 读取 `memory-injection.txt` 全文，作为 Phase 0 Clarifier 和 Phase 1 Architect 的 spawn 消息最前方内容
 3. 其他阶段不注入项目记忆（通过 artifacts 文件传递信息）
 
-**注入块生成规则**（`build_memory_injection`）：
-```python
-lines = [f"项目定位：{memory.get('project_purpose', '未定义')}"]
-# 最近 10 次交付摘要
-runs = memory.get("runs", [])
-if runs:
-    features = "、".join(r["feature"] for r in runs[-10:])
-    lines.append(f"已完成 {len(runs)} 次交付：{features}")
-# 最近 5 次实现足迹（API + DB）
-for r in [r for r in runs if r.get("footprint")][-5:]:
-    fp = r["footprint"]
-    lines.append(f"  [{r['pipeline_id']}] {r['feature']}")
-    if fp.get("api_endpoints"): lines.append(f"    API: {', '.join(fp['api_endpoints'][:5])}")
-    if fp.get("db_tables"): lines.append(f"    DB: {', '.join(fp['db_tables'])}")
-# 现有约束
-for c in memory.get("constraints", []):
-    tags = ", ".join(c.get("tags", []))
-    lines.append(f"  [{c['id']}]({tags}) {c['text']}")
-# 已推翻约束（最近 5 条，仅供参考）
-for s in memory.get("superseded", [])[-5:]:
-    lines.append(f"  [{s['id']}] {s['text']} → 被 {s['superseded_by']} 推翻：{s['reason']}")
-```
-输出格式：`=== Project Memory ===\n<lines>\n=== End Memory ===`。若只有"项目定位：未定义"且无其他内容，跳过注入。
+**过滤规则**：
+- `tier: 1`（或缺少 tier 字段）：全局约束，每次必注入
+- `tier: 2`：领域约束，仅当约束的 `domain` 匹配当前提案时注入
+- 匹配策略：proposal 的 `domains` 字段（显式声明）+ `scope` 文本匹配取并集
 
 ---
 
@@ -726,7 +714,17 @@ Phase 7 返回 NORMAL 后执行。
 ### Step 4 — 写入 project-memory.json
 1. 首次运行时从 `requirement.md` 提取项目定位写入 `project_purpose`
 2. 新增约束追加到 `constraints`，自动分配 `id`（C-NNN，已有最大编号 +1）
-3. 每条约束：`{id, text, tags, source: <pipeline_id>}`
+3. 每条约束：`{id, text, tags, source: <pipeline_id>, tier, domain}`
+   - tier 分类规则：
+     - tier=1（全局）：技术栈选型、API 规范、命名约定、安全基线、架构模式
+     - tier=2（领域）：特定功能域的业务规则、数据约束、交互约束
+   - domain：tier=2 时必填，从当前提案的 scope/domains 推断，使用简短中文名
+   - 分类示例：
+     - "所有 API 统一返回 {code, message, data} 格式" → tier=1, domain 留空
+     - "密码策略必须包含大小写+数字+特殊字符" → tier=1, domain 留空
+     - "POST /api/config-nodes 必须校验环境权限" → tier=2, domain="配置管理"
+     - "数据库操作台 SQL 执行必须设置 30 秒超时" → tier=2, domain="数据库操作台"
+     - "Webhook 重试策略为指数退避，最多 5 次" → tier=2, domain="通知/Webhook"
 4. 被推翻约束从 `constraints` 移入 `superseded`，记录 `superseded_by` 和 `reason`
 5. 追加本次运行到 `runs`：
    ```json

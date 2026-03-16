@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "project_purpose": "运维管理平台",
+  "constraints": [
+    {"id": "C-001", "text": "所有 API 统一返回 {code, message, data} 格式", "tags": ["API规范"], "source": "pipe-001", "tier": 1},
+    {"id": "C-002", "text": "密码策略必须包含大小写+数字+特殊字符", "tags": ["安全基线"], "source": "pipe-001", "tier": 1},
+    {"id": "C-003", "text": "配置节点变更必须记录审计日志", "tags": ["配置管理", "审计"], "source": "pipe-002", "tier": 2, "domain": "配置管理"},
+    {"id": "C-004", "text": "配置快照对比使用 JSON diff", "tags": ["配置管理"], "source": "pipe-002", "tier": 2, "domain": "配置管理"},
+    {"id": "C-005", "text": "SQL 执行必须设置 30 秒超时", "tags": ["数据库操作台", "安全"], "source": "pipe-003", "tier": 2, "domain": "数据库操作台"},
+    {"id": "C-006", "text": "Webhook 重试策略为指数退避最多 5 次", "tags": ["通知/Webhook"], "source": "pipe-004", "tier": 2, "domain": "通知/Webhook"},
+    {"id": "C-007", "text": "Redis 键前缀必须包含环境标识", "tags": ["Redis操作台"], "source": "pipe-005", "tier": 2, "domain": "Redis操作台"},
+    {"id": "C-008", "text": "无 tier 字段的旧约束", "tags": ["旧格式"], "source": "pipe-001"}
+  ],
+  "superseded": [
+    {"id": "C-099", "text": "旧密码策略", "superseded_by": "C-002", "reason": "安全要求升级"}
+  ],
+  "runs": [
+    {"pipeline_id": "pipe-001", "date": "2026-01-01", "feature": "基础框架"},
+    {"pipeline_id": "pipe-002", "date": "2026-01-15", "feature": "配置管理", "footprint": {"api_endpoints": ["/api/config-nodes", "/api/config-snapshots"], "db_tables": ["config_nodes", "config_snapshots"]}}
+  ]
+}

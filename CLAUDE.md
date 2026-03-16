@@ -24,7 +24,7 @@ cat .pipeline/state.json | python3 -c "import json,sys; s=json.load(sys.stdin); 
 ├── project-memory.json  ← 项目记忆（跨流水线约束清单，自动维护）
 ├── history/             ← 历次流水线产物归档（按需查阅）
 ├── state.json           ← 运行时状态（Orchestrator 自动管理，勿手动修改）
-├── autosteps/           ← AutoStep Shell 脚本（17 个）
+├── autosteps/           ← AutoStep Shell 脚本（20 个）
 └── artifacts/           ← 运行时产物（所有 Agent 和 AutoStep 的输出）
     ├── requirement.md
     ├── proposal.md
