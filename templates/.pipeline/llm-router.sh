@@ -186,4 +186,6 @@ OUTPUT=$(cd "$TARGET_DIR" && $TIMEOUT_CMD claude -p \
 }
 
 # 输出结果（Pilot 会解析）
+# 首行为模型标识，Pilot 据此记录 execution_log.model
+echo "[llm-router:model] $MODEL"
 echo "$OUTPUT"

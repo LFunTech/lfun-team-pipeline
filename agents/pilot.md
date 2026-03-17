@@ -123,13 +123,21 @@ result = Bash("bash .pipeline/llm-router.sh builder-backend '你的prompt...'")
 
 if result.exit_code == 0:
     # 外部 LLM 执行成功
-    output = result.stdout
+    # stdout 首行为 "[llm-router:model] glm-5"，提取模型名
+    lines = result.stdout.strip().split('\n')
+    model = lines[0].replace('[llm-router:model] ', '') if lines[0].startswith('[llm-router:model]') else 'unknown'
+    output = '\n'.join(lines[1:])
+    # execution_log.model = model (如 "glm-5")
 elif result.exit_code == 10:
     # 降级：改用 Claude（无 key、未启用、未路由等）
     output = Agent(builder-backend, prompt="你的prompt...")
+    # execution_log.model = "opus(降级)" — 因为 builder-backend 的 frontmatter 是 inherit=opus
 else:
     # 真正的失败 → rollback
     handle_failure()
+
+# 直接走 Claude 的 Agent（不在 routes 表中）：
+# execution_log.model = "opus" 或 "sonnet"（按 agent frontmatter 决定，见上方对照表）
 ```
 
 ### Worktree 场景下的路由
@@ -165,7 +173,7 @@ Bash("bash .pipeline/llm-router.sh builder-dba '...' --cwd .worktrees/builder-db
 
 ## state.json 关键字段
 
-`pipeline_id`, `project_name`, `current_phase`, `last_completed_phase`, `status`(running/escalation), `attempt_counts`(每阶段计数+per_builder), `conditional_agents`(migrator/optimizer/translator), `phase_5_mode`, `new_test_files[]`, `phase_3_base_sha`, `phase_3_worktrees{}`, `phase_3_branches{}`, `phase_3_main_branch`, `phase_3_merge_order[]`, `github_repo_created`, `github_repo_url`, `execution_log[]`, `parallel_proposals[]`, `parallel_base_sha`, `parallel_base_branch`, `parallel_worktrees{}`, `parallel_branches{}`, `parallel_merge_order[]`, `parallel_completed[]`
+`pipeline_id`, `project_name`, `current_phase`, `last_completed_phase`, `status`(running/escalation), `attempt_counts`(每阶段计数+per_builder), `conditional_agents`(migrator/optimizer/translator), `phase_5_mode`, `new_test_files[]`, `phase_3_base_sha`, `phase_3_worktrees{}`, `phase_3_branches{}`, `phase_3_main_branch`, `phase_3_merge_order[]`, `github_repo_created`, `github_repo_url`, `execution_log[]`(含 model 字段), `parallel_proposals[]`, `parallel_base_sha`, `parallel_base_branch`, `parallel_worktrees{}`, `parallel_branches{}`, `parallel_merge_order[]`, `parallel_completed[]`
 
 每次进入新阶段递增 attempt_counts。超 max_attempts(默认 3) → ESCALATION。
 conditional_agents 赋值：Gate A PASS 后从 proposal.md 读取条件标记写入。
@@ -230,8 +238,25 @@ github_repo_created=true 时，每步成功后 `git add -A && git commit -m "<MS
 
 ## 执行记录
 
-每步完成追加到 state.json.execution_log：`{step, result, attempt, rollback_to, ts}`。批次退出前一次性写入。
+每步完成追加到 state.json.execution_log：`{step, result, attempt, rollback_to, ts, model}`。批次退出前一次性写入。
+
+`model` 字段取值规则：
+- 外部 LLM 执行成功（exit 0）→ provider 的 model 名，如 `"glm-5"`
+- 降级到 Claude（exit 10）→ `"opus(降级)"` 或 `"sonnet(降级)"`（按 agent frontmatter 的 model 字段决定）
+- 直接走 Claude Agent tool（不在 routes 表中）→ `"opus"` 或 `"sonnet"`（按 agent frontmatter 的 model 字段决定）
+- AutoStep（Shell 脚本）→ `"autostep"`
+
+Agent 的 Claude 模型对照表（`model: inherit` = opus，`model: sonnet` = sonnet）：
+- **opus**: pilot, clarifier, architect, planner, contract-formalizer, builder-*, tester, optimizer, migrator, translator, inspector, resolver, deployer
+- **sonnet**: auditor-gate, auditor-biz, auditor-tech, auditor-qa, auditor-ops, monitor, github-ops, documenter, simplifier
 
 ## 控制台输出
 
 `[Pipeline] Phase 3 完成 → Phase 3.0b` / `[Pipeline] Gate C FAIL → rollback Phase 3 (attempt 2/3)` / `[EXIT] 请运行 claude --agent pilot 继续` / `[Pipeline] status: ALL-COMPLETED`
+
+**模型标识（必须输出）：** 每个 Agent/AutoStep 执行完毕后，在控制台输出模型标识行：
+- `[Pipeline] ✅ builder-backend PASS (glm-5)` — 外部 LLM 执行
+- `[Pipeline] ✅ architect PASS (opus)` — Claude Opus 执行
+- `[Pipeline] ✅ auditor-gate PASS (sonnet)` — Claude Sonnet 执行
+- `[Pipeline] ⚠️ builder-backend PASS (opus↩降级)` — 路由降级回 Claude Opus
+- `[Pipeline] ✅ phase-0.5 PASS (autostep)` — Shell 脚本
