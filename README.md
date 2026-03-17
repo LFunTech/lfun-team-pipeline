@@ -1,6 +1,6 @@
 # lfun-team-pipeline
 
-> 基于 Claude Code 的多角色软件交付流水线 — 从需求到上线，26 个 AI 角色协作交付。
+> 基于 Claude Code 的多角色软件交付流水线 — 从需求到上线，28 个 AI 角色协作交付。
 
 **中文** | [English](README-EN.md)
 
@@ -8,37 +8,54 @@
 
 ## 这是什么？
 
-**lfun-team-pipeline** 是基于 [Claude Code](https://claude.ai/code) 构建的生产级软件交付流水线。它编排 **26 个专属 AI 角色**，像真实工程团队一样协作 —— 需求分析师、架构师、多个并行开发者、QA 工程师、部署工程师、上线监控员 —— 由一个总指挥（Pilot）统一驱动。
+**lfun-team-pipeline** 是基于 [Claude Code](https://claude.ai/code) 构建的生产级软件交付流水线。它编排 **28 个专属 AI 角色**，像真实工程团队一样协作 —— 需求分析师、架构师、多个并行开发者、QA 工程师、部署工程师、上线监控员 —— 由一个总指挥（Pilot）统一驱动。
 
-你描述想构建的完整系统，流水线自动拆解为有序提案队列并逐个交付。支持系统级规划与多提案顺序执行，每个提案独立走完需求到上线全流程。
+你描述想构建的完整系统，流水线自动拆解为有序提案队列并逐个交付。支持系统级规划与多提案顺序/并行执行，每个提案独立走完需求到上线全流程。支持将部分 Agent 路由到外部 LLM（如 GLM-5、Ollama），大幅降低 Claude token 消耗。
 
 ```
 系统规划 → 提案队列 → [P-001: 需求澄清 → 架构 → 构建 → 测试 → 部署 → 监控] → P-002 → ...
+                       ↕ 同 parallel_group 内的提案可并行执行
 ```
 
 ## 流水线总览
 
 ```
-System Plan  系统规划（首次运行，交互式拆解为提案队列）
-Pick Proposal 选取下一个待执行提案
-Phase 0    Clarifier            需求澄清（最多 5 轮，自治模式跳过）
-Phase 0.5  AutoStep             需求完整性检查
-Phase 1    Architect            系统设计 + ADR 生成
-Gate A     Auditor-Gate          业务 / 技术 / QA / 运维 四视角评审（单次 spawn）
-Phase 2    Planner              拆解任务，分配给各 Builder
-Phase 2.5  Contract Formalizer  OpenAPI 契约生成
-Gate B     Auditor-Gate          契约与任务评审（单次 spawn）
-Phase 3    Builders（并行）      后端 · 前端 · DBA · Infra · 安全
-Phase 3.x  AutoStep 集群        编译验证 · 静态分析 · 回归测试 · 契约合规
-Gate C     Inspector            深度代码审查
-Phase 4    Tester               集成测试 + 单元测试生成
-Gate D     QA 审计员             测试覆盖率强制验证
-Phase 5    Documenter           README · CHANGELOG · API 文档
-Gate E     Tech + QA 审计员      文档准确性评审
-Phase 5.9  GitHub Ops           仓库创建 · Woodpecker CI 激活
-Phase 6    Deployer             Docker Compose 部署 + 冒烟测试
-Phase 7    Monitor              30 分钟健康观测窗口
-Mark Done    标记提案完成，自动循环执行下一个
+System Plan   系统规划（首次运行，交互式拆解为提案队列 + 并行拓扑计算）
+Pick Proposal 选取下一个/组待执行提案（同 parallel_group 可并行）
+Memory Load   项目记忆加载（注入约束给 Clarifier/Architect）
+Phase 0       Clarifier            需求澄清（最多 5 轮，自治模式跳过）
+Phase 0.5     AutoStep             需求完整性检查
+Phase 1       Architect            系统设计 + ADR 生成
+Gate A        Auditor-Gate         业务 / 技术 / QA / 运维 四视角评审（单次 spawn）
+Phase 2.0a    GitHub Ops           GitHub 仓库创建
+Phase 2.0b    AutoStep             依赖扫描 + 凭证填写暂停
+Phase 2       Planner              拆解任务，分配给各 Builder
+Phase 2.1     AutoStep             假设传播验证
+Gate B        Auditor-Gate         契约与任务评审（单次 spawn）
+Phase 2.5     Contract Formalizer  OpenAPI 契约生成
+Phase 2.6∥2.7 AutoStep（并行）     契约 Schema 验证 ∥ 语义验证
+Phase 3       Builders（波次并行） 后端 · 前端 · DBA · Infra · 安全 + 条件角色
+Phase 3.0b    AutoStep             编译验证
+Phase 3.0d∥3.1∥3.2∥3.3 AutoStep（并行）重复检测 · 静态分析 · 回归测试 · Diff 验证
+Phase 3.5     Simplifier           代码精简
+Phase 3.6     AutoStep             精简后回归验证
+Gate C        Inspector            深度代码审查
+Phase 3.7     AutoStep             契约合规检查
+Phase 4a      Tester               集成测试 + 单元测试生成
+Phase 4a.1    AutoStep             测试失败映射（仅 FAIL 时）
+Phase 4.2     AutoStep             测试覆盖率强制验证
+Phase 4b      Optimizer            性能优化（条件角色）
+Gate D        Auditor-QA           测试验收
+AutoStep      API Change Detector  API 变更检测
+Phase 5       Documenter           README · CHANGELOG · API 文档
+Phase 5.1     AutoStep             CHANGELOG 一致性检查
+Gate E        Auditor-QA ∥ Auditor-Tech（并行）文档准确性评审
+Phase 5.9     GitHub Ops           Woodpecker CI 配置推送
+Phase 6.0     AutoStep             部署前就绪检查
+Phase 6       Deployer             Docker Compose 部署 + 冒烟测试
+Phase 7       Monitor              30 分钟健康观测窗口
+Memory Consolidation  项目记忆固化（提取约束，用户确认后写入）
+Mark Done     标记提案完成，自动循环执行下一个
 ```
 
 ## 先决条件
@@ -302,6 +319,7 @@ team run
 | `team status` | 显示流水线执行进度（彩色面板：阶段、提案队列、执行日志） |
 | `team upgrade` | 原地升级 playbook + autosteps（保留 state.json、产物、提案队列） |
 | `team replan` | 重新规划提案队列（保留已完成的工作） |
+| `team scan` | 手动触发项目扫描（组件注册表） |
 | `team version` | 显示版本号 |
 | `team update` | 提示如何更新全局安装 |
 
@@ -324,10 +342,11 @@ team run
 
 ```
 .pipeline/
-├── config.json          ← 流水线配置（启动前编辑）
+├── config.json          ← 流水线配置（启动前编辑，含模型路由配置）
 ├── playbook.md          ← 阶段执行手册（Pilot 按需加载）
+├── llm-router.sh        ← 模型路由调度脚本（自动降级到 Claude）
 ├── project-memory.json  ← 项目记忆（跨流水线约束清单）
-├── autosteps/           ← 17 个自动化脚本（无需修改）
+├── autosteps/           ← 20 个自动化脚本（无需修改）
 ├── artifacts/           ← 运行时产物（自动生成）
 └── history/             ← 历次提案产物归档
 CLAUDE.md                ← 流水线对 Claude Code 的指令
@@ -349,6 +368,22 @@ CLAUDE.md                ← 流水线对 Claude Code 的指令
       "service_base_url": "http://localhost:3000",
       "health_path": "/health"
     }
+  },
+  "model_routing": {
+    "enabled": false,              // 启用后部分 Agent 路由到外部 LLM
+    "providers": {
+      "glm5": {
+        "base_url": "https://coding.dashscope.aliyuncs.com/apps/anthropic",
+        "api_key": "",             // 直接填值，或留空通过 api_key_env 读取
+        "api_key_env": "GLM5_API_KEY",
+        "model": "glm-5"
+      }
+    },
+    "routes": {
+      "builder-backend": "glm5",   // 未列出的 agent 默认走 Claude
+      "builder-frontend": "glm5",
+      "tester": "glm5"
+    }
   }
 }
 ```
@@ -360,6 +395,64 @@ CLAUDE.md                ← 流水线对 Claude Code 的指令
 | `testing.coverage_tool` | 覆盖率工具 | `nyc` |
 | `testing.coverage_threshold` | 覆盖率阈值（%） | `80` |
 | `max_attempts.default` | 阶段最大重试次数 | `3` |
+| `model_routing.enabled` | 启用模型路由（将部分 Agent 交由外部 LLM） | `false` |
+| `model_routing.providers` | 外部 LLM 提供商配置 | `glm5`, `ollama` |
+| `model_routing.routes` | Agent → Provider 映射表 | 见模板 |
+
+## 模型路由（Model Routing）
+
+> v6.4 新增
+
+支持将部分 Agent 路由到外部 LLM（如 GLM-5、本地 Ollama），Claude 保留审核/决策/精简角色，大幅降低 token 消耗。
+
+**角色分工：**
+
+| 角色 | Agent | 说明 |
+|------|-------|------|
+| 外部 LLM（干活） | Builder 系列、Tester、Planner、Contract-Formalizer、Documenter、Optimizer、Translator、Migrator | 代码实现、测试、文档等执行型任务 |
+| Claude（决策） | Pilot、Clarifier、Architect、Simplifier、Inspector、所有 Auditor、Resolver、Deployer、Monitor | 需求分析、架构设计、代码审查、部署决策等判断型任务 |
+
+**配置方式（二选一）：**
+
+```bash
+# 方式 A：全局配置（一次设好，所有项目生效）
+# 安装时自动创建 ~/.config/team-pipeline/routing.json
+# 编辑该文件填入 API Key 并设 enabled: true
+
+# 方式 B：项目级配置（仅当前项目生效，可覆盖全局）
+# 编辑 .pipeline/config.json 的 model_routing 部分
+```
+
+**配置合并优先级：** 项目 `config.json` > 全局 `routing.json`。
+
+**API Key 优先级：** `api_key`（直接值）> `api_key_env`（环境变量）> `.depend/llm.env`
+
+**自动降级：** 未配置 API Key 或路由未启用时，自动降级到 Claude 执行，流水线无感切换（退出码 10）。这意味着即使不配外部 LLM，流水线也能正常跑完。
+
+## 并行执行
+
+> v6.4 新增
+
+流水线在两个层级支持并行执行：
+
+**批次内并行：**
+
+同一批次内无依赖关系的步骤自动并行执行：
+- Phase 3：同波次 Builder 并行实现（Backend ∥ Frontend ∥ DBA ∥ Security ∥ Infra）
+- Phase 2.6 ∥ 2.7：契约 Schema 验证 ∥ 语义验证
+- Phase 3.0d ∥ 3.1 ∥ 3.2 ∥ 3.3：构建后分析并行
+- Gate E：auditor-qa ∥ auditor-tech 并行审核
+
+**提案级并行：**
+
+系统规划时自动计算提案间的依赖拓扑。无依赖的提案被分配到同一 `parallel_group`，在独立 worktree 中并行执行完整流水线，完成后按 `parallel_merge_order` 顺序合并。
+
+```
+P-001 ──┐
+P-002 ──┼── parallel_group: 1 → 并行执行 → 按序合并
+P-003 ──┘
+P-004 ────── parallel_group: 2 → 等待 group 1 完成后执行
+```
 
 ## GitHub + Woodpecker CI 集成
 

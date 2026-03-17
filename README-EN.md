@@ -1,6 +1,6 @@
 # lfun-team-pipeline
 
-> A multi-agent software delivery pipeline for Claude Code — 26 AI agents collaborating from requirements to production.
+> A multi-agent software delivery pipeline for Claude Code — 28 AI agents collaborating from requirements to production.
 
 [中文](README.md) | **English**
 
@@ -8,37 +8,54 @@
 
 ## What is this?
 
-**lfun-team-pipeline** orchestrates **26 specialized AI agents** that collaborate like a real engineering team — requirements analyst, architect, multiple parallel developers, QA engineers, a deployer, and a post-launch monitor — all driven by a single pilot.
+**lfun-team-pipeline** orchestrates **28 specialized AI agents** that collaborate like a real engineering team — requirements analyst, architect, multiple parallel developers, QA engineers, a deployer, and a post-launch monitor — all driven by a single Pilot.
 
-You describe the full system you want to build. The pipeline automatically decomposes it into an ordered proposal queue and delivers each one sequentially. Each proposal runs through the complete requirements-to-production lifecycle independently.
+You describe the full system you want to build. The pipeline automatically decomposes it into an ordered proposal queue and delivers each one sequentially or in parallel. Each proposal runs through the complete requirements-to-production lifecycle independently. Supports routing builder agents to external LLMs (e.g., GLM-5, Ollama) to significantly reduce Claude token costs.
 
 ```
 system planning → proposal queue → [P-001: clarify → architect → build → test → deploy → monitor] → P-002 → ...
+                                    ↕ proposals in the same parallel_group execute concurrently
 ```
 
 ## Pipeline Overview
 
 ```
-System Plan  System Planning (first run, interactive decomposition into proposal queue)
-Pick Proposal Pick next pending proposal for execution
-Phase 0    Clarifier            Requirements elicitation (up to 5 rounds; skipped in autonomous mode)
-Phase 0.5  AutoStep             Requirement completeness check
-Phase 1    Architect            System design and ADR generation
-Gate A     Auditor-Gate          Business / Technical / QA / Ops review (single spawn)
-Phase 2    Planner              Task breakdown for each builder
-Phase 2.5  Contract Formalizer  OpenAPI contract generation
-Gate B     Auditor-Gate          Contract and task review (single spawn)
-Phase 3    Builders (parallel)  Backend · Frontend · DBA · Infra · Security
-Phase 3.x  AutoSteps            Build verify · Static analysis · Regression · Contract compliance
-Gate C     Inspector            Deep code review
-Phase 4    Tester               Integration and unit test generation
-Gate D     QA Auditor           Test coverage enforcement
-Phase 5    Documenter           README · CHANGELOG · API docs
-Gate E     Tech + QA Auditors   Documentation accuracy review
-Phase 5.9  GitHub Ops           Repo creation · Woodpecker CI activation
-Phase 6    Deployer             Docker Compose deployment · smoke test
-Phase 7    Monitor              30-minute health observation window
-Mark Done    Mark proposal completed, auto-loop to next
+System Plan   System Planning (first run, interactive decomposition + parallel topology)
+Pick Proposal Pick next proposal/group (same parallel_group runs concurrently)
+Memory Load   Project memory injection (constraints → Clarifier/Architect)
+Phase 0       Clarifier            Requirements elicitation (up to 5 rounds; skipped in autonomous)
+Phase 0.5     AutoStep             Requirement completeness check
+Phase 1       Architect            System design + ADR generation
+Gate A        Auditor-Gate         Biz / Tech / QA / Ops review (single spawn)
+Phase 2.0a    GitHub Ops           GitHub repo creation
+Phase 2.0b    AutoStep             Dependency scan + credential pause
+Phase 2       Planner              Task breakdown for each builder
+Phase 2.1     AutoStep             Assumption propagation validation
+Gate B        Auditor-Gate         Contract and task review (single spawn)
+Phase 2.5     Contract Formalizer  OpenAPI contract generation
+Phase 2.6∥2.7 AutoStep (parallel)  Schema validation ∥ Semantic validation
+Phase 3       Builders (wave-parallel) Backend · Frontend · DBA · Infra · Security + conditional
+Phase 3.0b    AutoStep             Build verification
+Phase 3.0d∥3.1∥3.2∥3.3 AutoStep (parallel) Duplicate detect · Static analysis · Regression · Diff
+Phase 3.5     Simplifier           Code simplification
+Phase 3.6     AutoStep             Post-simplification regression
+Gate C        Inspector            Deep code review
+Phase 3.7     AutoStep             Contract compliance check
+Phase 4a      Tester               Integration + unit test generation
+Phase 4a.1    AutoStep             Test failure mapping (on FAIL only)
+Phase 4.2     AutoStep             Coverage enforcement
+Phase 4b      Optimizer            Performance optimization (conditional)
+Gate D        Auditor-QA           Test acceptance
+AutoStep      API Change Detector  Breaking change detection
+Phase 5       Documenter           README · CHANGELOG · API docs
+Phase 5.1     AutoStep             CHANGELOG consistency check
+Gate E        Auditor-QA ∥ Auditor-Tech (parallel) Documentation review
+Phase 5.9     GitHub Ops           Woodpecker CI config push
+Phase 6.0     AutoStep             Pre-deploy readiness check
+Phase 6       Deployer             Docker Compose deployment + smoke test
+Phase 7       Monitor              30-minute health observation window
+Memory Consolidation  Extract and persist constraints (user-confirmed)
+Mark Done     Mark proposal completed, auto-loop to next
 ```
 
 ## Prerequisites
@@ -301,9 +318,11 @@ Project memory ensures that business rules and technical decisions remain consis
 | Command | Description |
 |---------|-------------|
 | `team init` | Initialize pipeline in the current project directory |
+| `team run` | Auto-loop batch execution until completion or human intervention needed |
 | `team status` | Show pipeline execution progress (color panel: phase, proposal queue, execution log) |
 | `team upgrade` | In-place upgrade of playbook + autosteps (preserves state.json, artifacts, proposal queue) |
 | `team replan` | Re-plan proposal queue (preserves completed work) |
+| `team scan` | Manually trigger project scan (component registry) |
 | `team version` | Print version |
 | `team update` | Show instructions for updating global installation |
 
@@ -326,10 +345,11 @@ claude --dangerously-skip-permissions --agent pilot
 
 ```
 .pipeline/
-├── config.json          ← Pipeline configuration (edit before starting)
+├── config.json          ← Pipeline configuration (edit before starting, includes model routing)
 ├── playbook.md          ← Phase execution playbook (loaded on-demand by Pilot)
+├── llm-router.sh        ← Model routing dispatcher (auto-fallback to Claude)
 ├── project-memory.json  ← Project memory (cross-pipeline constraint registry)
-├── autosteps/           ← 17 automated scripts (do not edit)
+├── autosteps/           ← 20 automated scripts (do not edit)
 ├── artifacts/           ← Runtime outputs (auto-generated)
 └── history/             ← Past proposal artifact archives
 CLAUDE.md                ← Pipeline instructions for Claude Code
@@ -351,6 +371,22 @@ CLAUDE.md                ← Pipeline instructions for Claude Code
       "service_base_url": "http://localhost:3000",
       "health_path": "/health"
     }
+  },
+  "model_routing": {
+    "enabled": false,                 // route some agents to external LLMs
+    "providers": {
+      "glm5": {
+        "base_url": "https://coding.dashscope.aliyuncs.com/apps/anthropic",
+        "api_key": "",                // direct value, or leave empty and use api_key_env
+        "api_key_env": "GLM5_API_KEY",
+        "model": "glm-5"
+      }
+    },
+    "routes": {
+      "builder-backend": "glm5",      // unlisted agents default to Claude
+      "builder-frontend": "glm5",
+      "tester": "glm5"
+    }
   }
 }
 ```
@@ -362,6 +398,64 @@ CLAUDE.md                ← Pipeline instructions for Claude Code
 | `testing.coverage_tool` | Coverage tool | `nyc` |
 | `testing.coverage_threshold` | Coverage threshold (%) | `80` |
 | `max_attempts.default` | Max retries per phase | `3` |
+| `model_routing.enabled` | Enable model routing (route some agents to external LLMs) | `false` |
+| `model_routing.providers` | External LLM provider configs | `glm5`, `ollama` |
+| `model_routing.routes` | Agent → Provider mapping | see template |
+
+## Model Routing
+
+> New in v6.4
+
+Route builder agents to external LLMs (e.g., GLM-5, local Ollama) while Claude handles review, architecture, and decision-making — significantly reducing token costs.
+
+**Role Assignment:**
+
+| Role | Agents | Description |
+|------|--------|-------------|
+| External LLM (workers) | Builders, Tester, Planner, Contract-Formalizer, Documenter, Optimizer, Translator, Migrator | Code implementation, testing, docs |
+| Claude (lead) | Pilot, Clarifier, Architect, Simplifier, Inspector, all Auditors, Resolver, Deployer, Monitor | Requirements, architecture, code review, deployment decisions |
+
+**Configuration (choose one):**
+
+```bash
+# Option A: Global config (set once, applies to all projects)
+# Auto-created at ~/.config/team-pipeline/routing.json during install
+# Edit to add API key and set enabled: true
+
+# Option B: Project-level config (current project only, overrides global)
+# Edit model_routing section in .pipeline/config.json
+```
+
+**Config merge priority:** Project `config.json` > Global `routing.json`.
+
+**API key priority:** `api_key` (direct value) > `api_key_env` (env variable) > `.depend/llm.env`
+
+**Auto-fallback:** When no API key is configured or routing is disabled, agents automatically fall back to Claude (exit code 10). The pipeline runs normally even without external LLM configuration.
+
+## Parallel Execution
+
+> New in v6.4
+
+The pipeline supports parallelism at two levels:
+
+**Within-batch parallelism:**
+
+Steps with no dependencies within a batch run concurrently:
+- Phase 3: Same-wave builders (Backend ∥ Frontend ∥ DBA ∥ Security ∥ Infra)
+- Phase 2.6 ∥ 2.7: Schema validation ∥ Semantic validation
+- Phase 3.0d ∥ 3.1 ∥ 3.2 ∥ 3.3: Post-build analysis
+- Gate E: auditor-qa ∥ auditor-tech
+
+**Proposal-level parallelism:**
+
+During System Planning, the pipeline computes a dependency topology across proposals. Proposals with no mutual dependencies are assigned to the same `parallel_group` and execute in separate worktrees concurrently. After completion, they merge in `parallel_merge_order`.
+
+```
+P-001 ──┐
+P-002 ──┼── parallel_group: 1 → run concurrently → merge in order
+P-003 ──┘
+P-004 ────── parallel_group: 2 → waits for group 1
+```
 
 ## GitHub + Woodpecker CI Integration
 
