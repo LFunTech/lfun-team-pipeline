@@ -74,37 +74,45 @@
   "model_routing": {
     "enabled": false,
     "providers": {
-      "glm5": {
+      "dashscope-glm5": {
         "base_url": "https://coding.dashscope.aliyuncs.com/apps/anthropic",
         "api_key": "",
-        "api_key_env": "GLM5_API_KEY",
+        "api_key_env": "DASHSCOPE_API_KEY",
         "model": "glm-5",
         "max_turns": 30,
-        "timeout": 600,
-        "_comment": "api_key 直接填值；或留空，通过 api_key_env 从环境变量读取"
+        "timeout": 600
+      },
+      "dashscope-kimi": {
+        "base_url": "https://coding.dashscope.aliyuncs.com/apps/anthropic",
+        "api_key": "",
+        "api_key_env": "DASHSCOPE_API_KEY",
+        "model": "kimi-k2.5",
+        "max_turns": 30,
+        "timeout": 300
       },
       "ollama": {
         "base_url": "http://localhost:11434/v1",
         "model": "qwen3:32b",
         "max_turns": 30,
         "timeout": 600
-      }
+      },
+      "_comment": "dashscope-glm5 和 dashscope-kimi 共享同一 api_key（DashScope 统一网关）；通过 api_key 直接填值，或留空通过 DASHSCOPE_API_KEY 环境变量读取"
     },
     "routes": {
-      "builder-backend":      "glm5",
-      "builder-frontend":     "glm5",
-      "builder-dba":          "glm5",
-      "builder-security":     "glm5",
-      "builder-infra":        "glm5",
-      "migrator":             "glm5",
-      "translator":           "glm5",
-      "planner":              "glm5",
-      "contract-formalizer":  "glm5",
-      "tester":               "glm5",
-      "documenter":           "glm5",
-      "optimizer":            "glm5"
+      "builder-backend":      "dashscope-kimi",
+      "builder-frontend":     "dashscope-kimi",
+      "builder-dba":          "dashscope-glm5",
+      "builder-security":     "dashscope-glm5",
+      "builder-infra":        "dashscope-glm5",
+      "migrator":             "dashscope-glm5",
+      "translator":           "dashscope-glm5",
+      "planner":              "dashscope-kimi",
+      "contract-formalizer":  "dashscope-glm5",
+      "tester":               "dashscope-kimi",
+      "documenter":           "dashscope-kimi",
+      "optimizer":            "dashscope-glm5"
     },
-    "_comment_routes": "未列出的 agent 默认走 Claude（Pilot 内置 Agent tool）",
+    "_comment_routes": "上下文重的 agent(builder-backend/frontend, planner, tester, documenter) → kimi-k2.5(2M ctx)；精度优先的 agent → glm-5(200K ctx, 深度思考)",
     "_comment_boss": "clarifier/architect/simplifier/inspector/auditor-*/resolver/deployer/monitor → Claude"
   },
   "component_registry": {

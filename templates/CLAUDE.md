@@ -102,9 +102,11 @@ Mark Completed  → 标记提案完成，循环取下一个
 
 ## 模型路由（Model Routing）
 
-设置 `"model_routing.enabled": true` 后，部分 Agent 交由外部 LLM（如 GLM-5）执行，大幅降低 Claude token 消耗：
+设置 `"model_routing.enabled": true` 后，部分 Agent 交由外部 LLM 执行，大幅降低 Claude token 消耗。
+按**上下文需求**和**质量需求**双维度分配模型：
 
-- **外部 LLM（牛马）**：Builder、Tester、Planner、Contract-Formalizer、Documenter、Optimizer、Translator、Migrator
+- **Kimi-K2.5（2M 上下文，快）**：builder-backend、builder-frontend、planner、tester、documenter
+- **GLM-5（200K 上下文，深度思考）**：builder-dba、builder-security、builder-infra、contract-formalizer、optimizer、migrator、translator
 - **Claude（老大）**：Pilot、Clarifier、Architect、Simplifier、Inspector、所有 Auditor、Resolver、Deployer、Monitor
 
 **配置方式（二选一）：**
@@ -115,8 +117,8 @@ Mark Completed  → 标记提案完成，循环取下一个
 {
   "enabled": true,
   "providers": {
-    "glm5": {
-      "api_key": "sk-your-key-here",  // 直接写 key
+    "dashscope-glm5": {
+      "api_key": "sk-your-key-here",
       ...
     }
   }
@@ -137,10 +139,13 @@ claude --dangerously-skip-permissions --agent pilot
 
 **支持的 Provider：**
 
-| Provider | 说明 | 配置 |
-|----------|------|------|
-| `glm5` | GLM-5（DashScope Anthropic 兼容） | `base_url` + `api_key` |
-| `ollama` | 本地 Ollama（qwen3:32b 等） | `base_url`（无需 key） |
+| Provider | 说明 | 默认路由 | 配置 |
+|----------|------|----------|------|
+| `dashscope-glm5` | GLM-5（代码质量高，思考深） | Builder/Planner/Tester/Optimizer | `base_url` + `DASHSCOPE_API_KEY` |
+| `dashscope-kimi` | Kimi-K2.5（响应快，文档优） | Documenter | 同上（共享 key） |
+| `ollama` | 本地 Ollama（qwen3:32b 等） | — | `base_url`（无需 key） |
+
+> DashScope 统一网关：`dashscope-glm5` 和 `dashscope-kimi` 共享同一个 API Key，仅 model 名不同。
 
 ## 自治模式（Autonomous Mode）
 

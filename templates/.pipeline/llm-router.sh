@@ -7,7 +7,7 @@
 #
 # API Key 优先级（高→低）：
 #   项目 config.json 的 api_key → 全局 routing.json 的 api_key
-#   → 环境变量 $GLM5_API_KEY → .depend/llm.env
+#   → 环境变量（由 api_key_env 指定，如 $DASHSCOPE_API_KEY）→ .depend/llm.env
 #
 # 退出码:
 #   0  = 成功（外部 LLM 执行完成）
