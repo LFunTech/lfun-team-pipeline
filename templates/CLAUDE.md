@@ -100,6 +100,48 @@ Mark Completed  → 标记提案完成，循环取下一个
 | `testing.coverage_tool` | 测试覆盖率工具 | `nyc` |
 | `testing.coverage_threshold` | 覆盖率阈值（百分比） | `80` |
 
+## 模型路由（Model Routing）
+
+设置 `"model_routing.enabled": true` 后，部分 Agent 交由外部 LLM（如 GLM-5）执行，大幅降低 Claude token 消耗：
+
+- **外部 LLM（牛马）**：Builder、Tester、Planner、Contract-Formalizer、Documenter、Optimizer、Translator、Migrator
+- **Claude（老大）**：Pilot、Clarifier、Architect、Simplifier、Inspector、所有 Auditor、Resolver、Deployer、Monitor
+
+**配置方式（二选一）：**
+
+```bash
+# 方式 A：全局配置（一次设好，所有项目生效）
+# 编辑 ~/.config/team-pipeline/routing.json
+{
+  "enabled": true,
+  "providers": {
+    "glm5": {
+      "api_key": "sk-your-key-here",  // 直接写 key
+      ...
+    }
+  }
+}
+
+# 方式 B：项目级配置（仅当前项目生效，可覆盖全局）
+# 编辑 .pipeline/config.json 的 model_routing 部分
+```
+
+```bash
+# 正常运行流水线（自动识别路由配置）
+claude --dangerously-skip-permissions --agent pilot
+```
+
+**配置合并优先级：** 项目 `config.json` > 全局 `routing.json`。项目可覆盖个别 agent 的路由。
+
+**API Key 优先级：** `api_key`（直接值）> `api_key_env`（环境变量）> `.depend/llm.env`
+
+**支持的 Provider：**
+
+| Provider | 说明 | 配置 |
+|----------|------|------|
+| `glm5` | GLM-5（DashScope Anthropic 兼容） | `base_url` + `api_key` |
+| `ollama` | 本地 Ollama（qwen3:32b 等） | `base_url`（无需 key） |
+
 ## 自治模式（Autonomous Mode）
 
 设置 `"autonomous_mode": true` 后，流水线在 System Planning 完成（用户确认蓝图）后全自动执行：

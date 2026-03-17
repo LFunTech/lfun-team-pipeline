@@ -72,11 +72,96 @@ permissionMode: bypassPermissions
 - 阻断级步骤（3.1）FAIL 时，即使 WARN 级已 PASS，仍执行 rollback
 - 并行提案合并冲突 → ESCALATION，保留 worktree 供人工解决
 
+## 模型路由（Model Routing）
+
+> 启用后，部分 Agent 交由外部 LLM（如 GLM-5）执行，Pilot 自身和审核/精简 Agent 仍用 Claude。
+
+### 初始化时读取路由表
+
+读 `config.json` 的 `model_routing` 字段：
+- `enabled: false` → 全部走 Agent tool（原行为，不变）
+- `enabled: true` → 按 `routes` 表决定调度方式
+
+### 调度规则
+
+**对于每个需要 spawn Agent 的步骤，Pilot 统一先尝试路由：**
+
+```
+Bash("bash .pipeline/llm-router.sh <agent-name> '<prompt>' [--cwd <dir>]")
+```
+
+**根据退出码决定行为：**
+
+| 退出码 | 含义 | Pilot 行为 |
+|--------|------|-----------|
+| `0` | 外部 LLM 执行成功 | 正常继续 |
+| `1` | Agent 执行失败 | 视为 FAIL，走 rollback |
+| `10` | **降级**：未启用/未路由/无 Key | 改用 `Agent(agent-name, prompt)` 走 Claude，**不算失败** |
+
+> **关键**：退出码 10 = 自动降级，流水线无感切换到 Claude。这意味着即使用户没配 API Key，流水线也能正常跑完（只是全用 Claude）。
+
+### 牛马与老大分工
+
+```
+外部 LLM（牛马，写代码/干活）：
+  builder-backend, builder-frontend, builder-dba, builder-security, builder-infra
+  migrator, translator, planner, contract-formalizer, tester, documenter, optimizer
+
+Claude（老大，审核/决策/精简）：
+  pilot(自身), clarifier, architect, simplifier, inspector
+  auditor-gate, auditor-qa, auditor-tech, resolver
+  deployer, monitor, github-ops
+```
+
+### 路由调度示例
+
+```python
+# 统一调度流程（所有 Agent 都走这个逻辑）：
+
+# Step 1: 尝试路由
+result = Bash("bash .pipeline/llm-router.sh builder-backend '你的prompt...'")
+
+if result.exit_code == 0:
+    # 外部 LLM 执行成功
+    output = result.stdout
+elif result.exit_code == 10:
+    # 降级：改用 Claude（无 key、未启用、未路由等）
+    output = Agent(builder-backend, prompt="你的prompt...")
+else:
+    # 真正的失败 → rollback
+    handle_failure()
+```
+
+### Worktree 场景下的路由
+
+Phase 3 Builder 在 worktree 中执行时，需传递 `--cwd`：
+```bash
+bash .pipeline/llm-router.sh builder-backend '你的prompt...' --cwd .worktrees/builder-backend
+```
+
+### 并行路由
+
+同波次多个 Builder 路由到外部 LLM 时，**仍用多个 Bash tool call 并行**：
+```
+# 同一条响应中发起多个 Bash tool call
+Bash("bash .pipeline/llm-router.sh builder-backend '...' --cwd .worktrees/builder-backend")
+Bash("bash .pipeline/llm-router.sh builder-frontend '...' --cwd .worktrees/builder-frontend")
+Bash("bash .pipeline/llm-router.sh builder-dba '...' --cwd .worktrees/builder-dba")
+```
+
+### 路由失败处理
+
+- 退出码 `1` → Agent 执行失败，走正常 rollback 流程
+- 退出码 `10` → 降级到 Claude，**不计入 attempt_counts**，不算失败
+- 超时 → 退出码 1 → FAIL
+- 降级时在控制台输出 `[Pipeline] $AGENT_NAME 路由降级 → Claude`
+
 ## 初始化
 
-1. 读 `.pipeline/config.json`（配置）→ 读 `.pipeline/state.json`（不存在则初始化）
+1. 读 `.pipeline/config.json`（配置，**含 model_routing**）→ 读 `.pipeline/state.json`（不存在则初始化）
 2. 读 `.pipeline/proposal-queue.json`（不存在 → System Planning；为空 → 同；解析失败/循环依赖 → ESCALATION）
 3. 确定 current_phase 所属批次 → 读 playbook 章节 → 执行
+4. **若 `model_routing.enabled = true`**，在控制台输出 `[Pipeline] 模型路由已启用，外部 LLM: <provider>`
 
 ## state.json 关键字段
 

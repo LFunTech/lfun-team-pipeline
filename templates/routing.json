@@ -1,0 +1,33 @@
+{
+  "_comment": "全局模型路由配置。项目级 config.json 的 model_routing 可覆盖此处同名字段。",
+  "enabled": false,
+  "providers": {
+    "glm5": {
+      "base_url": "https://coding.dashscope.aliyuncs.com/apps/anthropic",
+      "api_key": "",
+      "model": "glm-5",
+      "max_turns": 30,
+      "timeout": 600
+    },
+    "ollama": {
+      "base_url": "http://localhost:11434/v1",
+      "model": "qwen3:32b",
+      "max_turns": 30,
+      "timeout": 600
+    }
+  },
+  "routes": {
+    "builder-backend":      "glm5",
+    "builder-frontend":     "glm5",
+    "builder-dba":          "glm5",
+    "builder-security":     "glm5",
+    "builder-infra":        "glm5",
+    "migrator":             "glm5",
+    "translator":           "glm5",
+    "planner":              "glm5",
+    "contract-formalizer":  "glm5",
+    "tester":               "glm5",
+    "documenter":           "glm5",
+    "optimizer":            "glm5"
+  }
+}

@@ -30,7 +30,7 @@ print_header() {
 print_header
 
 # ── 1. Install agents to ~/.claude/agents/ ──────────────────────────
-echo "▶ Step 1/3 — Installing agents to $AGENTS_DST"
+echo "▶ Step 1/4 — Installing agents to $AGENTS_DST"
 
 if [ ! -d "$AGENTS_SRC" ]; then
   echo "  ❌ agents/ directory not found. Run this script from the repo root."
@@ -56,7 +56,7 @@ echo "  ✓ $INSTALLED agents installed"
 
 # ── 2. Copy templates to ~/.local/share/team-pipeline/ ──────────────
 echo ""
-echo "▶ Step 2/3 — Installing templates to $TEMPLATES_DST"
+echo "▶ Step 2/4 — Installing templates to $TEMPLATES_DST"
 
 mkdir -p "$TEMPLATES_DST"
 cp -r "$REPO_DIR/templates/." "$TEMPLATES_DST/"
@@ -64,7 +64,7 @@ echo "  ✓ Pipeline templates installed"
 
 # ── 3. Install `team` CLI to ~/.local/bin/ ───────────────────────────
 echo ""
-echo "▶ Step 3/3 — Installing \`team\` command to $BIN_DIR"
+echo "▶ Step 3/4 — Installing \`team\` command to $BIN_DIR"
 
 mkdir -p "$BIN_DIR"
 cat > "$TEAM_CMD" << 'TEAM_SCRIPT'
@@ -144,6 +144,13 @@ cmd_init() {
   done < <(find "$TEAM_HOME/.pipeline/autosteps" \( -name "*.sh" -o -name "*.py" \) | sort)
   echo "  ✓ .pipeline/autosteps/ ($STEP_COUNT scripts)"
 
+  # Copy llm-router.sh
+  if [ -f "$TEAM_HOME/.pipeline/llm-router.sh" ]; then
+    cp "$TEAM_HOME/.pipeline/llm-router.sh" .pipeline/llm-router.sh
+    chmod +x .pipeline/llm-router.sh
+    echo "  ✓ .pipeline/llm-router.sh"
+  fi
+
   # Copy CLAUDE.md
   if [ -f "CLAUDE.md" ]; then
     echo "  ⚠  CLAUDE.md already exists, skipping"
@@ -197,6 +204,13 @@ cmd_upgrade() {
   for ext in sh py; do cp "$TEAM_HOME/.pipeline/autosteps/"*."$ext" .pipeline/autosteps/ 2>/dev/null || true; done
   AUTOSTEP_COUNT=$(ls .pipeline/autosteps/*.sh .pipeline/autosteps/*.py 2>/dev/null | wc -l)
   echo "  ✓ $AUTOSTEP_COUNT autosteps upgraded"
+
+  # Upgrade llm-router.sh (always overwrite)
+  if [ -f "$TEAM_HOME/.pipeline/llm-router.sh" ]; then
+    cp "$TEAM_HOME/.pipeline/llm-router.sh" .pipeline/llm-router.sh
+    chmod +x .pipeline/llm-router.sh
+    echo "  ✓ llm-router.sh upgraded"
+  fi
 
   # Upgrade CLAUDE.md (always overwrite)
   if [ -f "$TEAM_HOME/CLAUDE.md" ]; then
@@ -675,6 +689,27 @@ TEAM_SCRIPT
 
 chmod +x "$TEAM_CMD"
 echo "  ✓ 'team' command installed at $TEAM_CMD"
+
+# ── 4. Install global routing config ──────────────────────────────
+echo ""
+echo "▶ Step 4 — Global model routing config"
+
+GLOBAL_ROUTING_DIR="$HOME/.config/team-pipeline"
+GLOBAL_ROUTING_FILE="$GLOBAL_ROUTING_DIR/routing.json"
+mkdir -p "$GLOBAL_ROUTING_DIR"
+
+if [ -f "$GLOBAL_ROUTING_FILE" ]; then
+  echo "  ⚠  $GLOBAL_ROUTING_FILE already exists, skipping"
+  echo "     To reset: rm $GLOBAL_ROUTING_FILE && bash install.sh"
+else
+  cp "$REPO_DIR/templates/routing.json" "$GLOBAL_ROUTING_FILE"
+  echo "  ✓ $GLOBAL_ROUTING_FILE"
+  echo ""
+  echo "  To enable model routing globally:"
+  echo "    1. Edit $GLOBAL_ROUTING_FILE"
+  echo "    2. Set \"enabled\": true"
+  echo "    3. Fill in api_key for your provider"
+fi
 
 # Copy install.sh itself so `team update` works
 cp "$REPO_DIR/install.sh" "$TEMPLATES_DST/install.sh" 2>/dev/null || true

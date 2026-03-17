@@ -71,6 +71,42 @@
       "health_path": "/health"
     }
   },
+  "model_routing": {
+    "enabled": false,
+    "providers": {
+      "glm5": {
+        "base_url": "https://coding.dashscope.aliyuncs.com/apps/anthropic",
+        "api_key": "",
+        "api_key_env": "GLM5_API_KEY",
+        "model": "glm-5",
+        "max_turns": 30,
+        "timeout": 600,
+        "_comment": "api_key 直接填值；或留空，通过 api_key_env 从环境变量读取"
+      },
+      "ollama": {
+        "base_url": "http://localhost:11434/v1",
+        "model": "qwen3:32b",
+        "max_turns": 30,
+        "timeout": 600
+      }
+    },
+    "routes": {
+      "builder-backend":      "glm5",
+      "builder-frontend":     "glm5",
+      "builder-dba":          "glm5",
+      "builder-security":     "glm5",
+      "builder-infra":        "glm5",
+      "migrator":             "glm5",
+      "translator":           "glm5",
+      "planner":              "glm5",
+      "contract-formalizer":  "glm5",
+      "tester":               "glm5",
+      "documenter":           "glm5",
+      "optimizer":            "glm5"
+    },
+    "_comment_routes": "未列出的 agent 默认走 Claude（Pilot 内置 Agent tool）",
+    "_comment_boss": "clarifier/architect/simplifier/inspector/auditor-*/resolver/deployer/monitor → Claude"
+  },
   "component_registry": {
     "enabled": true,
     "summary_provider": "auto",
