@@ -347,7 +347,7 @@ claude --dangerously-skip-permissions --agent pilot
 .pipeline/
 ├── config.json          ← Pipeline configuration (edit before starting, includes model routing)
 ├── playbook.md          ← Phase execution playbook (loaded on-demand by Pilot)
-├── llm-router.sh        ← Model routing dispatcher (auto-fallback to Claude)
+├── llm-router.sh        ← Model routing dispatcher (auto-fallback to default model)
 ├── project-memory.json  ← Project memory (cross-pipeline constraint registry)
 ├── autosteps/           ← 20 automated scripts (do not edit)
 ├── artifacts/           ← Runtime outputs (auto-generated)
@@ -430,7 +430,7 @@ Route builder agents to external LLMs (e.g., GLM-5, local Ollama) while Claude h
 
 **API key priority:** `api_key` (direct value) > `api_key_env` (env variable) > `.depend/llm.env`
 
-**Auto-fallback:** When no API key is configured or routing is disabled, agents automatically fall back to Claude (exit code 10). The pipeline runs normally even without external LLM configuration.
+**Auto-fallback:** When no API key is configured or routing is disabled, agents automatically fall back to the default model (exit code 10). The pipeline runs normally even without external LLM configuration.
 
 ## Parallel Execution
 

@@ -12,7 +12,7 @@
 # 退出码:
 #   0  = 成功（外部 LLM 执行完成）
 #   1  = Agent 执行失败（应走 rollback）
-#   10 = 降级：应改用 Claude（未启用/未路由/无 key/provider 缺失）
+#   10 = 降级：应改用默认模型（未启用/未路由/无 key/provider 缺失）
 #        Pilot 收到 exit=10 时，改用 Agent tool 重新调用，不算失败
 
 set -euo pipefail
@@ -97,22 +97,22 @@ timeout = p.get('timeout', 600)
 
 print(f'{provider_name}|{p[\"base_url\"]}|{p[\"model\"]}|{api_key}|{api_key_env}|{max_turns}|{timeout}')
 " 2>/dev/null) || {
-  echo "[llm-router] 配置解析失败，降级到 Claude" >&2
+  echo "[llm-router] 配置解析失败，降级到默认模型" >&2
   exit $EXIT_FALLBACK
 }
 
 # --- 降级判断 ---
 case "$ROUTE_INFO" in
   DISABLED)
-    echo "[llm-router] model_routing 未启用，降级到 Claude" >&2
+    echo "[llm-router] model_routing 未启用，降级到默认模型" >&2
     exit $EXIT_FALLBACK
     ;;
   NOT_ROUTED)
-    echo "[llm-router] $AGENT_NAME 未配置路由，降级到 Claude" >&2
+    echo "[llm-router] $AGENT_NAME 未配置路由，降级到默认模型" >&2
     exit $EXIT_FALLBACK
     ;;
   NO_PROVIDER:*)
-    echo "[llm-router] provider '${ROUTE_INFO#NO_PROVIDER:}' 未定义，降级到 Claude" >&2
+    echo "[llm-router] provider '${ROUTE_INFO#NO_PROVIDER:}' 未定义，降级到默认模型" >&2
     exit $EXIT_FALLBACK
     ;;
 esac
@@ -140,7 +140,7 @@ fi
 
 # 3. 需要 key 但找不到 → 降级
 if [ -z "$RESOLVED_KEY" ] && [ -n "$API_KEY_ENV" ]; then
-  echo "[llm-router] $PROVIDER 需要 API Key 但未配置，降级到 Claude" >&2
+  echo "[llm-router] $PROVIDER 需要 API Key 但未配置，降级到默认模型" >&2
   echo "[llm-router] 配置方式: config.json 的 api_key 字段，或环境变量 \$$API_KEY_ENV" >&2
   exit $EXIT_FALLBACK
 fi

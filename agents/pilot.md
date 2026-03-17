@@ -105,7 +105,7 @@ Bash("bash .pipeline/llm-router.sh <agent-name> '<prompt>' --cwd .worktrees/<age
 |--------|------|-----------|
 | `0` | 外部 LLM 执行成功 | 正常继续，从 stdout 首行提取模型名 |
 | `1` | Agent 执行失败 | 视为 FAIL，走 rollback |
-| `10` 或其他 | 降级 | 改用 `Agent(agent-name, prompt)` 走 Claude，**不算失败** |
+| `10` 或其他 | 降级 | 改用 `Agent(agent-name, prompt)` 走默认模型，**不算失败** |
 
 > **再次强调**：当 `.pipeline/llm-router.sh` 存在时，**绝对不允许**跳过它直接使用 Agent tool。llm-router.sh 负责读取全局和项目两层配置来决定路由，Pilot 直接用 Agent tool 会导致用户配置的外部 LLM 被绕过。
 
@@ -148,9 +148,9 @@ elif check.stdout.strip() == "EXISTS":
         # 真正的失败 → rollback
         handle_failure()
     else:
-        # exit 10 / 其他 → 降级到 Claude，不算失败
+        # exit 10 / 其他 → 降级到默认模型，不算失败
         output = Agent(builder-backend, prompt="你的prompt...")
-        model = "opus(降级)"
+        model = "default(降级)"  # 使用 Agent frontmatter 配置的模型
 ```
 
 ### Worktree 场景下的路由
@@ -173,10 +173,10 @@ Bash("bash .pipeline/llm-router.sh builder-dba '...' --cwd .worktrees/builder-db
 ### 路由失败处理
 
 - 退出码 `1` → Agent 执行失败，走正常 rollback 流程
-- 退出码 `10` / 其他非 0 非 1 → 降级到 Claude，**不计入 attempt_counts**，不算失败
+- 退出码 `10` / 其他非 0 非 1 → 降级到默认模型，**不计入 attempt_counts**，不算失败
 - 超时 → 退出码 1 → FAIL
 - `.pipeline/llm-router.sh` 不存在时直接走 Agent tool，不尝试路由
-- 降级时在控制台输出 `[Pipeline] $AGENT_NAME 路由降级 → Claude`
+- 降级时在控制台输出 `[Pipeline] $AGENT_NAME 路由降级 → 默认模型`
 
 ## 初始化
 
@@ -256,8 +256,8 @@ github_repo_created=true 时，每步成功后 `git add -A && git commit -m "<MS
 
 `model` 字段取值规则：
 - 外部 LLM 执行成功（exit 0）→ provider 的 model 名，如 `"glm-5"`
-- 降级到 Claude（exit 10）→ `"opus(降级)"` 或 `"sonnet(降级)"`（按 agent frontmatter 的 model 字段决定）
-- 直接走 Claude Agent tool（不在 routes 表中）→ `"opus"` 或 `"sonnet"`（按 agent frontmatter 的 model 字段决定）
+- 降级到默认模型（exit 10）→ `"<model>(降级)"`（model 为 Agent frontmatter 配置的模型名）
+- 直接走 Agent tool（不在 routes 表中）→ Agent frontmatter 配置的模型名
 - AutoStep（Shell 脚本）→ `"autostep"`
 
 Agent 的 Claude 模型对照表（`model: inherit` = opus，`model: sonnet` = sonnet）：
@@ -272,5 +272,5 @@ Agent 的 Claude 模型对照表（`model: inherit` = opus，`model: sonnet` = s
 - `[Pipeline] ✅ builder-backend PASS (glm-5)` — 外部 LLM 执行
 - `[Pipeline] ✅ architect PASS (opus)` — Claude Opus 执行
 - `[Pipeline] ✅ auditor-gate PASS (sonnet)` — Claude Sonnet 执行
-- `[Pipeline] ⚠️ builder-backend PASS (opus↩降级)` — 路由降级回 Claude Opus
+- `[Pipeline] ⚠️ builder-backend PASS (<model>↩降级)` — 路由降级回默认模型
 - `[Pipeline] ✅ phase-0.5 PASS (autostep)` — Shell 脚本

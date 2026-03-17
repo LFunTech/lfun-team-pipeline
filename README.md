@@ -344,7 +344,7 @@ team run
 .pipeline/
 ├── config.json          ← 流水线配置（启动前编辑，含模型路由配置）
 ├── playbook.md          ← 阶段执行手册（Pilot 按需加载）
-├── llm-router.sh        ← 模型路由调度脚本（自动降级到 Claude）
+├── llm-router.sh        ← 模型路由调度脚本（自动降级到默认模型）
 ├── project-memory.json  ← 项目记忆（跨流水线约束清单）
 ├── autosteps/           ← 20 个自动化脚本（无需修改）
 ├── artifacts/           ← 运行时产物（自动生成）
@@ -427,7 +427,7 @@ CLAUDE.md                ← 流水线对 Claude Code 的指令
 
 **API Key 优先级：** `api_key`（直接值）> `api_key_env`（环境变量）> `.depend/llm.env`
 
-**自动降级：** 未配置 API Key 或路由未启用时，自动降级到 Claude 执行，流水线无感切换（退出码 10）。这意味着即使不配外部 LLM，流水线也能正常跑完。
+**自动降级：** 未配置 API Key 或路由未启用时，自动降级到默认模型执行，流水线无感切换（退出码 10）。这意味着即使不配外部 LLM，流水线也能正常跑完。
 
 ## 并行执行
 
