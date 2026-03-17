@@ -80,31 +80,34 @@ permissionMode: bypassPermissions
 
 **Pilot 不自行判断 routing 是否启用。** 路由的 enabled 判断由 `llm-router.sh` 负责（它会合并全局 `~/.config/team-pipeline/routing.json` + 项目 `config.json` 两层配置）。
 
-**对于每个需要 spawn Agent 的步骤，Pilot 按以下逻辑决定调度方式：**
+**⚠️ 硬性规则 — 违反此规则等同于 BUG：**
 
-```
-# Step 0: 检查 llm-router.sh 是否存在
-router_exists = file_exists(".pipeline/llm-router.sh")
+**每次需要 spawn Agent 时，Pilot 必须严格按以下顺序执行，不得跳过任何步骤：**
 
-if not router_exists:
-    # 脚本不存在（老项目未 team upgrade）→ 直接走 Claude
-    output = Agent(agent-name, prompt=...)
-else:
-    # 脚本存在 → 运行它，由它决定走外部 LLM 还是降级
-    result = Bash("bash .pipeline/llm-router.sh <agent-name> '<prompt>' [--cwd <dir>]")
-    # 按退出码处理（见下表）
+**Step 1（必须执行）：检查 llm-router.sh 是否存在**
+```bash
+Bash("test -f .pipeline/llm-router.sh && echo EXISTS || echo NOT_EXISTS")
 ```
 
-**llm-router.sh 退出码：**
+**Step 2：根据 Step 1 结果决定调度方式**
+
+- 若 `NOT_EXISTS` → 使用 `Agent(agent-name, prompt=...)` 调用 Claude
+- 若 `EXISTS` → **必须**使用 Bash 调用 llm-router.sh（**禁止**直接用 Agent tool）：
+```bash
+Bash("bash .pipeline/llm-router.sh <agent-name> '<prompt>'")
+# Phase 3 worktree 场景加 --cwd：
+Bash("bash .pipeline/llm-router.sh <agent-name> '<prompt>' --cwd .worktrees/<agent-name>")
+```
+
+**Step 3：根据 llm-router.sh 退出码决定后续**
 
 | 退出码 | 含义 | Pilot 行为 |
 |--------|------|-----------|
-| `0` | 外部 LLM 执行成功 | 正常继续 |
+| `0` | 外部 LLM 执行成功 | 正常继续，从 stdout 首行提取模型名 |
 | `1` | Agent 执行失败 | 视为 FAIL，走 rollback |
-| `10` | **降级**：未启用/未路由/无 Key/provider 缺失 | 改用 `Agent(agent-name, prompt)` 走 Claude，**不算失败** |
-| 其他 | 异常 | 等同 exit 10，降级到 Claude，**不算失败** |
+| `10` 或其他 | 降级 | 改用 `Agent(agent-name, prompt)` 走 Claude，**不算失败** |
 
-> **关键**：Pilot 只负责"脚本在不在"的判断，enabled/routes/key 等逻辑全部交给 llm-router.sh。这确保全局配置和项目配置都能生效。
+> **再次强调**：当 `.pipeline/llm-router.sh` 存在时，**绝对不允许**跳过它直接使用 Agent tool。llm-router.sh 负责读取全局和项目两层配置来决定路由，Pilot 直接用 Agent tool 会导致用户配置的外部 LLM 被绕过。
 
 ### 牛马与老大分工
 
@@ -119,33 +122,35 @@ Claude（老大，审核/决策/精简）：
   deployer, monitor, github-ops
 ```
 
-### 路由调度示例
+### 路由调度示例（必须严格遵循）
 
 ```python
-# 调度流程（所有 Agent 都走这个逻辑）：
+# ===== 这是强制执行的调度逻辑，不是建议 =====
 
-if not file_exists(".pipeline/llm-router.sh"):
+# Step 1: 检查脚本
+check = Bash("test -f .pipeline/llm-router.sh && echo EXISTS || echo NOT_EXISTS")
+
+if check.stdout.strip() == "NOT_EXISTS":
     # 脚本不存在 → 直接 Claude
     output = Agent(builder-backend, prompt="你的prompt...")
-    # execution_log.model = "opus"（按 agent frontmatter 决定）
-else:
-    # 脚本存在 → 运行它
+    model = "opus"  # 按 agent frontmatter 决定
+
+elif check.stdout.strip() == "EXISTS":
+    # 脚本存在 → 必须走 llm-router.sh，禁止直接 Agent()
     result = Bash("bash .pipeline/llm-router.sh builder-backend '你的prompt...'")
 
     if result.exit_code == 0:
         # 外部 LLM 执行成功
-        # stdout 首行为 "[llm-router:model] glm-5"，提取模型名
         lines = result.stdout.strip().split('\n')
         model = lines[0].replace('[llm-router:model] ', '') if lines[0].startswith('[llm-router:model]') else 'unknown'
         output = '\n'.join(lines[1:])
-        # execution_log.model = model (如 "glm-5")
     elif result.exit_code == 1:
         # 真正的失败 → rollback
         handle_failure()
     else:
         # exit 10 / 其他 → 降级到 Claude，不算失败
         output = Agent(builder-backend, prompt="你的prompt...")
-        # execution_log.model = "opus(降级)"
+        model = "opus(降级)"
 ```
 
 ### Worktree 场景下的路由
