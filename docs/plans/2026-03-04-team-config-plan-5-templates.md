@@ -29,7 +29,7 @@
 
 ```bash
 # 启动流水线（从 Phase 0 开始，或从上次中断处继续）
-claude --agent orchestrator
+claude --agent pilot
 
 # 查看当前状态
 cat .pipeline/state.json | python3 -m json.tool
@@ -43,7 +43,7 @@ ls -t .pipeline/artifacts/*.json | head -5
 ```
 .pipeline/
 ├── config.json          ← 流水线配置（编辑此文件以自定义行为）
-├── state.json           ← 运行时状态（Orchestrator 自动管理，勿手动修改）
+├── state.json           ← 运行时状态（Pilot 自动管理，勿手动修改）
 ├── autosteps/           ← AutoStep Shell 脚本（15 个）
 └── artifacts/           ← 运行时产物（所有 Agent 和 AutoStep 的输出）
     ├── requirement.md
@@ -110,8 +110,8 @@ Phase 7    → Monitor（上线观测）
 # 查看中断的阶段
 cat .pipeline/state.json | python3 -c "import json,sys; s=json.load(sys.stdin); print(f'Status: {s[\"status\"]}, Phase: {s[\"current_phase\"]}')"
 
-# 重新启动（Orchestrator 会从 state.json 恢复）
-claude --agent orchestrator
+# 重新启动（Pilot 会从 state.json 恢复）
+claude --agent pilot
 ```
 
 ### 手动回退到指定阶段
@@ -126,7 +126,7 @@ s['status'] = 'running'
 with open('.pipeline/state.json', 'w') as f:
   json.dump(s, f, indent=2)
 "
-claude --agent orchestrator
+claude --agent pilot
 ```
 
 ### 查看 Gate 审核结果
@@ -157,7 +157,7 @@ bash install.sh
 **Step 2: 验证**
 
 ```bash
-grep "claude --agent orchestrator" templates/CLAUDE.md
+grep "claude --agent pilot" templates/CLAUDE.md
 ```
 Expected: 输出包含该命令
 
@@ -323,7 +323,7 @@ echo ""
 
 # ── 验证安装 ──────────────────────────────────────────────────────
 echo "── 安装验证 ──────────────────────────────────────"
-REQUIRED_AGENTS=("orchestrator" "clarifier" "architect" "auditor-biz" "auditor-tech" "auditor-qa" "auditor-ops" "resolver" "planner" "contract-formalizer" "builder-frontend" "builder-backend" "builder-dba" "builder-security" "builder-infra" "simplifier" "inspector" "tester" "documenter" "deployer" "monitor" "migrator" "optimizer" "translator")
+REQUIRED_AGENTS=("pilot" "clarifier" "architect" "auditor-biz" "auditor-tech" "auditor-qa" "auditor-ops" "resolver" "planner" "contract-formalizer" "builder-frontend" "builder-backend" "builder-dba" "builder-security" "builder-infra" "simplifier" "inspector" "tester" "documenter" "deployer" "monitor" "migrator" "optimizer" "translator")
 
 MISSING=0
 for agent in "${REQUIRED_AGENTS[@]}"; do
@@ -370,7 +370,7 @@ echo ""
 echo "2. 编辑 .pipeline/config.json，设置 project_name 等配置"
 echo ""
 echo "3. 启动流水线："
-echo "   claude --agent orchestrator"
+echo "   claude --agent pilot"
 echo ""
 echo "════════════════════════════════════════════════"
 ```
@@ -437,7 +437,7 @@ agents/inspector.md
 agents/migrator.md
 agents/monitor.md
 agents/optimizer.md
-agents/orchestrator.md
+agents/pilot.md
 agents/planner.md
 agents/resolver.md
 agents/simplifier.md

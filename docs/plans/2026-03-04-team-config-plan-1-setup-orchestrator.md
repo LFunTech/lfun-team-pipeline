@@ -1,10 +1,10 @@
-# Team Config Plan Part 1: Setup + Orchestrator
+# Team Config Plan Part 1: Setup + Pilot
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** 创建 `agents/` 目录结构并实现 Orchestrator 主控 Agent 文件。
+**Goal:** 创建 `agents/` 目录结构并实现 Pilot 主控 Agent 文件。
 
-**Architecture:** 建立 `agents/` 目录（repo 副本，安装时 cp 到 `~/.claude/agents/`），创建流水线核心的 orchestrator.md。
+**Architecture:** 建立 `agents/` 目录（repo 副本，安装时 cp 到 `~/.claude/agents/`），创建流水线核心的 pilot.md。
 
 **Tech Stack:** Claude Code subagents (Markdown + YAML frontmatter)
 
@@ -45,17 +45,17 @@ git commit -m "feat: initialize agents/ and templates/.pipeline/ directory struc
 
 ---
 
-### Task 2: 创建 orchestrator.md
+### Task 2: 创建 pilot.md
 
 **Files:**
-- Create: `agents/orchestrator.md`
+- Create: `agents/pilot.md`
 
 **Step 1: 写入文件**
 
 ```markdown
 ---
-name: orchestrator
-description: "[Pipeline] 多角色软件交付流水线主控。通过 `claude --agent orchestrator`
+name: pilot
+description: "[Pipeline] 多角色软件交付流水线主控。通过 `claude --agent pilot`
   启动，读取 .pipeline/state.json 驱动阶段流转，依序调用各 Agent 和 AutoStep
   脚本，处理回滚（rollback_to）和 Escalation。不在普通对话中使用。"
 tools: >
@@ -68,9 +68,9 @@ model: inherit
 permissionMode: acceptEdits
 ---
 
-# Orchestrator — 流水线主控
+# Pilot — 流水线主控
 
-你是多角色软件交付流水线的主控状态机。通过 `claude --agent orchestrator` 启动。
+你是多角色软件交付流水线的主控状态机。通过 `claude --agent pilot` 启动。
 
 ## 初始化
 
@@ -211,7 +211,7 @@ FAIL → rollback_to: phase-2.5
 7. Translator（如激活，与 Frontend 并行）
 
 每个 Builder 输出 `.pipeline/artifacts/impl-manifest-<builder>.json`。
-全部完成后，Orchestrator 合并为 `.pipeline/artifacts/impl-manifest.json`。
+全部完成后，Pilot 合并为 `.pipeline/artifacts/impl-manifest.json`。
 
 ### Phase 3.1 — Static Analyzer（AutoStep）
 ```
@@ -250,7 +250,7 @@ spawn: inspector
 input: 代码 + 所有 Phase 3 报告
 output: .pipeline/artifacts/gate-c-review.json
 ```
-Inspector 调用前，Orchestrator 在产物中机械设置 `simplifier_verified: true/false`。
+Inspector 调用前，Pilot 在产物中机械设置 `simplifier_verified: true/false`。
 FAIL → rollback_to: phase-3（重新经过 3.1→3.2→3.3→3.5→3.6→Gate C）
 
 ### Phase 3.7 — Contract Compliance Checker（AutoStep）
@@ -387,13 +387,13 @@ Resolver 输出 `resolver_verdict`：
 **Step 2: 验证文件**
 
 ```bash
-head -5 agents/orchestrator.md
+head -5 agents/pilot.md
 ```
 Expected: 看到 `---` 开头的 YAML frontmatter
 
 **Step 3: Commit**
 
 ```bash
-git add agents/orchestrator.md
-git commit -m "feat: add orchestrator agent with full pipeline state machine"
+git add agents/pilot.md
+git commit -m "feat: add pilot agent with full pipeline state machine"
 ```

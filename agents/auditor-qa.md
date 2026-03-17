@@ -66,7 +66,7 @@ model: sonnet
 }
 ```
 
-Gate D 时，输出必须包含结构化 `rollback_to` 字段（Orchestrator 机械解析）：
+Gate D 时，输出必须包含结构化 `rollback_to` 字段（Pilot 机械解析）：
 ```json
 {
   "gate": "D",

@@ -16,7 +16,7 @@ permissionMode: bypassPermissions
 ## 输入
 
 - 用户原始需求描述（文本输入）
-- `=== Project Memory ===` 块（如有，由 Orchestrator 注入）
+- `=== Project Memory ===` 块（如有，由 Pilot 注入）
 
 ## 项目记忆处理
 
@@ -53,10 +53,10 @@ permissionMode: bypassPermissions
 
 ## 澄清规则
 
-- 最多 5 轮澄清（每轮向 Orchestrator 返回问题列表，由 Orchestrator 展示给用户并传回答案）
+- 最多 5 轮澄清（每轮向 Pilot 返回问题列表，由 Pilot 展示给用户并传回答案）
 - 关键项无法解决时标注 `[CRITICAL-UNRESOLVED: <描述>]`
 - 非关键假设标注 `[ASSUMED: <假设内容>]`（格式：`[ASSUMED:` + 内容 + `]`，方括号内无换行）
-- 5 轮后仍有 `[CRITICAL-UNRESOLVED]` → 告知 Orchestrator 触发 ESCALATION
+- 5 轮后仍有 `[CRITICAL-UNRESOLVED]` → 告知 Pilot 触发 ESCALATION
 - **注意**：以上交互式规则仅在非自治模式下生效
 
 ## 输出

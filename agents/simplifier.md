@@ -48,6 +48,6 @@ skills:
 
 ## 约束
 
-- simplify-report.md 修改时间必须 > impl-manifest.json 修改时间（Orchestrator 机械验证）
+- simplify-report.md 修改时间必须 > impl-manifest.json 修改时间（Pilot 机械验证）
 - 不添加新功能，不修改接口契约
 - 不修改测试文件（测试在 Phase 4a 编写，Simplifier 不触及）

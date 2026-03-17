@@ -2,7 +2,7 @@
 
 **Goal:** 将 `claude-code-multi-agent-team-design.md`（v6）描述的多角色软件交付流水线，转化为可直接使用的 Claude Code 配置文件集合。
 
-**Architecture:** 24 个用户级 subagent 文件（`~/.claude/agents/`）+ 项目级 CLAUDE.md 模板 + 15 个 AutoStep Shell 脚本框架 + config.json 模板。Orchestrator 设计为通过 `claude --agent orchestrator` 启动，作为主线程 spawn 其他 subagents。
+**Architecture:** 24 个用户级 subagent 文件（`~/.claude/agents/`）+ 项目级 CLAUDE.md 模板 + 15 个 AutoStep Shell 脚本框架 + config.json 模板。Pilot 设计为通过 `claude --agent pilot` 启动，作为主线程 spawn 其他 subagents。
 
 **Tech Stack:** Claude Code subagents (Markdown + YAML frontmatter), Bash shell scripts, JSON config
 
@@ -14,7 +14,7 @@
 
 ```
 ~/.claude/agents/                        ← 用户级 Agent 定义（24 个文件）
-├── orchestrator.md                      ← 主控，via `claude --agent orchestrator`
+├── pilot.md                      ← 主控，via `claude --agent pilot`
 ├── clarifier.md                         ← Phase 0
 ├── architect.md                         ← Phase 1
 ├── auditor-biz.md                       ← Gates A/B
@@ -39,10 +39,10 @@
 ├── optimizer.md                         ← Phase 4b 条件 Agent
 └── translator.md                        ← Phase 3 条件 Agent
 
-<项目根目录>/CLAUDE.md                   ← 项目级 Orchestrator 说明（模板文件）
+<项目根目录>/CLAUDE.md                   ← 项目级 Pilot 说明（模板文件）
 <项目根目录>/.pipeline/
 ├── config.json                          ← 流水线配置模板
-├── state.json                           ← 运行时状态（运行时由 Orchestrator 生成）
+├── state.json                           ← 运行时状态（运行时由 Pilot 生成）
 ├── autosteps/
 │   ├── requirement-completeness-checker.sh
 │   ├── assumption-propagation-validator.sh
@@ -72,12 +72,12 @@
 
 ## Section 2：Agent 文件格式规范
 
-### Orchestrator（特殊主线程 Agent）
+### Pilot（特殊主线程 Agent）
 
 ```yaml
 ---
-name: orchestrator
-description: "[Pipeline] 多角色软件交付流水线主控。通过 `claude --agent orchestrator`
+name: pilot
+description: "[Pipeline] 多角色软件交付流水线主控。通过 `claude --agent pilot`
   启动，读取 .pipeline/state.json 驱动阶段流转，依序调用各 Agent 和 AutoStep
   脚本，处理回滚（rollback_to）和 Escalation。不在普通对话中使用。"
 tools: >
@@ -123,7 +123,7 @@ skills:
 
 | 类别 | permissionMode | tools |
 |------|---------------|-------|
-| Orchestrator | `acceptEdits` | Agent(*) + 所有工具 |
+| Pilot | `acceptEdits` | Agent(*) + 所有工具 |
 | Clarifier, Architect, Planner, Contract Formalizer | `acceptEdits` | Read/Write/Edit/Bash/Glob/Grep |
 | Builder-*, Simplifier, Tester, Documenter | `acceptEdits` | Read/Write/Edit/Bash/Glob/Grep |
 | Deployer | `acceptEdits` | Read/Write/Edit/Bash/Glob/Grep |
@@ -209,7 +209,7 @@ EOF
 ### templates/CLAUDE.md
 
 内容包含：
-1. 流水线启动命令（`claude --agent orchestrator`）
+1. 流水线启动命令（`claude --agent pilot`）
 2. 目录结构说明
 3. 阶段顺序快速参考（Phase 0 → 0.5 → Gate A → ... → Phase 7）
 4. config.json 关键配置说明

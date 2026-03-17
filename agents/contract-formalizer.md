@@ -68,7 +68,7 @@ permissionMode: bypassPermissions
 ```yaml
 openapi: "3.0.3"
 info:
-  title: "<由 Orchestrator 填入>"
+  title: "<由 Pilot 填入>"
   version: "1.0.0"
 paths:
   /api/v1/resource/{id}:

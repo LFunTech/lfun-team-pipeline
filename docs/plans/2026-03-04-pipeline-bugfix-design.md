@@ -41,7 +41,7 @@
 
 ### 问题描述
 
-Phase 3 各 Builder 各自写 `impl-manifest-<name>.json`，合并操作由 Orchestrator（LLM）内联完成，
+Phase 3 各 Builder 各自写 `impl-manifest-<name>.json`，合并操作由 Pilot（LLM）内联完成，
 容易出错或遗漏。
 
 ### 修复方案
@@ -67,11 +67,11 @@ Phase 3 各 Builder 各自写 `impl-manifest-<name>.json`，合并操作由 Orch
 }
 ```
 
-同时更新 `orchestrator.md`：将「合并 impl-manifest」从 LLM inline 操作改为调用此 AutoStep。
+同时更新 `pilot.md`：将「合并 impl-manifest」从 LLM inline 操作改为调用此 AutoStep。
 
 ---
 
-## Section 3：Orchestrator 两处架构修复
+## Section 3：Pilot 两处架构修复
 
 ### Bug A — git worktree 创建命令错误
 
@@ -91,16 +91,16 @@ git worktree add -b pipeline/phase-3/builder-<name> \
   "$(pwd)/.worktrees/builder-<name>" "$BASE_SHA"
 ```
 
-修改文件：`agents/orchestrator.md` Phase 3 worktree 创建节。
+修改文件：`agents/pilot.md` Phase 3 worktree 创建节。
 
 ---
 
 ### Bug B — Phase 3.7 依赖运行中服务，但流水线无启停机制
 
 **问题：** Contract Compliance Checker 需要 `SERVICE_BASE_URL` 上有活跃服务，
-但 Orchestrator 在调用前未启动服务，调用后未关闭。
+但 Pilot 在调用前未启动服务，调用后未关闭。
 
-**修复：** 在 `orchestrator.md` 的 Phase 3.7 步骤中明确加入启停指令：
+**修复：** 在 `pilot.md` 的 Phase 3.7 步骤中明确加入启停指令：
 ```
 Phase 3.7 前：
   npm start & → 记录 SERVICE_PID → 轮询 /health 最多 10s
@@ -112,7 +112,7 @@ Phase 3.7 后：
   跳过 Phase 3.7，在 artifacts 写入 WARN 报告，继续流水线
 ```
 
-修改文件：`agents/orchestrator.md` Phase 3.7 节。
+修改文件：`agents/pilot.md` Phase 3.7 节。
 
 ---
 
@@ -159,8 +159,8 @@ Phase 3.7 后：
 ## 实施顺序
 
 1. Section 1：5 个 AutoStep 脚本（纯追加 `|| true`，独立无依赖）
-2. Section 2：新增 `impl-manifest-merger.sh` + 更新 `orchestrator.md`（merger 节）
-3. Section 3：更新 `orchestrator.md`（worktree 命令 + Phase 3.7 启停）
+2. Section 2：新增 `impl-manifest-merger.sh` + 更新 `pilot.md`（merger 节）
+3. Section 3：更新 `pilot.md`（worktree 命令 + Phase 3.7 启停）
 4. Section 4：更新 3 个 agent 提示词
 
-Step 2、3 都改 orchestrator.md，可合并为一次编辑。
+Step 2、3 都改 pilot.md，可合并为一次编辑。

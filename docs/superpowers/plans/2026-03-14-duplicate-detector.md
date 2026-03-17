@@ -26,8 +26,8 @@
 | Modify | `install.sh:176-238` | `cmd_upgrade()` 支持复制 `.py` autostep 文件 |
 | Modify | `install.sh:630-638` | case 路由新增 `scan` |
 | Create | (install.sh 内嵌) `cmd_scan()` | `team scan` / `--refresh` / `--check-only` 命令实现 |
-| Modify | `agents/orchestrator.md:34-36` | batch-build 或 batch-post-build 新增 phase-3.0d |
-| Modify | `agents/orchestrator.md:65` | 线性流路由表插入 phase-3.0d |
+| Modify | `agents/pilot.md:34-36` | batch-build 或 batch-post-build 新增 phase-3.0d |
+| Modify | `agents/pilot.md:65` | 线性流路由表插入 phase-3.0d |
 | Create | `tests/test_duplicate_analyzer.py` | Python 规则检测单元测试 |
 
 ---
@@ -998,26 +998,26 @@ git commit -m "feat: integrate team scan command with --check-only and --refresh
 
 ---
 
-## Chunk 5: Orchestrator 集成
+## Chunk 5: Pilot 集成
 
-### Task 8: 更新 orchestrator.md 路由表
+### Task 8: 更新 pilot.md 路由表
 
-**前置说明：** phase-3.0c（Component Extractor）尚未实现，属于组件注册表 spec 的范围。当前 orchestrator 路由从 `phase-3.0b → phase-3.1`。Duplicate Detector 直接插入为 `phase-3.0b → phase-3.0d → phase-3.1`。待 Component Extractor 实现后，顺序变为 `phase-3.0b → phase-3.0c → phase-3.0d → phase-3.1`。
+**前置说明：** phase-3.0c（Component Extractor）尚未实现，属于组件注册表 spec 的范围。当前 pilot 路由从 `phase-3.0b → phase-3.1`。Duplicate Detector 直接插入为 `phase-3.0b → phase-3.0d → phase-3.1`。待 Component Extractor 实现后，顺序变为 `phase-3.0b → phase-3.0c → phase-3.0d → phase-3.1`。
 
-**注意：** duplicate-generator 和 duplicate-auditor 由 `duplicate-detector.sh` Shell 脚本通过 `claude --agent` 调用，不由 Orchestrator 直接调度。因此**不需要**在 Orchestrator 的 tools 声明中添加这两个 Agent。Orchestrator 只通过 Bash 工具运行 `duplicate-detector.sh`。
+**注意：** duplicate-generator 和 duplicate-auditor 由 `duplicate-detector.sh` Shell 脚本通过 `claude --agent` 调用，不由 Pilot 直接调度。因此**不需要**在 Pilot 的 tools 声明中添加这两个 Agent。Pilot 只通过 Bash 工具运行 `duplicate-detector.sh`。
 
 **Files:**
-- Modify: `agents/orchestrator.md` (batch-post-build 新增 phase-3.0d)
-- Modify: `agents/orchestrator.md` (线性流路由表插入 phase-3.0d)
+- Modify: `agents/pilot.md` (batch-post-build 新增 phase-3.0d)
+- Modify: `agents/pilot.md` (线性流路由表插入 phase-3.0d)
 
-- [ ] **Step 1: 先读取 orchestrator.md 确认当前路由表内容**
+- [ ] **Step 1: 先读取 pilot.md 确认当前路由表内容**
 
-Run: `head -100 agents/orchestrator.md`
+Run: `head -100 agents/pilot.md`
 找到 batch-post-build 行和线性流路由表的精确内容。
 
 - [ ] **Step 2: 在 batch-post-build 中添加 phase-3.0d**
 
-在 orchestrator.md 的批次表中，将 batch-post-build 从：
+在 pilot.md 的批次表中，将 batch-post-build 从：
 ```
 | batch-post-build | phase-3.1 + phase-3.2 + phase-3.3 + phase-3.5 + phase-3.6 |
 ```
@@ -1042,7 +1042,7 @@ phase-3.0d 非阻塞，不回滚：
 
 - [ ] **Step 5: 添加 phase-3.0d 的 AutoStep 执行说明**
 
-在 orchestrator.md 中与其他 AutoStep（如 phase-3.0b）类似的位置，添加 phase-3.0d 的执行方式：
+在 pilot.md 中与其他 AutoStep（如 phase-3.0b）类似的位置，添加 phase-3.0d 的执行方式：
 ```
 phase-3.0d: MODE="${MODE:-incremental}" PIPELINE_DIR=".pipeline" bash .pipeline/autosteps/duplicate-detector.sh
 ```
@@ -1050,8 +1050,8 @@ phase-3.0d: MODE="${MODE:-incremental}" PIPELINE_DIR=".pipeline" bash .pipeline/
 - [ ] **Step 6: Commit**
 
 ```bash
-git add agents/orchestrator.md
-git commit -m "feat: add phase-3.0d duplicate-detector to orchestrator routing"
+git add agents/pilot.md
+git commit -m "feat: add phase-3.0d duplicate-detector to pilot routing"
 ```
 
 ---

@@ -20,7 +20,7 @@ permissionMode: bypassPermissions
 ```bash
 gh auth status
 ```
-若未认证 → 输出错误信息并设置 `overall: FAIL`，通知 Orchestrator ESCALATION。
+若未认证 → 输出错误信息并设置 `overall: FAIL`，通知 Pilot ESCALATION。
 
 ---
 

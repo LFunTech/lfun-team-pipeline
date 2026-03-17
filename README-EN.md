@@ -8,7 +8,7 @@
 
 ## What is this?
 
-**lfun-team-pipeline** orchestrates **26 specialized AI agents** that collaborate like a real engineering team — requirements analyst, architect, multiple parallel developers, QA engineers, a deployer, and a post-launch monitor — all driven by a single orchestrator.
+**lfun-team-pipeline** orchestrates **26 specialized AI agents** that collaborate like a real engineering team — requirements analyst, architect, multiple parallel developers, QA engineers, a deployer, and a post-launch monitor — all driven by a single pilot.
 
 You describe the full system you want to build. The pipeline automatically decomposes it into an ordered proposal queue and delivers each one sequentially. Each proposal runs through the complete requirements-to-production lifecycle independently.
 
@@ -83,16 +83,16 @@ team init
 $EDITOR .pipeline/config.json
 
 # 3. Start the pipeline — describe the full system you want to build
-claude --dangerously-skip-permissions --agent orchestrator
+claude --dangerously-skip-permissions --agent pilot
 # First run enters System Planning, generates a proposal queue, then starts execution
 # Each run executes one batch and exits; run again to continue the next batch
 ```
 
-The pipeline uses a **batch execution model**: each `claude --dangerously-skip-permissions --agent orchestrator` invocation executes one batch (typically 1-3 phases), then exits. Run it again to continue. 12 batches cover the complete pipeline (Phase 0 through Phase 7).
+The pipeline uses a **batch execution model**: each `claude --dangerously-skip-permissions --agent pilot` invocation executes one batch (typically 1-3 phases), then exits. Run it again to continue. 12 batches cover the complete pipeline (Phase 0 through Phase 7).
 
 ```bash
 # Continue to the next batch
-claude --dangerously-skip-permissions --agent orchestrator
+claude --dangerously-skip-permissions --agent pilot
 
 # Check current progress (color status panel)
 team status
@@ -131,7 +131,7 @@ The core insight of autonomous mode is **shifting requirement gathering into the
 - Data entities
 - Non-functional requirements
 
-These details are stored in each proposal's `detail` field in `proposal-queue.json`. During execution, the Orchestrator generates the requirement document directly from confirmed details without spawning the Clarifier agent, saving one agent call.
+These details are stored in each proposal's `detail` field in `proposal-queue.json`. During execution, the Pilot generates the requirement document directly from confirmed details without spawning the Clarifier agent, saving one agent call.
 
 **Usage:**
 
@@ -149,7 +149,7 @@ cat > .pipeline/config.json << 'EOF'
 EOF
 
 # Start the pipeline
-claude --dangerously-skip-permissions --agent orchestrator
+claude --dangerously-skip-permissions --agent pilot
 # → System Planning interacts with you (describe system, confirm blueprint, confirm proposal details)
 # → After planning, all proposals execute automatically with no further interaction
 ```
@@ -209,10 +209,10 @@ git commit -m "chore: add lfun-team-pipeline"
 **Step 4 — Start the pipeline**
 
 ```bash
-claude --dangerously-skip-permissions --agent orchestrator
+claude --dangerously-skip-permissions --agent pilot
 ```
 
-Describe the new feature or full system you want to add. On first run, the orchestrator enters System Planning to generate a proposal queue, then executes each proposal sequentially. Builders will read the existing codebase in their git worktrees and implement changes that are consistent with the current architecture.
+Describe the new feature or full system you want to add. On first run, the pilot enters System Planning to generate a proposal queue, then executes each proposal sequentially. Builders will read the existing codebase in their git worktrees and implement changes that are consistent with the current architecture.
 
 **Important notes for existing repos:**
 
@@ -220,7 +220,7 @@ Describe the new feature or full system you want to add. On first run, the orche
 - The pipeline reads existing code to understand patterns before writing new code
 - Gate C (Inspector) performs a diff-scoped review — it only reviews new/changed code, not the entire codebase
 - Coverage thresholds should be set to match or slightly exceed your current baseline, not a fixed target like 80%
-- If your project already has an OpenAPI spec, inform the orchestrator at Phase 2.5 to avoid regenerating from scratch
+- If your project already has an OpenAPI spec, inform the pilot at Phase 2.5 to avoid regenerating from scratch
 
 ## Multi-Proposal System Delivery
 
@@ -235,10 +235,10 @@ Describe system → System Planning → Proposal Queue → [P-001 execute] → [
 **Step 1 — Start**
 
 ```bash
-claude --dangerously-skip-permissions --agent orchestrator
+claude --dangerously-skip-permissions --agent pilot
 ```
 
-On first run, the Orchestrator enters System Planning and guides you through describing the full system. Once complete, it generates:
+On first run, the Pilot enters System Planning and guides you through describing the full system. Once complete, it generates:
 - `.pipeline/artifacts/system-blueprint.md`: System blueprint (tech stack, domain decomposition, data model skeleton)
 - `.pipeline/proposal-queue.json`: Ordered proposal queue
 
@@ -248,7 +248,7 @@ After System Planning completes, the first proposal starts automatically. Each r
 
 ```bash
 # Continue to the next batch
-claude --dangerously-skip-permissions --agent orchestrator
+claude --dangerously-skip-permissions --agent pilot
 
 # Check current progress
 team status
@@ -283,7 +283,7 @@ for e in s.get('execution_log', []):
 ```bash
 # Preserve completed work, re-plan remaining proposals
 team replan
-claude --agent orchestrator
+claude --agent pilot
 ```
 
 ## Project Memory
@@ -317,7 +317,7 @@ cd /path/to/lfun-team-pipeline && bash install.sh
 cd /path/to/my-project && team upgrade
 
 # 3. Continue execution
-claude --dangerously-skip-permissions --agent orchestrator
+claude --dangerously-skip-permissions --agent pilot
 ```
 
 `team upgrade` overwrites `playbook.md` and `autosteps/` while preserving `config.json`, `state.json`, `artifacts/`, and `proposal-queue.json`, ensuring upgrades don't interrupt a running pipeline.
@@ -327,7 +327,7 @@ claude --dangerously-skip-permissions --agent orchestrator
 ```
 .pipeline/
 ├── config.json          ← Pipeline configuration (edit before starting)
-├── playbook.md          ← Phase execution playbook (loaded on-demand by Orchestrator)
+├── playbook.md          ← Phase execution playbook (loaded on-demand by Pilot)
 ├── project-memory.json  ← Project memory (cross-pipeline constraint registry)
 ├── autosteps/           ← 17 automated scripts (do not edit)
 ├── artifacts/           ← Runtime outputs (auto-generated)

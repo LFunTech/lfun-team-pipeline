@@ -86,8 +86,8 @@ fi
 ## 判定规则
 
 - **NORMAL**：所有指标在阈值内，无异常 → 流水线 COMPLETED
-- **ALERT**：指标超过 ALERT 阈值但未达 CRITICAL → Orchestrator 分析 `alert_details` 定位受影响模块后 rollback phase-3 精确 hotfix
-- **CRITICAL**：指标超过 CRITICAL 阈值 → Orchestrator 激活 Deployer 执行生产回滚
+- **ALERT**：指标超过 ALERT 阈值但未达 CRITICAL → Pilot 分析 `alert_details` 定位受影响模块后 rollback phase-3 精确 hotfix
+- **CRITICAL**：指标超过 CRITICAL 阈值 → Pilot 激活 Deployer 执行生产回滚
 
 ## 输出
 
@@ -114,7 +114,7 @@ fi
 
 ## 约束
 
-- `status` 字段必须是 `NORMAL`/`ALERT`/`CRITICAL` 之一（Orchestrator 机械解析）
+- `status` 字段必须是 `NORMAL`/`ALERT`/`CRITICAL` 之一（Pilot 机械解析）
 - 阈值判定基于量化数据，不使用主观描述
 - 观测窗口至少 30 分钟（可在 config.json 中配置）
 - `frontend_check` 为 `WARN` 时，`status_reason` 必须包含前端不可用说明（即使整体 status 为 NORMAL）

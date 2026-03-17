@@ -8,7 +8,7 @@
 
 ## 这是什么？
 
-**lfun-team-pipeline** 是基于 [Claude Code](https://claude.ai/code) 构建的生产级软件交付流水线。它编排 **26 个专属 AI 角色**，像真实工程团队一样协作 —— 需求分析师、架构师、多个并行开发者、QA 工程师、部署工程师、上线监控员 —— 由一个总指挥（Orchestrator）统一驱动。
+**lfun-team-pipeline** 是基于 [Claude Code](https://claude.ai/code) 构建的生产级软件交付流水线。它编排 **26 个专属 AI 角色**，像真实工程团队一样协作 —— 需求分析师、架构师、多个并行开发者、QA 工程师、部署工程师、上线监控员 —— 由一个总指挥（Pilot）统一驱动。
 
 你描述想构建的完整系统，流水线自动拆解为有序提案队列并逐个交付。支持系统级规划与多提案顺序执行，每个提案独立走完需求到上线全流程。
 
@@ -133,7 +133,7 @@ team status
 - 数据实体
 - 非功能需求
 
-这些细节写入 `proposal-queue.json` 的 `detail` 字段。后续执行时，Orchestrator 直接从已确认的细节生成需求文档，无需 spawn Clarifier，省去一次 Agent 调用。
+这些细节写入 `proposal-queue.json` 的 `detail` 字段。后续执行时，Pilot 直接从已确认的细节生成需求文档，无需 spawn Clarifier，省去一次 Agent 调用。
 
 **使用方法：**
 
@@ -214,7 +214,7 @@ git commit -m "chore: add lfun-team-pipeline"
 team run
 ```
 
-描述你想新增的功能或完整系统。首次运行时 Orchestrator 会进入系统规划阶段，生成提案队列后自动逐批执行。各 Builder 会在独立的 git worktree 中读取现有代码，并按现有架构风格实现变更。
+描述你想新增的功能或完整系统。首次运行时 Pilot 会进入系统规划阶段，生成提案队列后自动逐批执行。各 Builder 会在独立的 git worktree 中读取现有代码，并按现有架构风格实现变更。
 
 **接入现有项目的注意事项：**
 
@@ -222,7 +222,7 @@ team run
 - Builder 在动手前会阅读现有代码，沿用已有架构模式和命名规范
 - Gate C（Inspector）只审查新增/变更代码，不重新审查整个代码库
 - 覆盖率阈值建议设为当前基准值，而非固定的 80%
-- 若项目已有 OpenAPI 契约，在 Phase 2.5 告知 Orchestrator，避免重复生成
+- 若项目已有 OpenAPI 契约，在 Phase 2.5 告知 Pilot，避免重复生成
 
 ## 多提案系统交付
 
@@ -240,7 +240,7 @@ team run
 team run
 ```
 
-首次运行时，Orchestrator 进入系统规划阶段，引导你描述完整系统。完成后自动生成：
+首次运行时，Pilot 进入系统规划阶段，引导你描述完整系统。完成后自动生成：
 - `.pipeline/artifacts/system-blueprint.md`：系统蓝图（技术栈、域划分、数据模型骨架）
 - `.pipeline/proposal-queue.json`：有序提案队列
 
@@ -325,7 +325,7 @@ team run
 ```
 .pipeline/
 ├── config.json          ← 流水线配置（启动前编辑）
-├── playbook.md          ← 阶段执行手册（Orchestrator 按需加载）
+├── playbook.md          ← 阶段执行手册（Pilot 按需加载）
 ├── project-memory.json  ← 项目记忆（跨流水线约束清单）
 ├── autosteps/           ← 17 个自动化脚本（无需修改）
 ├── artifacts/           ← 运行时产物（自动生成）

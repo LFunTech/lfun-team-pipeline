@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** 修复流水线 v6 在完整执行 demo 过程中发现的所有 Bug，涵盖 AutoStep 脚本、新增合并工具、Orchestrator 提示词、Builder/Formalizer/Documenter agent 提示词。
+**Goal:** 修复流水线 v6 在完整执行 demo 过程中发现的所有 Bug，涵盖 AutoStep 脚本、新增合并工具、Pilot 提示词、Builder/Formalizer/Documenter agent 提示词。
 
-**Architecture:** 按文件纵向切割——每个文件的所有改动一次完成后验证，再进入下一文件。脚本 Bug 修复（Section 1）→ 新增 AutoStep（Section 2）→ Orchestrator 提示词（Section 3）→ Agent 提示词（Section 4）。
+**Architecture:** 按文件纵向切割——每个文件的所有改动一次完成后验证，再进入下一文件。脚本 Bug 修复（Section 1）→ 新增 AutoStep（Section 2）→ Pilot 提示词（Section 3）→ Agent 提示词（Section 4）。
 
 **Tech Stack:** Bash（AutoStep 脚本）、Python3（嵌入脚本）、Markdown（agent 提示词）
 
@@ -381,22 +381,22 @@ git commit -m "feat: add impl-manifest-merger AutoStep to replace inline LLM mer
 
 ---
 
-## Task 7: 更新 orchestrator.md（三处修复）
+## Task 7: 更新 pilot.md（三处修复）
 
 **Files:**
-- Modify: `agents/orchestrator.md`（worktree 创建命令、Phase 3.7 启停、impl-manifest 合并改为 AutoStep）
+- Modify: `agents/pilot.md`（worktree 创建命令、Phase 3.7 启停、impl-manifest 合并改为 AutoStep）
 
 **Step 1: 定位三处需要改动的位置**
 
 ```bash
 # 找 worktree 创建命令位置
-grep -n 'git checkout -b\|git worktree add' agents/orchestrator.md
+grep -n 'git checkout -b\|git worktree add' agents/pilot.md
 
 # 找 impl-manifest 合并位置
-grep -n 'impl-manifest\|合并 impl' agents/orchestrator.md
+grep -n 'impl-manifest\|合并 impl' agents/pilot.md
 
 # 找 Phase 3.7 位置
-grep -n 'Phase 3.7\|3\.7\|contract-compliance\|SERVICE_BASE_URL' agents/orchestrator.md
+grep -n 'Phase 3.7\|3\.7\|contract-compliance\|SERVICE_BASE_URL' agents/pilot.md
 ```
 
 **Step 2: 修复 worktree 创建命令**
@@ -451,9 +451,9 @@ git worktree add -b pipeline/phase-3/builder-<name> \
 
 ```bash
 # 确认三处关键词已更新
-grep -n 'worktree add -b' agents/orchestrator.md
-grep -n 'impl-manifest-merger' agents/orchestrator.md
-grep -n 'SERVICE_PID\|kill.*SERVICE' agents/orchestrator.md
+grep -n 'worktree add -b' agents/pilot.md
+grep -n 'impl-manifest-merger' agents/pilot.md
+grep -n 'SERVICE_PID\|kill.*SERVICE' agents/pilot.md
 ```
 
 Expected：三条命令各有输出。
@@ -461,7 +461,7 @@ Expected：三条命令各有输出。
 **Step 6: Commit**
 
 ```bash
-git add agents/orchestrator.md
+git add agents/pilot.md
 git commit -m "fix: correct worktree creation, add Phase 3.7 service lifecycle, use merger AutoStep"
 ```
 
@@ -652,9 +652,9 @@ grep -rn '&& OVERALL\|&& SECTIONS_OVERALL' \
 # 2. 确认新文件存在
 ls -la templates/.pipeline/autosteps/impl-manifest-merger.sh
 
-# 3. 确认 orchestrator 三处关键词
+# 3. 确认 pilot 三处关键词
 grep -c 'worktree add -b\|impl-manifest-merger\|SERVICE_PID' \
-  agents/orchestrator.md
+  agents/pilot.md
 # Expected: 3
 
 # 4. 确认 builder 文件所有权约束

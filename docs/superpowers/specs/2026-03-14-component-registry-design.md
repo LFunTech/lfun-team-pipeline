@@ -228,7 +228,7 @@ Builder 注入时从 tasks.json 的 `description` 字段提取关键词，与组
 |------|----------|
 | `playbook.md` Memory Load 段 | 扩展 `build_memory_injection`，读取 component-registry.json 并追加到注入文本 |
 | `playbook.md` Phase 3 段 | Builder spawn 消息中追加过滤后的组件详情 |
-| `orchestrator.md` 路由表 | 新增 `phase-3.0c` → `component-extractor.sh` 路由 |
+| `pilot.md` 路由表 | 新增 `phase-3.0c` → `component-extractor.sh` 路由 |
 | `config.json` | 新增 `component_registry` 配置块 |
 
 ### Architect 注入格式

@@ -55,6 +55,6 @@ permissionMode: bypassPermissions
 
 ## 约束
 
-- `sla_violated` 字段必须存在（Orchestrator 读取此字段决定是否直接 rollback_to: phase-3）
-- `sla_violated: true` → Orchestrator 不等 Gate D，直接回退 phase-3（重新实现）
+- `sla_violated` 字段必须存在（Pilot 读取此字段决定是否直接 rollback_to: phase-3）
+- `sla_violated: true` → Pilot 不等 Gate D，直接回退 phase-3（重新实现）
 - 优化只在 tasks.json 授权范围内修改代码

@@ -10,7 +10,7 @@ permissionMode: bypassPermissions
 
 ## 工作环境（Worktree 隔离）
 
-- **CWD**：`.worktrees/builder-infra/`（Orchestrator 分配）
+- **CWD**：`.worktrees/builder-infra/`（Pilot 分配）
 - **读 pipeline 产物**：`cat "$PIPELINE_DIR/artifacts/tasks.json"`
 - **写 impl-manifest**：`$PIPELINE_DIR/artifacts/impl-manifest-infra.json`（主 repo）
 - **禁止**：不得修改授权路径外的文件
@@ -103,7 +103,7 @@ git add -A && git diff --cached --name-only  # 自检授权范围
 git commit -m "feat: Phase 3 builder-infra implementation"
 ```
 
-不执行 `git push`（Orchestrator 负责合并）。
+不执行 `git push`（Pilot 负责合并）。
 
 ## 约束
 

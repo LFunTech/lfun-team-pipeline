@@ -4,7 +4,7 @@
 
 **Goal:** 为 team-creator v6 流水线新增 GitHub 自动化（repo 创建、每阶段 push）、`.depend/` 凭证管理、Woodpecker CI 三环境 pipeline 生成。
 
-**Architecture:** 新增 `github-ops` Agent（第 25 个）+ `depend-collector.sh` AutoStep，修改 `orchestrator.md` 在每个 Phase/Gate 后执行规范化 commit+push，修改 `builder-infra.md` 增加 `.woodpecker/` 生成职责。
+**Architecture:** 新增 `github-ops` Agent（第 25 个）+ `depend-collector.sh` AutoStep，修改 `pilot.md` 在每个 Phase/Gate 后执行规范化 commit+push，修改 `builder-infra.md` 增加 `.woodpecker/` 生成职责。
 
 **Tech Stack:** bash, gh CLI, Woodpecker CI YAML, Conventional Commits
 
@@ -74,7 +74,7 @@ permissionMode: acceptEdits
 
 5. 等待用户输入：
    - 输入"确认" → 执行第 6 步
-   - 输入"取消" → 输出 `overall: CANCELLED`，Orchestrator 跳过后续 push 但继续流水线
+   - 输入"取消" → 输出 `overall: CANCELLED`，Pilot 跳过后续 push 但继续流水线
 
 6. 执行创建：
    ```bash
@@ -576,10 +576,10 @@ git commit -m "feat(builder-infra): add .woodpecker/ tri-environment pipeline ge
 
 ---
 
-## Task 4: 修改 orchestrator.md — Phase 2.0a/b + 每阶段 push
+## Task 4: 修改 pilot.md — Phase 2.0a/b + 每阶段 push
 
 **Files:**
-- Modify: `agents/orchestrator.md`
+- Modify: `agents/pilot.md`
 
 这是最复杂的修改，分三个子步骤。
 
@@ -678,7 +678,7 @@ output: .pipeline/artifacts/depend-collection-report.json
 
 ### 4c: 添加每阶段 git push 逻辑
 
-**Step 6: 在 orchestrator.md 的"日志格式"章节之前，新增"Git Push 规范"章节**
+**Step 6: 在 pilot.md 的"日志格式"章节之前，新增"Git Push 规范"章节**
 
 在 `## 日志格式` 标题之前，插入：
 
@@ -715,7 +715,7 @@ push 失败时仅记录 WARN，不中断流水线。
 | Gate E | `ci: gate-e passed` |
 | Phase 6 Deployer | `chore: add deployment configuration and woodpecker pipelines` |
 
-括号内的变量由 Orchestrator 在执行时从对应产物文件中读取真实值填入。
+括号内的变量由 Pilot 在执行时从对应产物文件中读取真实值填入。
 
 ```
 
@@ -743,15 +743,15 @@ FAIL → WARN（不阻断，记录日志后继续 Phase 6.0）
 **Step 8: 验证修改完整性**
 
 ```bash
-grep -n "Phase 2.0\|github-ops\|depend-collector\|git push\|COMMIT_MSG\|github_repo" agents/orchestrator.md
+grep -n "Phase 2.0\|github-ops\|depend-collector\|git push\|COMMIT_MSG\|github_repo" agents/pilot.md
 ```
 Expected: 出现所有新增关键词
 
 **Step 9: Commit**
 
 ```bash
-git add agents/orchestrator.md
-git commit -m "feat(orchestrator): add Phase 2.0a/b, per-phase git push, woodpecker push"
+git add agents/pilot.md
+git commit -m "feat(pilot): add Phase 2.0a/b, per-phase git push, woodpecker push"
 ```
 
 ---
@@ -849,8 +849,8 @@ ls agents/ | wc -l  # Expected: 25
 # 2. depend-collector.sh 语法正确
 bash -n templates/.pipeline/autosteps/depend-collector.sh
 
-# 3. orchestrator.md 包含所有新节点
-grep -c "Phase 2.0\|github-ops\|depend-collector\|Git Push" agents/orchestrator.md
+# 3. pilot.md 包含所有新节点
+grep -c "Phase 2.0\|github-ops\|depend-collector\|Git Push" agents/pilot.md
 
 # 4. builder-infra.md 包含 woodpecker 规范
 grep -c "woodpecker\|\.woodpecker" agents/builder-infra.md

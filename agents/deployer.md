@@ -70,7 +70,7 @@ permissionMode: bypassPermissions
 
 4. 记录部署结果
 
-### 生产回滚（Monitor CRITICAL 时，由 Orchestrator 重新激活）
+### 生产回滚（Monitor CRITICAL 时，由 Pilot 重新激活）
 
 1. 执行 deploy-plan.md 中的 `rollback_command`
 2. 验证服务恢复正常（健康检查）
@@ -95,6 +95,6 @@ permissionMode: bypassPermissions
 
 ## 约束
 
-- `failure_type` 字段必须存在（Orchestrator 根据此字段决定回退策略）
+- `failure_type` 字段必须存在（Pilot 根据此字段决定回退策略）
 - 部署前必须确认 deploy-readiness-report.json 已 PASS（Pre-Deploy AutoStep 已确认）
 - 只执行 deploy-plan.md 中明确定义的命令，不自行发明部署步骤

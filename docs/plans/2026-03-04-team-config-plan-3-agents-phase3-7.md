@@ -420,7 +420,7 @@ permissionMode: acceptEdits
 
 ## 激活条件
 
-仅当 `state.json` 中 `conditional_agents.migrator: true` 时，由 Orchestrator 激活。
+仅当 `state.json` 中 `conditional_agents.migrator: true` 时，由 Pilot 激活。
 激活依据：`proposal.md` 中 `data_migration_required: true`。
 
 ## 角色
@@ -485,7 +485,7 @@ permissionMode: acceptEdits
 
 ## 激活条件
 
-仅当 `state.json` 中 `conditional_agents.translator: true` 时，由 Orchestrator 激活。
+仅当 `state.json` 中 `conditional_agents.translator: true` 时，由 Pilot 激活。
 激活依据：`proposal.md` 中 `i18n_required: true`。
 
 ## 角色
@@ -587,7 +587,7 @@ skills:
 
 ## 约束
 
-- simplify-report.md 修改时间必须 > impl-manifest.json 修改时间（Orchestrator 机械验证）
+- simplify-report.md 修改时间必须 > impl-manifest.json 修改时间（Pilot 机械验证）
 - 不添加新功能，不修改接口契约
 - 不修改测试文件（测试在 Phase 4a 编写，Simplifier 不触及）
 ```
@@ -637,7 +637,7 @@ skills:
 - `.pipeline/artifacts/post-simplify-report.json`（精简已通过）
 - `.pipeline/artifacts/contracts/`（契约合规性参考）
 - `.pipeline/artifacts/security-checklist.json`（安全检查参考）
-- 字段 `simplifier_verified`（由 Orchestrator 机械设置为 true/false）
+- 字段 `simplifier_verified`（由 Pilot 机械设置为 true/false）
 
 ## 审查维度（使用 code-review skill）
 
@@ -847,8 +847,8 @@ permissionMode: acceptEdits
 
 ## 约束
 
-- `sla_violated` 字段必须存在（Orchestrator 读取此字段决定是否直接 rollback_to: phase-3）
-- `sla_violated: true` → Orchestrator 不等 Gate D，直接回退 phase-3（重新实现）
+- `sla_violated` 字段必须存在（Pilot 读取此字段决定是否直接 rollback_to: phase-3）
+- `sla_violated: true` → Pilot 不等 Gate D，直接回退 phase-3（重新实现）
 - 优化只在 tasks.json 授权范围内修改代码
 ```
 
@@ -986,7 +986,7 @@ permissionMode: acceptEdits
 2. 执行 Smoke Test（deploy-plan.md 中定义的健康检查端点）
 3. 记录部署结果
 
-### 生产回滚（Monitor CRITICAL 时，由 Orchestrator 重新激活）
+### 生产回滚（Monitor CRITICAL 时，由 Pilot 重新激活）
 
 1. 执行 deploy-plan.md 中的 `rollback_command`
 2. 验证服务恢复正常（健康检查）
@@ -1010,7 +1010,7 @@ permissionMode: acceptEdits
 
 ## 约束
 
-- `failure_type` 字段必须存在（Orchestrator 根据此字段决定回退策略）
+- `failure_type` 字段必须存在（Pilot 根据此字段决定回退策略）
 - 部署前必须确认 deploy-readiness-report.json 已 PASS（Pre-Deploy AutoStep 已确认）
 - 只执行 deploy-plan.md 中明确定义的命令，不自行发明部署步骤
 ```
@@ -1072,7 +1072,7 @@ permissionMode: acceptEdits
 
 - **NORMAL**：所有指标在阈值内，无异常 → 流水线 COMPLETED
 - **ALERT**：指标超过 ALERT 阈值但未达 CRITICAL → 触发 Hotfix Scope Analyzer
-- **CRITICAL**：指标超过 CRITICAL 阈值 → Orchestrator 激活 Deployer 执行生产回滚
+- **CRITICAL**：指标超过 CRITICAL 阈值 → Pilot 激活 Deployer 执行生产回滚
 
 ## 输出
 
@@ -1095,7 +1095,7 @@ permissionMode: acceptEdits
 
 ## 约束
 
-- `status` 字段必须是 `NORMAL`/`ALERT`/`CRITICAL` 之一（Orchestrator 机械解析）
+- `status` 字段必须是 `NORMAL`/`ALERT`/`CRITICAL` 之一（Pilot 机械解析）
 - 阈值判定基于量化数据，不使用主观描述（"感觉慢"不是 ALERT 依据）
 - 观测窗口至少 30 分钟（可在 config.json 中配置）
 ```

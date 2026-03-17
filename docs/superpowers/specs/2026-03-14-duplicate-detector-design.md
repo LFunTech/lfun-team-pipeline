@@ -682,7 +682,7 @@ $ team scan
 | `templates/.pipeline/autosteps/duplicate-detector.sh` | 新增 AutoStep |
 | `templates/.pipeline/config.json` | `component_registry.duplicate_detection` 配置块 |
 | `playbook.md` Phase 3.0c 段 | Component Extractor 后追加 duplicate-detector 调用 |
-| `orchestrator.md` 路由表 | 新增 `phase-3.0d` → `duplicate-detector.sh` 路由 |
+| `pilot.md` 路由表 | 新增 `phase-3.0d` → `duplicate-detector.sh` 路由 |
 | `templates/.pipeline/autosteps/duplicate-analyzer.py` | 新增 Python 规则检测脚本 |
 
 ## 与组件注册表的边界

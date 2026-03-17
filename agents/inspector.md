@@ -26,7 +26,7 @@ skills:
 - `.pipeline/artifacts/post-simplify-report.json`（精简已通过）
 - `.pipeline/artifacts/contracts/`（契约合规性参考）
 - `.pipeline/artifacts/security-checklist.json`（安全检查参考）
-- 字段 `simplifier_verified`（由 Orchestrator 机械设置为 true/false）
+- 字段 `simplifier_verified`（由 Pilot 机械设置为 true/false）
 
 ## 审查维度（code-review skill 调用后，按以下维度补充流水线上下文）
 

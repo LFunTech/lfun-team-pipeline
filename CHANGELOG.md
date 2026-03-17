@@ -17,8 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `duplicate-detector.sh`: AutoStep script invoking analyzer and producing structured report.
   - `duplicate-auditor` Agent：独立审计 remediation plan，确保整改方案合理。
     `duplicate-auditor` agent: independently audits the remediation plan for soundness.
-  - Orchestrator 路由更新：Phase 3.0d 插入 Phase 3.0b（Build Verifier）之后。
-    Orchestrator routing updated: Phase 3.0d inserted after Phase 3.0b (Build Verifier).
+  - Pilot 路由更新：Phase 3.0d 插入 Phase 3.0b（Build Verifier）之后。
+    Pilot routing updated: Phase 3.0d inserted after Phase 3.0b (Build Verifier).
 
 - **Component Registry 配置块 / 组件注册表配置**: `config.json` 模板新增 `component_registry` 配置块，为组件注册表功能预留配置入口。
   Added `component_registry` config block to `config.json` template for future component registry support.
@@ -102,11 +102,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Clarifier Autonomous Chapter / Clarifier 自治模式章节**: Clarifier transcribes confirmed details into requirement.md when receiving `[AUTONOMOUS_MODE]` marker.
   Clarifier 收到 `[AUTONOMOUS_MODE]` 标记时从 detail 转录需求文档。
 
-- **Orchestrator Split / Orchestrator 拆分**: Split orchestrator (993 lines) into a lean state machine (612 lines) + on-demand Playbook loading, fixing phase transition loss caused by long prompts.
-  Orchestrator（993 行）拆分为精简状态机（612 行）+ Playbook 按需加载，解决长 prompt 导致阶段流转丢失问题。
+- **Pilot Split / Pilot 拆分**: Split pilot (993 lines) into a lean state machine (612 lines) + on-demand Playbook loading, fixing phase transition loss caused by long prompts.
+  Pilot（993 行）拆分为精简状态机（612 行）+ Playbook 按需加载，解决长 prompt 导致阶段流转丢失问题。
 
 - **Phase Route Table / 阶段路由表**: 50+ flow transition rules ensuring deterministic next-step after each phase.
-  Orchestrator 新增完整路由表（50+ 条流转规则），确保每个阶段完成后明确知道下一步。
+  Pilot 新增完整路由表（50+ 条流转规则），确保每个阶段完成后明确知道下一步。
 
 - **Project Memory / 项目记忆**: New `.pipeline/project-memory.json` for cross-pipeline business and architecture constraints.
   新增 `.pipeline/project-memory.json`，存储跨流水线的业务和架构约束。
@@ -150,17 +150,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Token optimization: Gate A/B auditor merge / Token 优化：Gate A/B 审计员合并**: Gate A/B now spawn a single `auditor-gate` agent covering all 4 perspectives (Biz/Tech/QA/Ops) in one call, saving 6 agent spawns per pipeline run.
   Gate A/B 改为 spawn 单个 `auditor-gate` 一次性覆盖四个视角，每次流水线减少 6 次 agent spawn。
 
-- **Token optimization: Phase 0 spawn elimination / Token 优化：Phase 0 spawn 消除**: In autonomous mode, Orchestrator writes requirement.md directly from proposal detail without spawning Clarifier, saving 1 agent spawn.
-  自治模式下 Orchestrator 直接从提案 detail 写 requirement.md，省去 1 次 Clarifier spawn。
+- **Token optimization: Phase 0 spawn elimination / Token 优化：Phase 0 spawn 消除**: In autonomous mode, Pilot writes requirement.md directly from proposal detail without spawning Clarifier, saving 1 agent spawn.
+  自治模式下 Pilot 直接从提案 detail 写 requirement.md，省去 1 次 Clarifier spawn。
 
 - **Token optimization: Remove log system / Token 优化：移除日志系统**: Replaced the entire structured log system (35 step logs + pipeline.index.json + context injection + causality tracking, ~280 lines) with a lightweight `execution_log` array in state.json. Each step appends one line `{step, result, attempt, rollback_to, ts}`. Saves ~100 tool calls per pipeline run.
   移除整个结构化日志系统（35 个步骤日志 + pipeline.index.json + 上下文注入 + 因果标注，约 280 行），替换为 state.json 内嵌的 `execution_log` 轻量数组。每步追加一行记录。每次流水线减少约 100 次工具调用。
 
-- **Batch execution model / 批次执行模型**: Orchestrator executes one batch per invocation then exits. Token cost drops from O(n²) to O(n). 12 batches cover the full pipeline (merged from 17); re-run `claude --agent orchestrator` to continue.
-  Orchestrator 每次启动只执行一个批次后退出。Token 消耗从 O(n²) 降至 O(n)。12 个批次覆盖完整流水线（从 17 个合并），再次运行即可继续。
+- **Batch execution model / 批次执行模型**: Pilot executes one batch per invocation then exits. Token cost drops from O(n²) to O(n). 12 batches cover the full pipeline (merged from 17); re-run `claude --agent pilot` to continue.
+  Pilot 每次启动只执行一个批次后退出。Token 消耗从 O(n²) 降至 O(n)。12 个批次覆盖完整流水线（从 17 个合并），再次运行即可继续。
 
-- **Token optimization: Orchestrator prompt slimming / Token 优化：Orchestrator 提示词瘦身**: Orchestrator system prompt reduced from 29KB to 6KB (-80%). Phase-specific instructions (System Planning, Memory Load/Consolidation, proposal detail) moved to playbook for on-demand loading.
-  Orchestrator 系统提示词从 29KB 缩减至 6KB（-80%）。阶段特定指令（系统规划、记忆加载/固化、提案细节）移至 playbook 按需加载。
+- **Token optimization: Pilot prompt slimming / Token 优化：Pilot 提示词瘦身**: Pilot system prompt reduced from 29KB to 6KB (-80%). Phase-specific instructions (System Planning, Memory Load/Consolidation, proposal detail) moved to playbook for on-demand loading.
+  Pilot 系统提示词从 29KB 缩减至 6KB（-80%）。阶段特定指令（系统规划、记忆加载/固化、提案细节）移至 playbook 按需加载。
 
 - **Token optimization: builder-infra slimming / Token 优化：builder-infra 瘦身**: builder-infra.md reduced from 9.8KB to 4KB (-60%). Removed redundant YAML templates and verbose comments while preserving all constraints.
   builder-infra.md 从 9.8KB 缩减至 4KB（-60%）。移除冗余 YAML 模板和详细注释，保留所有约束。
@@ -182,7 +182,7 @@ First public release of lfun-team-pipeline. / lfun-team-pipeline 首次公开发
 ### Added
 
 **25 Specialized Agents / 25 个专属 AI 角色**
-- `orchestrator` — Pipeline conductor, manages all phases and gates
+- `pilot` — Pipeline conductor, manages all phases and gates
 - `clarifier` — Requirements elicitation (up to 5 rounds)
 - `architect` — System design and proposal generation
 - `auditor-biz` / `auditor-tech` / `auditor-qa` / `auditor-ops` — Four-perspective gate review

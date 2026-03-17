@@ -6,10 +6,10 @@
 
 ```bash
 # 启动流水线（每次执行一个批次，完成后自动退出）
-claude --dangerously-skip-permissions --agent orchestrator
+claude --dangerously-skip-permissions --agent pilot
 
 # 流水线会输出 [EXIT] 提示，再次运行即可继续下一批次
-claude --dangerously-skip-permissions --agent orchestrator
+claude --dangerously-skip-permissions --agent pilot
 
 # 查看当前状态
 cat .pipeline/state.json | python3 -c "import json,sys; s=json.load(sys.stdin); print(f'Phase: {s[\"current_phase\"]}, Status: {s[\"status\"]}')"
@@ -20,10 +20,10 @@ cat .pipeline/state.json | python3 -c "import json,sys; s=json.load(sys.stdin); 
 ```
 .pipeline/
 ├── config.json          ← 流水线配置（编辑此文件以自定义行为）
-├── playbook.md          ← 阶段执行手册（Orchestrator 按需加载，勿手动修改）
+├── playbook.md          ← 阶段执行手册（Pilot 按需加载，勿手动修改）
 ├── project-memory.json  ← 项目记忆（跨流水线约束清单，自动维护）
 ├── history/             ← 历次流水线产物归档（按需查阅）
-├── state.json           ← 运行时状态（Orchestrator 自动管理，勿手动修改）
+├── state.json           ← 运行时状态（Pilot 自动管理，勿手动修改）
 ├── autosteps/           ← AutoStep Shell 脚本（20 个）
 └── artifacts/           ← 运行时产物（所有 Agent 和 AutoStep 的输出）
     ├── requirement.md
@@ -50,8 +50,8 @@ cat .pipeline/state.json | python3 -c "import json,sys; s=json.load(sys.stdin); 
 ## 阶段顺序参考
 
 ```
-System Planning → 系统规划（首次运行时，交互式拆解系统为提案队列）
-Pick Proposal   → 选取下一个待执行提案
+System Planning → 系统规划（交互式拆解系统为提案队列 + 并行拓扑计算）
+Pick Proposal   → 选取下一个/组待执行提案（同 parallel_group 可并行）
 Memory Load     → 项目记忆加载（注入约束给 Clarifier/Architect）
 Phase 0    → Clarifier（需求澄清，最多 5 轮）
 Phase 0.5  → Requirement Completeness Checker（AutoStep）
@@ -63,14 +63,11 @@ Phase 2    → Planner（任务细化）
 Phase 2.1  → Assumption Propagation Validator（AutoStep）
 Gate B     → Auditor-Gate（四视角任务审核）
 Phase 2.5  → Contract Formalizer（契约形式化）
-Phase 2.6  → Schema Completeness Validator（AutoStep）
-Phase 2.7  → Contract Semantic Validator（AutoStep）
-Phase 3    → Builders 并行实现（Frontend/Backend/DBA/Security/Infra）
+Phase 2.6 ∥ 2.7 → 契约验证（并行 AutoStep）
+Phase 3    → Builders 波次内并行实现（Frontend/Backend/DBA/Security/Infra）
              + 条件角色（Migrator/Translator）
 Phase 3.0b → Build Verifier（AutoStep，编译验证）
-Phase 3.1  → Static Analyzer（AutoStep）
-Phase 3.2  → Diff Scope Validator（AutoStep）
-Phase 3.3  → Regression Guard（AutoStep）
+Phase 3.0d ∥ 3.1 ∥ 3.2 ∥ 3.3 → 构建后分析（并行 AutoStep）
 Phase 3.5  → Simplifier（代码精简）
 Phase 3.6  → Post-Simplification Verifier（AutoStep）
 Gate C     → Inspector（代码审查）
@@ -83,7 +80,7 @@ Gate D     → Auditor-QA（测试验收）
 AutoStep   → API Change Detector
 Phase 5    → Documenter（文档）
 Phase 5.1  → Changelog Consistency Checker（AutoStep）
-Gate E     → Auditor-QA + Auditor-Tech（文档审核）
+Gate E     → Auditor-QA ∥ Auditor-Tech（并行文档审核）
 Phase 5.9  → GitHub Woodpecker Push（github-ops Agent）
 Phase 6.0  → Pre-Deploy Readiness Check（AutoStep）
 Phase 6    → Deployer（部署）
@@ -113,7 +110,7 @@ Mark Completed  → 标记提案完成，循环取下一个
 cat .pipeline/state.json | python3 -c "import json,sys; s=json.load(sys.stdin); print(f'Phase: {s[\"current_phase\"]}, Status: {s[\"status\"]}')"
 
 # 继续下一批次
-claude --dangerously-skip-permissions --agent orchestrator
+claude --dangerously-skip-permissions --agent pilot
 ```
 
 ### 手动回退到指定阶段
@@ -128,7 +125,7 @@ s['status'] = 'running'
 with open('.pipeline/state.json', 'w') as f:
   json.dump(s, f, indent=2)
 "
-claude --dangerously-skip-permissions --agent orchestrator
+claude --dangerously-skip-permissions --agent pilot
 ```
 
 ### 升级流水线版本
@@ -143,7 +140,7 @@ cd /path/to/team-creator && bash install.sh
 cd /path/to/my-project && team upgrade
 
 # 3. 继续执行
-claude --dangerously-skip-permissions --agent orchestrator
+claude --dangerously-skip-permissions --agent pilot
 ```
 
 ### 查看 Gate 审核结果
@@ -171,8 +168,8 @@ ls ~/.claude/skills/ | grep -E "code-simplifier|code-review"
 # 查看残余
 git worktree list
 
-# 重启 Orchestrator（自动检测并清理残余后重新 Phase 3）
-claude --dangerously-skip-permissions --agent orchestrator
+# 重启 Pilot（自动检测并清理残余后重新 Phase 3）
+claude --dangerously-skip-permissions --agent pilot
 
 # 如自动清理失败，手动执行：
 git worktree remove .worktrees/builder-<name> --force

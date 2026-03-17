@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** 在新 demo 项目中运行 team-creator v6 流水线（24 Agent），由 Orchestrator 自动构建 PaddleOCR 手写体识别训练系统完整微服务代码。
+**Goal:** 在新 demo 项目中运行 team-creator v6 流水线（24 Agent），由 Pilot 自动构建 PaddleOCR 手写体识别训练系统完整微服务代码。
 
 **Architecture:** 7 个微服务（annotation/dataset/training/inference/model-registry + React前端 + Nginx网关），Docker Compose 编排，双 V100 GPU 分配，PostgreSQL + MinIO + Redis。
 
@@ -266,7 +266,7 @@ git commit -m "docs: add initial requirement for pipeline"
 
 ---
 
-## Task 5: 启动 Orchestrator（Phase 0 — Clarifier）
+## Task 5: 启动 Pilot（Phase 0 — Clarifier）
 
 **注意：Phase 0 需要人工参与（Clarifier 会向用户提问）**
 
@@ -276,13 +276,13 @@ git commit -m "docs: add initial requirement for pipeline"
 cd /home/min/repos/demo-paddleocr
 ```
 
-**Step 2: 启动 Orchestrator**
+**Step 2: 启动 Pilot**
 
 ```bash
-claude --agent orchestrator
+claude --agent pilot
 ```
 
-启动后，Orchestrator 会：
+启动后，Pilot 会：
 1. 初始化 `.pipeline/state.json`
 2. 调用 Clarifier，Clarifier 读取 `initial-requirement.txt`
 3. Clarifier 最多 5 轮澄清问题（每轮会暂停等待用户输入）
@@ -308,11 +308,11 @@ Expected: 存在，字数 > 200
 
 ## Task 6: 监控 Phase 0.5 → Gate A → Phase 2（自动执行）
 
-这些阶段 Orchestrator 自动执行，无需人工干预（除非 FAIL）。
+这些阶段 Pilot 自动执行，无需人工干预（除非 FAIL）。
 
 **Step 1: 观察 Phase 0.5（Requirement Completeness）**
 
-Orchestrator 自动运行，观察输出。若 FAIL，Orchestrator 会自动回滚到 Phase 0 让 Clarifier 补充。
+Pilot 自动运行，观察输出。若 FAIL，Pilot 会自动回滚到 Phase 0 让 Clarifier 补充。
 
 **Step 2: 观察 Phase 1（Architect）**
 
@@ -364,7 +364,7 @@ Expected: annotation-service.yaml, dataset-service.yaml, training-service.yaml, 
 
 **Step 2: 观察 Phase 3 Worktree 初始化**
 
-Orchestrator 为每个 Builder 创建 worktree：
+Pilot 为每个 Builder 创建 worktree：
 ```bash
 ls .worktrees/
 ```
@@ -381,7 +381,7 @@ Expected: builder-dba, builder-backend, builder-frontend, builder-security, buil
 
 **Step 4: 观察合并序列**
 
-所有 Builder 完成后，Orchestrator 按顺序 merge worktree 分支。
+所有 Builder 完成后，Pilot 按顺序 merge worktree 分支。
 
 若出现合并冲突（ESCALATION）：
 ```bash
@@ -409,11 +409,11 @@ Simplifier 重构冗余代码。
 
 **Step 3: 观察 Gate C（Inspector 代码审查）**
 
-若 FAIL：Orchestrator 回滚到 Phase 3 重新构建。
+若 FAIL：Pilot 回滚到 Phase 3 重新构建。
 
 **Step 4: 观察 Phase 3.7（Contract Compliance Checker）**
 
-这是最容易出问题的环节。Orchestrator 会：
+这是最容易出问题的环节。Pilot 会：
 1. 读取 config.json 中的 `service_start_cmd`
 2. 执行 `docker compose up -d --wait`
 3. 轮询 `http://localhost:80/health`
@@ -447,7 +447,7 @@ print('coverage:', r.get('coverage_percent'))
 
 **Step 2: 观察 Phase 4.2（Test Coverage Enforcer）**
 
-目标：≥ 80% 覆盖率。若未达标，Orchestrator 回滚 Phase 4a。
+目标：≥ 80% 覆盖率。若未达标，Pilot 回滚 Phase 4a。
 
 **Step 3: 观察 Gate D（Auditor-QA）**
 
@@ -549,5 +549,5 @@ git commit -m "fix: <bug description> found in paddleocr demo"
 
 - 设计文档：`docs/plans/2026-03-05-paddleocr-training-design.md`
 - 历史 demo 记录：`/home/min/repos/team-creator/memory/MEMORY.md`
-- Orchestrator 全文：`/home/min/repos/team-creator/agents/orchestrator.md`
+- Pilot 全文：`/home/min/repos/team-creator/agents/pilot.md`
 - 已知问题：Gate A 常因 Architect 遗漏运维事项 FAIL → Resolver 自动修复，属预期行为

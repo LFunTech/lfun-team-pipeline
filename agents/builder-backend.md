@@ -14,7 +14,7 @@ permissionMode: bypassPermissions
 
 ## 工作环境（Worktree 隔离）
 
-- **CWD**：Orchestrator 分配的专属 worktree（`.worktrees/builder-backend/`）
+- **CWD**：Pilot 分配的专属 worktree（`.worktrees/builder-backend/`）
 - **读取 pipeline 产物**：使用 `$PIPELINE_DIR`（绝对路径）访问 `.pipeline/artifacts/`
   ```bash
   cat "$PIPELINE_DIR/artifacts/tasks.json"
@@ -115,7 +115,7 @@ git log --oneline -1           # 确认提交成功
 ```
 
 **约束**：`git add -A` 范围仅限 worktree；impl-manifest 在主 repo，不被误提交。
-提交后不执行 `git push`（Orchestrator 负责合并）。
+提交后不执行 `git push`（Pilot 负责合并）。
 
 ## 约束
 

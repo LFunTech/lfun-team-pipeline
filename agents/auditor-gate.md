@@ -70,7 +70,7 @@ model: sonnet
 
 ## 输出格式
 
-直接输出完整的 gate review JSON（Orchestrator 直接写入 `gate-a-review.json` 或 `gate-b-review.json`）：
+直接输出完整的 gate review JSON（Pilot 直接写入 `gate-a-review.json` 或 `gate-b-review.json`）：
 
 ```json
 {

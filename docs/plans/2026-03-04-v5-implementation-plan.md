@@ -302,7 +302,7 @@ Grep `### Phase 4.2：测试覆盖率门禁` 定位 Phase 4.2 章节，在其前
 - `unmapped_failures` 为空（`overall: MAPPED`）→ 只回退 `builders_to_rollback` 中的 Builder，其余 Builder 的实现结果保留。
 - `unmapped_failures` 不为空（`overall: PARTIAL_MAPPED`）→ 降级：回退所有 Builder（与 v4 行为一致），日志记录 `[WARN] 测试失败部分无法映射到 Builder，执行全体回退`。
 
-> **这修复了 v4 遗留漏洞 L**：Phase 4a 测试失败后无法确定责任 Builder，Orchestrator 只能全体回退。在多 Builder 场景下，无辜 Builder 被强制重做整个 Phase 3，成本浪费显著。精确映射后，只有真正导致测试失败的 Builder 才需要回退。
+> **这修复了 v4 遗留漏洞 L**：Phase 4a 测试失败后无法确定责任 Builder，Pilot 只能全体回退。在多 Builder 场景下，无辜 Builder 被强制重做整个 Phase 3，成本浪费显著。精确映射后，只有真正导致测试失败的 Builder 才需要回退。
 ```
 
 **Step 3: 确认章节边界**
@@ -508,17 +508,17 @@ Grep `### Phase 4b：性能压测` 定位章节。读取当前的 perf-report.js
 ```
 ```
 
-**Step 3: 在 "Gate D 统一验收 4a + 4b 的结果" 说明之前，追加 Orchestrator 行为说明**
+**Step 3: 在 "Gate D 统一验收 4a + 4b 的结果" 说明之前，追加 Pilot 行为说明**
 
 ```markdown
-**Orchestrator 对 perf-report.json 的处理（v5 新增）：**
+**Pilot 对 perf-report.json 的处理（v5 新增）：**
 - `sla_violated: true` → 直接回退 Phase 3，不等待 Gate D。Optimizer 标注的 `slow_queries` 和 `rollback_reason` 注入对应 Builder 的输入上下文；递增对应 Builder 的 `builder_attempt_counts`。
 - `sla_violated: false` → 正常进入 Gate D，由 Auditor-QA 做最终验收。
 ```
 
 **Step 4: 确认修改**
 
-Read Phase 4b 章节，确认两个 JSON 示例格式正确，Orchestrator 行为说明位置合理。
+Read Phase 4b 章节，确认两个 JSON 示例格式正确，Pilot 行为说明位置合理。
 
 **Step 5: Commit**
 
@@ -843,7 +843,7 @@ git commit -m "docs: update role count to 38 in Section 12 (v5)"
 
 36. **Gate B 假设处置结构化（修复漏洞 O）**：gate-b-review.json 新增 `assumption_dispositions`，假设的处置决策从自然语言 comments 升级为可机械流转的结构化记录。
 
-37. **Optimizer 直接回退（修复漏洞 P）**：perf-report.json 新增 `sla_violated` 字段，SLA 明确违规时 Orchestrator 无需等待 Gate D，直接触发 Phase 3 回退。
+37. **Optimizer 直接回退（修复漏洞 P）**：perf-report.json 新增 `sla_violated` 字段，SLA 明确违规时 Pilot 无需等待 Gate D，直接触发 Phase 3 回退。
 ```
 
 **Step 2: 在 Section 14.1 漏洞汇总表末尾追加 v5 修复的漏洞**
@@ -852,11 +852,11 @@ git commit -m "docs: update role count to 38 in Section 12 (v5)"
 
 ```markdown
 | 漏洞 K | Phase 2.6 只验证 OpenAPI 格式合法性，无法检测字段类型错误、路径参数 required 遗漏等语义错误，Builder 基于错误 Schema 实现后 Phase 3.7 才发现 | 新增 Phase 2.7 Contract Semantic Validator（Spectral + 比对脚本） | v5 |
-| 漏洞 L | Phase 4a 测试失败后 test-report.json 无 Builder 责任映射，Orchestrator 只能全体回退，浪费无辜 Builder 的重做成本 | 新增 Phase 4a.1 Test Failure Mapper（AutoStep），精确映射责任 Builder | v5 |
+| 漏洞 L | Phase 4a 测试失败后 test-report.json 无 Builder 责任映射，Pilot 只能全体回退，浪费无辜 Builder 的重做成本 | 新增 Phase 4a.1 Test Failure Mapper（AutoStep），精确映射责任 Builder | v5 |
 | 漏洞 M | 正常流程下 api_changed: false 时 Phase 5 的执行策略未定义（状态机空白路径） | 新增 phase_5_mode: changelog_only，明确只更新 CHANGELOG 的 partial 执行路径 | v5 |
 | 漏洞 N | 第 8 节目录结构 .pipeline/artifacts/ 出现两次，adr-draft.md 路径存在二义性 | 统一为单一 artifacts 目录，adr-draft.md 与其他产物并列 | v5 |
 | 漏洞 O | gate-b-review.json 无字段记录 Auditor-Biz 对未覆盖假设的处置决策，假设是否被接受仅存于自然语言 comments | 新增 assumption_dispositions 数组，支持 ACCEPTED / REQUIRE_PLANNER_COVERAGE 机械流转 | v5 |
-| 漏洞 P | Optimizer SLA 明确违规时无直接回退机制，需等待 Gate D 的主观审批，产生不必要延迟 | perf-report.json 新增 sla_violated 字段，Orchestrator 机械检测并直接触发 Phase 3 回退 | v5 |
+| 漏洞 P | Optimizer SLA 明确违规时无直接回退机制，需等待 Gate D 的主观审批，产生不必要延迟 | perf-report.json 新增 sla_violated 字段，Pilot 机械检测并直接触发 Phase 3 回退 | v5 |
 ```
 
 **Step 3: 确认两处修改**

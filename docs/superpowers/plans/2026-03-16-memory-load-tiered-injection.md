@@ -460,7 +460,7 @@ run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/memory-load.sh
 输出: `.pipeline/artifacts/memory-injection.txt`
 
 1. 文件不存在或无 running 提案 → SKIP，直接进入 Phase 0
-2. PASS → Orchestrator 读取 `memory-injection.txt` 全文，作为 Phase 0 Clarifier 和 Phase 1 Architect 的 spawn 消息最前方内容
+2. PASS → Pilot 读取 `memory-injection.txt` 全文，作为 Phase 0 Clarifier 和 Phase 1 Architect 的 spawn 消息最前方内容
 3. 其他阶段不注入项目记忆（通过 artifacts 文件传递信息）
 
 **过滤规则**：

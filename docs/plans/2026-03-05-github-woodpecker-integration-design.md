@@ -19,7 +19,7 @@
 
 | 组件 | 变更说明 |
 |------|---------|
-| `agents/orchestrator.md` | 新增 Phase 2.0a/b，每阶段 git push + 规范化 commit message |
+| `agents/pilot.md` | 新增 Phase 2.0a/b，每阶段 git push + 规范化 commit message |
 | `agents/builder-infra.md` | 新增 .woodpecker/ 目录生成职责 |
 
 ### 流水线新节点
@@ -27,7 +27,7 @@
 ```
 Gate A PASS
   → Phase 2.0a  GitHub Repo Creator   [github-ops Agent，用户确认后执行]
-  → Phase 2.0b  Depend Collector      [AutoStep + Orchestrator 暂停等用户填写]
+  → Phase 2.0b  Depend Collector      [AutoStep + Pilot 暂停等用户填写]
   → Phase 2     Planner
     ↓（每个 Phase/Gate 完成后：规范化 commit + git push）
 
@@ -44,7 +44,7 @@ Gate E PASS
 
 ### 职责
 
-两个场景，由 Orchestrator 在不同时机调用。
+两个场景，由 Pilot 在不同时机调用。
 
 ### 场景 1 — Phase 2.0a：创建 GitHub Repo
 
@@ -142,9 +142,9 @@ Gate E PASS
 }
 ```
 
-### Orchestrator 暂停逻辑
+### Pilot 暂停逻辑
 
-AutoStep 完成后，Orchestrator 检查 `detected_deps` 非空时：
+AutoStep 完成后，Pilot 检查 `detected_deps` 非空时：
 ```
 ⚠️  检测到以下外部依赖，请填写凭证文件后继续：
   • .depend/db.env（数据库连接信息）
@@ -161,7 +161,7 @@ AutoStep 完成后，Orchestrator 检查 `detected_deps` 非空时：
 
 ### 触发时机
 
-Gate A PASS 并完成 Phase 2.0a（GitHub repo 创建）后，每个 Phase/Gate 完成时 Orchestrator 自动执行：
+Gate A PASS 并完成 Phase 2.0a（GitHub repo 创建）后，每个 Phase/Gate 完成时 Pilot 自动执行：
 
 ```bash
 git add -A
@@ -186,7 +186,7 @@ git push origin main
 | Phase 6 Deployer | `chore: add deployment configuration and woodpecker pipelines` |
 | Gate A~E | `ci: gate-<x> passed` |
 
-括号中的变量（N、X%、service-name）由 Orchestrator 从对应产物文件中读取实际值填入。
+括号中的变量（N、X%、service-name）由 Pilot 从对应产物文件中读取实际值填入。
 
 ---
 
@@ -256,9 +256,9 @@ steps:
 **本期包含：**
 - `github-ops` Agent（repo 创建 + woodpecker 配置 push）
 - `depend-collector.sh` AutoStep
-- Orchestrator 每阶段规范化 commit + push
+- Pilot 每阶段规范化 commit + push
 - builder-infra 生成 `.woodpecker/` 三环境 pipeline
-- Orchestrator Phase 2.0a/b 两个新节点
+- Pilot Phase 2.0a/b 两个新节点
 
 **本期不包含：**
 - Woodpecker API 注册 secret（用户手动操作）

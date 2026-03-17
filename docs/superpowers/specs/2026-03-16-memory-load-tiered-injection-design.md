@@ -211,7 +211,7 @@ print(f"PASS — 注入 {len(injected)}/{total} 条约束，跳过 {skipped} 条
 | 仅"项目定位：未定义"无其他内容 | `SKIP` | 0 |
 | 正常注入 | `PASS — 注入 X/Y 条约束，跳过 Z 条` | 0 |
 
-## §4 playbook + orchestrator 改动
+## §4 playbook + pilot 改动
 
 ### playbook.md Memory Load 章节
 
@@ -225,13 +225,13 @@ run: PIPELINE_DIR=.pipeline bash .pipeline/autosteps/memory-load.sh
 输出: .pipeline/artifacts/memory-injection.txt
 
 - SKIP → 跳过注入，直接进入 Phase 0
-- PASS → Orchestrator 读取 memory-injection.txt 全文，
+- PASS → Pilot 读取 memory-injection.txt 全文，
          作为 Phase 0（Clarifier）和 Phase 1（Architect）spawn 消息的最前方内容
 ```
 
-### orchestrator.md
+### pilot.md
 
-Orchestrator 通过加载 playbook 章节来执行 Memory Load。`build_memory_injection` 伪代码在 playbook.md 中而非 orchestrator.md 中，因此 **orchestrator.md 本身无需改动**。playbook 替换后，Orchestrator 自然切换到 autostep 模式。
+Pilot 通过加载 playbook 章节来执行 Memory Load。`build_memory_injection` 伪代码在 playbook.md 中而非 pilot.md 中，因此 **pilot.md 本身无需改动**。playbook 替换后，Pilot 自然切换到 autostep 模式。
 
 ### Clarifier / Architect 无改动
 
@@ -239,7 +239,7 @@ Orchestrator 通过加载 playbook 章节来执行 Memory Load。`build_memory_i
 
 ## §5 Memory Consolidation 改动
 
-Phase 7 后写入新约束时，Orchestrator 自动标注 `tier` 和 `domain`：
+Phase 7 后写入新约束时，Pilot 自动标注 `tier` 和 `domain`：
 
 | 字段 | 规则 |
 |------|------|
@@ -288,7 +288,7 @@ domains: 该提案涉及的业务领域列表（可选但推荐）。
 |------|---------|
 | 旧 project-memory.json 无 tier/domain | 全部约束默认 tier=1，全量注入（行为不变） |
 | 旧 proposal-queue.json 无 domains | fallback 到 scope 文本匹配 |
-| memory-load.sh 不存在（未升级 autosteps） | Orchestrator 沿用旧 playbook 逻辑 |
+| memory-load.sh 不存在（未升级 autosteps） | Pilot 沿用旧 playbook 逻辑 |
 
 **零破坏性**：未标注 tier/domain 的项目升级后行为完全不变，逐步标注后才开始过滤。
 

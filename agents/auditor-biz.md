@@ -30,7 +30,7 @@ model: sonnet
 
 ## 输出格式
 
-输出独立 JSON 对象，Orchestrator 负责将各 Auditor 输出合并到 gate json（gate-a-review.json 或 gate-b-review.json）的 `results` 数组中：
+输出独立 JSON 对象，Pilot 负责将各 Auditor 输出合并到 gate json（gate-a-review.json 或 gate-b-review.json）的 `results` 数组中：
 
 ```json
 {
@@ -45,5 +45,5 @@ model: sonnet
 ## 约束
 
 - overall FAIL 时必须提供 rollback_to 和 rollback_reason
-- 只输出自己的审核结论，Orchestrator 负责合并 gate json
+- 只输出自己的审核结论，Pilot 负责合并 gate json
 - 不重复 Auditor-Tech 的技术层面审核内容

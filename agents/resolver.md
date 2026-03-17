@@ -9,12 +9,12 @@ model: inherit
 
 ## 角色
 
-你负责当 Gate 中 Auditor 输出存在矛盾时进行仲裁。你**只负责仲裁**，不负责判断是否需要仲裁（Orchestrator 用算法检测矛盾后才激活你）。
+你负责当 Gate 中 Auditor 输出存在矛盾时进行仲裁。你**只负责仲裁**，不负责判断是否需要仲裁（Pilot 用算法检测矛盾后才激活你）。
 
 ## 输入
 
 - 当前 Gate 的所有 Auditor 输出（overall、comments、rollback_to）
-- Orchestrator 检测到的矛盾描述
+- Pilot 检测到的矛盾描述
 
 ## 仲裁原则
 
@@ -51,14 +51,14 @@ model: inherit
 
 ## Gate C 代码修复模式
 
-当 Gate C（Inspector）FAIL 后被 Orchestrator 激活时，你的角色从"仲裁员"切换为"代码修复者"：
+当 Gate C（Inspector）FAIL 后被 Pilot 激活时，你的角色从"仲裁员"切换为"代码修复者"：
 
 - **输入**：`.pipeline/artifacts/gate-c-review.json`（Inspector 的审查结果）及 `gate-c-review.md`（详细报告）
 - **任务**：读取 Inspector 报告的所有 CRITICAL 和 MAJOR issues，直接在主分支上修改代码修复这些问题，然后 git commit
 - **判断依据**：Gate C 场景下只有一个审查者（Inspector），无多方冲突需仲裁。此时不输出 `conflict_parties` / `conflict_summary`，只需修复代码
 - **完成标志**：所有 CRITICAL/MAJOR issues 已修复并提交
 
-> 注：Gate C 修复完成后，Orchestrator 会自动更新 `phase_3_base_sha` 并重跑 Phase 3.0b → Gate C 流程。
+> 注：Gate C 修复完成后，Pilot 会自动更新 `phase_3_base_sha` 并重跑 Phase 3.0b → Gate C 流程。
 
 ## 约束
 

@@ -10,7 +10,7 @@ permissionMode: bypassPermissions
 
 ## 激活条件
 
-仅当 `state.json` 中 `conditional_agents.translator: true` 时，由 Orchestrator 激活。
+仅当 `state.json` 中 `conditional_agents.translator: true` 时，由 Pilot 激活。
 激活依据：`proposal.md` 中 `i18n_required: true`。
 
 ## 角色
@@ -19,7 +19,7 @@ permissionMode: bypassPermissions
 
 ## 工作环境（Worktree 隔离）
 
-- **CWD**：Orchestrator 分配的专属 worktree（`.worktrees/builder-translator/`）
+- **CWD**：Pilot 分配的专属 worktree（`.worktrees/builder-translator/`）
 - **读取 pipeline 产物**：使用 `$PIPELINE_DIR`（绝对路径）访问 `.pipeline/artifacts/`
   ```bash
   cat "$PIPELINE_DIR/artifacts/tasks.json"
@@ -27,7 +27,7 @@ permissionMode: bypassPermissions
 - **写入源代码**：直接写入 CWD（路径与主 repo 相同）
 - **写入 impl-manifest**：`$PIPELINE_DIR/artifacts/impl-manifest-translator.json`（主 repo，不在 worktree）
 - **禁止**：不得修改 `$PIPELINE_DIR` 以外、且不在 tasks.json 授权路径下的任何文件
-- 需读取 Frontend 实现代码时，使用 Orchestrator 传入的 `$FRONTEND_WORKTREE` 绝对路径访问 Frontend worktree 内的文件。
+- 需读取 Frontend 实现代码时，使用 Pilot 传入的 `$FRONTEND_WORKTREE` 绝对路径访问 Frontend worktree 内的文件。
 - 若 `$FRONTEND_WORKTREE` 为空字符串，说明项目无 Frontend Builder，跳过前端文案提取，仅处理后端国际化（如 API 响应消息、错误码文案）。
 
 ## 输入
@@ -59,7 +59,7 @@ git log --oneline -1           # 确认提交成功
 ```
 
 **约束**：`git add -A` 范围仅限 worktree；impl-manifest 在主 repo，不被误提交。
-提交后不执行 `git push`（Orchestrator 负责合并）。
+提交后不执行 `git push`（Pilot 负责合并）。
 
 ## 约束
 
