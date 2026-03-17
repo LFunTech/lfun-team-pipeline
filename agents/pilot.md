@@ -84,21 +84,31 @@ permissionMode: bypassPermissions
 
 ### 调度规则
 
-**对于每个需要 spawn Agent 的步骤，Pilot 统一先尝试路由：**
+**Pilot 初始化时读 config.json 的 `model_routing.enabled`，记为 `routing_enabled` 变量。**
+
+**对于每个需要 spawn Agent 的步骤，按以下逻辑决定调度方式：**
 
 ```
-Bash("bash .pipeline/llm-router.sh <agent-name> '<prompt>' [--cwd <dir>]")
+if routing_enabled == false:
+    # 直接走 Claude Agent tool，完全跳过 llm-router.sh
+    output = Agent(agent-name, prompt=...)
+
+elif routing_enabled == true:
+    # 尝试路由
+    result = Bash("bash .pipeline/llm-router.sh <agent-name> '<prompt>' [--cwd <dir>]")
+    # 按退出码处理（见下表）
 ```
 
-**根据退出码决定行为：**
+**当 `routing_enabled = true` 时，根据 llm-router.sh 退出码决定行为：**
 
 | 退出码 | 含义 | Pilot 行为 |
 |--------|------|-----------|
 | `0` | 外部 LLM 执行成功 | 正常继续 |
 | `1` | Agent 执行失败 | 视为 FAIL，走 rollback |
-| `10` | **降级**：未启用/未路由/无 Key | 改用 `Agent(agent-name, prompt)` 走 Claude，**不算失败** |
+| `10` | **降级**：未路由/无 Key/provider 缺失 | 改用 `Agent(agent-name, prompt)` 走 Claude，**不算失败** |
+| 其他（如 `127`） | 脚本不存在或异常 | 等同 exit 10，降级到 Claude，**不算失败** |
 
-> **关键**：退出码 10 = 自动降级，流水线无感切换到 Claude。这意味着即使用户没配 API Key，流水线也能正常跑完（只是全用 Claude）。
+> **关键**：`routing_enabled = false` 时绝不调用 llm-router.sh。`routing_enabled = true` 但遇到非 0/1 退出码时一律降级，确保流水线不中断。
 
 ### 牛马与老大分工
 
@@ -116,28 +126,30 @@ Claude（老大，审核/决策/精简）：
 ### 路由调度示例
 
 ```python
-# 统一调度流程（所有 Agent 都走这个逻辑）：
+# 调度流程（所有 Agent 都走这个逻辑）：
 
-# Step 1: 尝试路由
-result = Bash("bash .pipeline/llm-router.sh builder-backend '你的prompt...'")
-
-if result.exit_code == 0:
-    # 外部 LLM 执行成功
-    # stdout 首行为 "[llm-router:model] glm-5"，提取模型名
-    lines = result.stdout.strip().split('\n')
-    model = lines[0].replace('[llm-router:model] ', '') if lines[0].startswith('[llm-router:model]') else 'unknown'
-    output = '\n'.join(lines[1:])
-    # execution_log.model = model (如 "glm-5")
-elif result.exit_code == 10:
-    # 降级：改用 Claude（无 key、未启用、未路由等）
+if not routing_enabled:
+    # routing 未启用 → 直接 Claude，不碰 llm-router.sh
     output = Agent(builder-backend, prompt="你的prompt...")
-    # execution_log.model = "opus(降级)" — 因为 builder-backend 的 frontmatter 是 inherit=opus
+    # execution_log.model = "opus"（按 agent frontmatter 决定）
 else:
-    # 真正的失败 → rollback
-    handle_failure()
+    # routing 已启用 → 尝试路由
+    result = Bash("bash .pipeline/llm-router.sh builder-backend '你的prompt...'")
 
-# 直接走 Claude 的 Agent（不在 routes 表中）：
-# execution_log.model = "opus" 或 "sonnet"（按 agent frontmatter 决定，见上方对照表）
+    if result.exit_code == 0:
+        # 外部 LLM 执行成功
+        # stdout 首行为 "[llm-router:model] glm-5"，提取模型名
+        lines = result.stdout.strip().split('\n')
+        model = lines[0].replace('[llm-router:model] ', '') if lines[0].startswith('[llm-router:model]') else 'unknown'
+        output = '\n'.join(lines[1:])
+        # execution_log.model = model (如 "glm-5")
+    elif result.exit_code == 1:
+        # 真正的失败 → rollback
+        handle_failure()
+    else:
+        # exit 10 / 127 / 其他 → 降级到 Claude，不算失败
+        output = Agent(builder-backend, prompt="你的prompt...")
+        # execution_log.model = "opus(降级)"
 ```
 
 ### Worktree 场景下的路由
@@ -160,8 +172,9 @@ Bash("bash .pipeline/llm-router.sh builder-dba '...' --cwd .worktrees/builder-db
 ### 路由失败处理
 
 - 退出码 `1` → Agent 执行失败，走正常 rollback 流程
-- 退出码 `10` → 降级到 Claude，**不计入 attempt_counts**，不算失败
+- 退出码 `10` / `127` / 其他非 0 非 1 → 降级到 Claude，**不计入 attempt_counts**，不算失败
 - 超时 → 退出码 1 → FAIL
+- `routing_enabled = false` 时不调用 llm-router.sh，直接走 Agent tool
 - 降级时在控制台输出 `[Pipeline] $AGENT_NAME 路由降级 → Claude`
 
 ## 初始化
