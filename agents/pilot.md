@@ -76,39 +76,35 @@ permissionMode: bypassPermissions
 
 > 启用后，部分 Agent 交由外部 LLM（如 GLM-5）执行，Pilot 自身和审核/精简 Agent 仍用 Claude。
 
-### 初始化时读取路由表
-
-读 `config.json` 的 `model_routing` 字段：
-- `enabled: false` → 全部走 Agent tool（原行为，不变）
-- `enabled: true` → 按 `routes` 表决定调度方式
-
 ### 调度规则
 
-**Pilot 初始化时读 config.json 的 `model_routing.enabled`，记为 `routing_enabled` 变量。**
+**Pilot 不自行判断 routing 是否启用。** 路由的 enabled 判断由 `llm-router.sh` 负责（它会合并全局 `~/.config/team-pipeline/routing.json` + 项目 `config.json` 两层配置）。
 
-**对于每个需要 spawn Agent 的步骤，按以下逻辑决定调度方式：**
+**对于每个需要 spawn Agent 的步骤，Pilot 按以下逻辑决定调度方式：**
 
 ```
-if routing_enabled == false:
-    # 直接走 Claude Agent tool，完全跳过 llm-router.sh
-    output = Agent(agent-name, prompt=...)
+# Step 0: 检查 llm-router.sh 是否存在
+router_exists = file_exists(".pipeline/llm-router.sh")
 
-elif routing_enabled == true:
-    # 尝试路由
+if not router_exists:
+    # 脚本不存在（老项目未 team upgrade）→ 直接走 Claude
+    output = Agent(agent-name, prompt=...)
+else:
+    # 脚本存在 → 运行它，由它决定走外部 LLM 还是降级
     result = Bash("bash .pipeline/llm-router.sh <agent-name> '<prompt>' [--cwd <dir>]")
     # 按退出码处理（见下表）
 ```
 
-**当 `routing_enabled = true` 时，根据 llm-router.sh 退出码决定行为：**
+**llm-router.sh 退出码：**
 
 | 退出码 | 含义 | Pilot 行为 |
 |--------|------|-----------|
 | `0` | 外部 LLM 执行成功 | 正常继续 |
 | `1` | Agent 执行失败 | 视为 FAIL，走 rollback |
-| `10` | **降级**：未路由/无 Key/provider 缺失 | 改用 `Agent(agent-name, prompt)` 走 Claude，**不算失败** |
-| 其他（如 `127`） | 脚本不存在或异常 | 等同 exit 10，降级到 Claude，**不算失败** |
+| `10` | **降级**：未启用/未路由/无 Key/provider 缺失 | 改用 `Agent(agent-name, prompt)` 走 Claude，**不算失败** |
+| 其他 | 异常 | 等同 exit 10，降级到 Claude，**不算失败** |
 
-> **关键**：`routing_enabled = false` 时绝不调用 llm-router.sh。`routing_enabled = true` 但遇到非 0/1 退出码时一律降级，确保流水线不中断。
+> **关键**：Pilot 只负责"脚本在不在"的判断，enabled/routes/key 等逻辑全部交给 llm-router.sh。这确保全局配置和项目配置都能生效。
 
 ### 牛马与老大分工
 
@@ -128,12 +124,12 @@ Claude（老大，审核/决策/精简）：
 ```python
 # 调度流程（所有 Agent 都走这个逻辑）：
 
-if not routing_enabled:
-    # routing 未启用 → 直接 Claude，不碰 llm-router.sh
+if not file_exists(".pipeline/llm-router.sh"):
+    # 脚本不存在 → 直接 Claude
     output = Agent(builder-backend, prompt="你的prompt...")
     # execution_log.model = "opus"（按 agent frontmatter 决定）
 else:
-    # routing 已启用 → 尝试路由
+    # 脚本存在 → 运行它
     result = Bash("bash .pipeline/llm-router.sh builder-backend '你的prompt...'")
 
     if result.exit_code == 0:
@@ -147,7 +143,7 @@ else:
         # 真正的失败 → rollback
         handle_failure()
     else:
-        # exit 10 / 127 / 其他 → 降级到 Claude，不算失败
+        # exit 10 / 其他 → 降级到 Claude，不算失败
         output = Agent(builder-backend, prompt="你的prompt...")
         # execution_log.model = "opus(降级)"
 ```
@@ -172,17 +168,17 @@ Bash("bash .pipeline/llm-router.sh builder-dba '...' --cwd .worktrees/builder-db
 ### 路由失败处理
 
 - 退出码 `1` → Agent 执行失败，走正常 rollback 流程
-- 退出码 `10` / `127` / 其他非 0 非 1 → 降级到 Claude，**不计入 attempt_counts**，不算失败
+- 退出码 `10` / 其他非 0 非 1 → 降级到 Claude，**不计入 attempt_counts**，不算失败
 - 超时 → 退出码 1 → FAIL
-- `routing_enabled = false` 时不调用 llm-router.sh，直接走 Agent tool
+- `.pipeline/llm-router.sh` 不存在时直接走 Agent tool，不尝试路由
 - 降级时在控制台输出 `[Pipeline] $AGENT_NAME 路由降级 → Claude`
 
 ## 初始化
 
-1. 读 `.pipeline/config.json`（配置，**含 model_routing**）→ 读 `.pipeline/state.json`（不存在则初始化）
+1. 读 `.pipeline/config.json`（配置）→ 读 `.pipeline/state.json`（不存在则初始化）
 2. 读 `.pipeline/proposal-queue.json`（不存在 → System Planning；为空 → 同；解析失败/循环依赖 → ESCALATION）
 3. 确定 current_phase 所属批次 → 读 playbook 章节 → 执行
-4. **若 `model_routing.enabled = true`**，在控制台输出 `[Pipeline] 模型路由已启用，外部 LLM: <provider>`
+4. **检查 `.pipeline/llm-router.sh` 是否存在**，若存在则在控制台输出 `[Pipeline] 模型路由脚本就绪（具体路由由 llm-router.sh 按全局+项目配置决定）`
 
 ## state.json 关键字段
 
