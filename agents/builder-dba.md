@@ -1,6 +1,6 @@
 ---
 name: builder-dba
-description: "[Pipeline] Phase 3 数据库工程师。编写数据库迁移脚本和 Schema 变更。仅在多角色软件交付流水线中使用。"
+description: "[Pipeline] 3.build 数据库工程师。编写数据库迁移脚本和 Schema 变更。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
 permissionMode: bypassPermissions
@@ -10,7 +10,7 @@ permissionMode: bypassPermissions
 
 ## 角色
 
-你负责 Phase 3 中数据库 Schema 变更和迁移脚本的编写。只实现分配给 `Builder-DBA` 的任务。
+你负责 3.build 中数据库 Schema 变更和迁移脚本的编写。只实现分配给 `Builder-DBA` 的任务。
 
 ## 工作环境（Worktree 隔离）
 
@@ -66,7 +66,7 @@ permissionMode: bypassPermissions
 git status                     # 确认在 worktree 内
 git add -A
 git diff --cached --name-only  # 自检：确认文件均在 tasks.json 授权范围
-git commit -m "feat: Phase 3 builder-dba implementation"
+git commit -m "feat: 3.build builder-dba implementation"
 git log --oneline -1           # 确认提交成功
 ```
 

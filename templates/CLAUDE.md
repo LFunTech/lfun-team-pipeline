@@ -1,6 +1,6 @@
 # CLAUDE.md — 多角色软件交付流水线
 
-本项目使用基于 Claude Code 的多角色软件交付流水线（v6.4）。
+本项目使用基于 Claude Code 的多角色软件交付流水线（v6.5）。
 
 ## 快速启动
 
@@ -36,7 +36,7 @@ cat .pipeline/state.json | python3 -c "import json,sys; s=json.load(sys.stdin); 
     ├── ...
     └── ...
 
-.worktrees/              ← Phase 3 临时目录（自动创建和清理，勿手动修改）
+.worktrees/              ← 3.build 临时目录（自动创建和清理，勿手动修改）
 ├── builder-dba/
 ├── builder-backend/
 ├── builder-frontend/
@@ -44,7 +44,7 @@ cat .pipeline/state.json | python3 -c "import json,sys; s=json.load(sys.stdin); 
 ├── builder-infra/
 ├── builder-migrator/    ← 仅条件激活时存在
 └── builder-translator/  ← 仅条件激活时存在
-（Phase 3 完成后自动删除）
+（3.build 完成后自动删除）
 ```
 
 ## 阶段顺序参考
@@ -53,38 +53,38 @@ cat .pipeline/state.json | python3 -c "import json,sys; s=json.load(sys.stdin); 
 System Planning → 系统规划（交互式拆解系统为提案队列 + 并行拓扑计算）
 Pick Proposal   → 选取下一个/组待执行提案（同 parallel_group 可并行）
 Memory Load     → 项目记忆加载（注入约束给 Clarifier/Architect）
-Phase 0    → Clarifier（需求澄清，最多 5 轮）
-Phase 0.5  → Requirement Completeness Checker（AutoStep）
-Phase 1    → Architect（方案设计）
-Gate A     → Auditor-Gate（四视角方案审核）
-Phase 2.0a → GitHub Repo Creator（github-ops Agent）
-Phase 2.0b → Depend Collector（AutoStep + 暂停等凭证）
-Phase 2    → Planner（任务细化）
-Phase 2.1  → Assumption Propagation Validator（AutoStep）
-Gate B     → Auditor-Gate（四视角任务审核）
-Phase 2.5  → Contract Formalizer（契约形式化）
-Phase 2.6 ∥ 2.7 → 契约验证（并行 AutoStep）
-Phase 3    → Builders 波次内并行实现（Frontend/Backend/DBA/Security/Infra）
+0.clarify    → Clarifier（需求澄清，最多 5 轮）
+0.5.requirement-check  → Requirement Completeness Checker（AutoStep）
+1.design    → Architect（方案设计）
+gate-a.design-review     → Auditor-Gate（四视角方案审核）
+2.0a.repo-setup → GitHub Repo Creator（github-ops Agent）
+2.0b.depend-collect → Depend Collector（AutoStep + 暂停等凭证）
+2.plan    → Planner（任务细化）
+2.1.assumption-check  → Assumption Propagation Validator（AutoStep）
+gate-b.plan-review     → Auditor-Gate（四视角任务审核）
+2.5.contract-formalize  → Contract Formalizer（契约形式化）
+2.6.contract-validate-semantic ∥ 2.7.contract-validate-schema → 契约验证（并行 AutoStep）
+3.build    → Builders 波次内并行实现（Frontend/Backend/DBA/Security/Infra）
              + 条件角色（Migrator/Translator）
-Phase 3.0b → Build Verifier（AutoStep，编译验证）
-Phase 3.0d ∥ 3.1 ∥ 3.2 ∥ 3.3 → 构建后分析（并行 AutoStep）
-Phase 3.5  → Simplifier（代码精简）
-Phase 3.6  → Post-Simplification Verifier（AutoStep）
-Gate C     → Inspector（代码审查）
-Phase 3.7  → Contract Compliance Checker（AutoStep）
-Phase 4a   → Tester（功能测试）
-Phase 4a.1 → Test Failure Mapper（AutoStep，FAIL 时）
-Phase 4.2  → Test Coverage Enforcer（AutoStep）
-Phase 4b   → Optimizer（性能优化，条件角色）
-Gate D     → Auditor-QA（测试验收）
+3.0b.build-verify → Build Verifier（AutoStep，编译验证）
+3.0d.duplicate-detect ∥ 3.1.static-analyze ∥ 3.2.diff-validate ∥ 3.3.regression-guard → 构建后分析（并行 AutoStep）
+3.5.simplify  → Simplifier（代码精简）
+3.6.simplify-verify  → Post-Simplification Verifier（AutoStep）
+gate-c.code-review     → Inspector（代码审查）
+3.7.contract-compliance  → Contract Compliance Checker（AutoStep）
+4a.test   → Tester（功能测试）
+4a.1.test-failure-map → Test Failure Mapper（AutoStep，FAIL 时）
+4.2.coverage-check  → Test Coverage Enforcer（AutoStep）
+4b.optimize   → Optimizer（性能优化，条件角色）
+gate-d.test-review     → Auditor-QA（测试验收）
 AutoStep   → API Change Detector
-Phase 5    → Documenter（文档）
-Phase 5.1  → Changelog Consistency Checker（AutoStep）
-Gate E     → Auditor-QA ∥ Auditor-Tech（并行文档审核）
-Phase 5.9  → GitHub Woodpecker Push（github-ops Agent）
-Phase 6.0  → Pre-Deploy Readiness Check（AutoStep）
-Phase 6    → Deployer（部署）
-Phase 7    → Monitor（上线观测）
+5.document    → Documenter（文档）
+5.1.changelog-check  → Changelog Consistency Checker（AutoStep）
+gate-e.doc-review     → Auditor-QA ∥ Auditor-Tech（并行文档审核）
+5.9.ci-push  → GitHub Woodpecker Push（github-ops Agent）
+6.0.deploy-readiness  → Pre-Deploy Readiness Check（AutoStep）
+6.deploy    → Deployer（部署）
+7.monitor    → Monitor（上线观测）
 Memory Consolidation → 项目记忆固化（提取约束，用户确认后写入）
 Mark Completed  → 标记提案完成，循环取下一个
 ```
@@ -151,8 +151,8 @@ claude --dangerously-skip-permissions --agent pilot
 
 设置 `"autonomous_mode": true` 后，流水线在 System Planning 完成（用户确认蓝图）后全自动执行：
 
-- **Phase 0**：Clarifier 跳过交互式 Q&A，直接从提案 scope 生成 requirement.md
-- **Phase 2.0b**：跳过凭证填写等待，输出 WARN 继续执行
+- **0.clarify**：Clarifier 跳过交互式 Q&A，直接从提案 scope 生成 requirement.md
+- **2.0b.depend-collect**：跳过凭证填写等待，输出 WARN 继续执行
 - **Memory Consolidation**：自动接受新约束，冲突约束保留旧值（不自动推翻）
 
 ```bash
@@ -185,7 +185,7 @@ claude --dangerously-skip-permissions --agent pilot
 python3 -c "
 import json
 s = json.load(open('.pipeline/state.json'))
-s['current_phase'] = 'phase-3'
+s['current_phase'] = '3.build'
 s['status'] = 'running'
 with open('.pipeline/state.json', 'w') as f:
   json.dump(s, f, indent=2)
@@ -211,7 +211,7 @@ claude --dangerously-skip-permissions --agent pilot
 ### 查看 Gate 审核结果
 
 ```bash
-cat .pipeline/artifacts/gate-a-review.json | python3 -m json.tool
+cat .pipeline/artifacts/gate-a.design-review.json | python3 -m json.tool
 ```
 
 ### 必备 Skills 安装
@@ -225,20 +225,20 @@ ls ~/.claude/skills/ | grep -E "code-simplifier|code-review"
 
 如缺失，请参考 Claude Code Skill 安装文档。
 
-### Phase 3 Worktree 异常恢复
+### 3.build Worktree 异常恢复
 
-如流水线在 Phase 3 中断，残留 worktree：
+如流水线在 3.build 中断，残留 worktree：
 
 ```bash
 # 查看残余
 git worktree list
 
-# 重启 Pilot（自动检测并清理残余后重新 Phase 3）
+# 重启 Pilot（自动检测并清理残余后重新 3.build）
 claude --dangerously-skip-permissions --agent pilot
 
 # 如自动清理失败，手动执行：
 git worktree remove .worktrees/builder-<name> --force
-git branch -D pipeline/phase-3/builder-<name>
+git branch -D pipeline/3.build/builder-<name>
 ```
 
 ## 安装 Agents
@@ -250,7 +250,7 @@ bash install.sh
 
 ## 凭证管理（.depend/ 目录）
 
-流水线在 Phase 2.0b 会自动扫描项目依赖，在项目根目录生成 `.depend/` 目录。
+流水线在 2.0b.depend-collect 会自动扫描项目依赖，在项目根目录生成 `.depend/` 目录。
 
 **目录用途：** 存储外部服务凭证（数据库、Redis、GPU 服务器、对象存储等）。
 
@@ -260,7 +260,7 @@ bash install.sh
 - `.depend/README.md`：填写说明（可提交到 git）
 
 **使用流程：**
-1. Phase 2.0b 完成后，流水线暂停并提示填写凭证
+1. 2.0b.depend-collect 完成后，流水线暂停并提示填写凭证
 2. 将各 `.env.template` 复制为 `.env` 并填入真实值
 3. 在 Claude Code 对话中回复"继续"，流水线恢复执行
 
@@ -300,7 +300,7 @@ for c in m.get('constraints', []):
 ls .pipeline/history/
 ```
 
-约束在每次流水线成功完成（Phase 7 NORMAL）后自动提取，经用户确认后写入。
+约束在每次流水线成功完成（7.monitor NORMAL）后自动提取，经用户确认后写入。
 不建议手动编辑此文件——通过流水线管理以确保一致性。
 
 ### 提案队列

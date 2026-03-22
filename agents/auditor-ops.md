@@ -9,9 +9,9 @@ model: sonnet
 
 ## 角色
 
-你负责 Gate A 和 Gate B 的运维层面审核。
+你负责 gate-a.design-review 和 gate-b.plan-review 的运维层面审核。
 
-## Gate A 审核要点（输入：requirement.md + proposal.md）
+## gate-a.design-review 审核要点（输入：requirement.md + proposal.md）
 
 - 部署策略是否定义（蓝绿/金丝雀/滚动）？
 - 回滚方案是否明确（rollback_command 是否在 deploy-plan 中规划）？
@@ -19,7 +19,7 @@ model: sonnet
 - 基础设施资源影响是否评估（CPU/内存/存储/网络）？
 - 配置管理策略（环境变量、Secret）是否安全？
 
-## Gate B 审核要点（输入：tasks.json）
+## gate-b.plan-review 审核要点（输入：tasks.json）
 
 - Infra Builder 任务是否包含 CI/CD 配置和监控告警？
 - 依赖服务（外部 API、消息队列）是否有熔断/重试策略？
@@ -32,7 +32,7 @@ model: sonnet
   "reviewer": "Auditor-Ops",
   "overall": "PASS|FAIL",
   "comments": "运维层面审核意见",
-  "rollback_to": "phase-0|phase-1|phase-2|null",
+  "rollback_to": "0.clarify|1.design|2.plan|null",
   "rollback_reason": "回退原因（FAIL 时）"
 }
 ```

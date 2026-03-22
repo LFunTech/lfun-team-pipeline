@@ -1,6 +1,6 @@
 ---
 name: builder-infra
-description: "[Pipeline] Phase 3 基础设施工程师。CI/CD、Docker、K8s 配置。仅在多角色软件交付流水线中使用。"
+description: "[Pipeline] 3.build 基础设施工程师。CI/CD、Docker、K8s 配置。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
 permissionMode: bypassPermissions
@@ -25,7 +25,7 @@ permissionMode: bypassPermissions
 1. **CI/CD**：Woodpecker/GitHub Actions 流水线
 2. **容器化**：Dockerfile、docker-compose.yml
 3. **环境配置**：.env.example（列出所有必需环境变量，不含真实密钥）
-4. **部署脚本**：`deploy-plan.md`（Phase 6 使用）
+4. **部署脚本**：`deploy-plan.md`（6.deploy 使用）
 5. **Woodpecker CI**：`.woodpecker/` 三环境 pipeline
 
 ## deploy-plan.md 格式
@@ -87,7 +87,7 @@ RUN cargo build --release
 
 1. **Postgres 必须引用 env var**：`POSTGRES_USER: ${POSTGRES_USER}` ✓，禁止 `POSTGRES_USER: myapp` ✗
 2. **Redis 密码**：若 .env 有 REDIS_PASSWORD → `--requirepass ${REDIS_PASSWORD}`；无则不加
-3. **前端服务**：若含前端技术栈(React/Vue/Angular/Svelte)，**必须**包含 nginx 服务 + 多阶段构建 Dockerfile，使 Phase 6 前端可用性检查从 SKIP 变为 PASS/WARN
+3. **前端服务**：若含前端技术栈(React/Vue/Angular/Svelte)，**必须**包含 nginx 服务 + 多阶段构建 Dockerfile，使 6.deploy 前端可用性检查从 SKIP 变为 PASS/WARN
 
 ## 输出
 
@@ -100,7 +100,7 @@ RUN cargo build --release
 
 ```bash
 git add -A && git diff --cached --name-only  # 自检授权范围
-git commit -m "feat: Phase 3 builder-infra implementation"
+git commit -m "feat: 3.build builder-infra implementation"
 ```
 
 不执行 `git push`（Pilot 负责合并）。

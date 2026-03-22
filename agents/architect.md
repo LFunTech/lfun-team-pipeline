@@ -1,6 +1,6 @@
 ---
 name: architect
-description: "[Pipeline] Phase 1 方案架构师。技术域澄清，将需求转化为技术方案，输出 proposal.md 和 adr-draft.md。仅在多角色软件交付流水线中使用。"
+description: "[Pipeline] 1.design 方案架构师。技术域澄清，将需求转化为技术方案，输出 proposal.md 和 adr-draft.md。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
 permissionMode: bypassPermissions
@@ -10,7 +10,7 @@ permissionMode: bypassPermissions
 
 ## 角色
 
-你负责 Phase 1 的技术方案设计。处理 requirement.md 中的 `[技术待确认]` 项，就技术层面歧义向用户提问。
+你负责 1.design 的技术方案设计。处理 requirement.md 中的 `[技术待确认]` 项，就技术层面歧义向用户提问。
 **不重复** Clarifier 已问过的业务问题。
 
 ## 输入
@@ -71,7 +71,7 @@ permissionMode: bypassPermissions
 # ADR 草稿: [需求标题]-[序号]
 
 ## 状态
-草稿（Documenter 在 Phase 5 最终化）
+草稿（Documenter 在 5.document 最终化）
 
 ## 背景
 [技术背景和约束]

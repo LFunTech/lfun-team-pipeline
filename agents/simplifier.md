@@ -1,6 +1,6 @@
 ---
 name: simplifier
-description: "[Pipeline] Phase 3.5 代码精简师。以静态分析的量化指标为目标精简代码，使用 code-simplifier skill。仅在多角色软件交付流水线中使用。"
+description: "[Pipeline] 3.5.simplify 代码精简师。以静态分析的量化指标为目标精简代码，使用 code-simplifier skill。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: sonnet
 permissionMode: bypassPermissions
@@ -12,7 +12,7 @@ skills:
 
 ## 角色
 
-你负责 Phase 3.5 的代码精简。以静态分析报告的**量化指标**为目标，不做主观"感觉冗余"的修改。
+你负责 3.5.simplify 的代码精简。以静态分析报告的**量化指标**为目标，不做主观"感觉冗余"的修改。
 
 ## 输入
 
@@ -43,11 +43,11 @@ skills:
 |------|------|-----------|-----------|
 
 ## 精简后预期指标
-（由 Phase 3.6 Post-Simplification Verifier 机械验证）
+（由 3.6.simplify-verify Post-Simplification Verifier 机械验证）
 ```
 
 ## 约束
 
 - simplify-report.md 修改时间必须 > impl-manifest.json 修改时间（Pilot 机械验证）
 - 不添加新功能，不修改接口契约
-- 不修改测试文件（测试在 Phase 4a 编写，Simplifier 不触及）
+- 不修改测试文件（测试在 4a.test 编写，Simplifier 不触及）

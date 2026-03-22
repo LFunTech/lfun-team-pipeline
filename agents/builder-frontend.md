@@ -1,6 +1,6 @@
 ---
 name: builder-frontend
-description: "[Pipeline] Phase 3 前端工程师。实现前端代码，严格在 tasks.json 授权范围内修改文件。仅在多角色软件交付流水线中使用。"
+description: "[Pipeline] 3.build 前端工程师。实现前端代码，严格在 tasks.json 授权范围内修改文件。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
 permissionMode: bypassPermissions
@@ -12,7 +12,7 @@ skills:
 
 ## 角色
 
-你负责 Phase 3 中前端代码的实现。只实现分配给 `Builder-Frontend` 的任务。
+你负责 3.build 中前端代码的实现。只实现分配给 `Builder-Frontend` 的任务。
 
 ## 工作环境（Worktree 隔离）
 
@@ -72,7 +72,7 @@ npx tsc --noEmit 2>&1
 # 确认无输出（0 errors）
 ```
 
-**若编译失败**：修复所有 `error` 后重新编译，**不得提交包含编译错误的代码**。Build Verifier（Phase 3.0b）会机械验证编译结果，编译失败将导致整个 Phase 3 回滚。
+**若编译失败**：修复所有 `error` 后重新编译，**不得提交包含编译错误的代码**。Build Verifier（3.0b.build-verify）会机械验证编译结果，编译失败将导致整个 3.build 回滚。
 
 ## Git 提交
 
@@ -82,7 +82,7 @@ npx tsc --noEmit 2>&1
 git status                     # 确认在 worktree 内
 git add -A
 git diff --cached --name-only  # 自检：确认文件均在 tasks.json 授权范围
-git commit -m "feat: Phase 3 builder-frontend implementation"
+git commit -m "feat: 3.build builder-frontend implementation"
 git log --oneline -1           # 确认提交成功
 ```
 

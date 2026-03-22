@@ -26,17 +26,17 @@ permissionMode: bypassPermissions
 | 批次 | 包含步骤 |
 |------|----------|
 | batch-init | system-planning |
-| batch-start | pick-next-proposal + memory-load + phase-0 + phase-0.5 |
-| batch-design | phase-1 + gate-a |
-| batch-repo | phase-2.0a + phase-2.0b |
-| batch-plan | phase-2 + phase-2.1 + gate-b |
-| batch-contract | phase-2.5 + phase-2.6 + phase-2.7 |
-| batch-build | phase-3 + phase-3.0b |
-| batch-post-build | phase-3.0d + phase-3.1 + phase-3.2 + phase-3.3 + phase-3.5 + phase-3.6 |
-| batch-review | gate-c + phase-3.7 |
-| batch-test | phase-4a（+ 4a.1 若 FAIL）+ phase-4.2（+ 4b 若条件） |
-| batch-qa-docs | gate-d + api-change-detector + phase-5 + phase-5.1 + gate-e + phase-5.9 |
-| batch-release | phase-6.0 + phase-6 + phase-7 + memory-consolidation + mark-proposal-completed |
+| batch-start | pick-next-proposal + memory-load + 0.clarify + 0.5.requirement-check |
+| batch-design | 1.design + gate-a.design-review |
+| batch-repo | 2.0a.repo-setup + 2.0b.depend-collect |
+| batch-plan | 2.plan + 2.1.assumption-check + gate-b.plan-review |
+| batch-contract | 2.5.contract-formalize + 2.6.contract-validate-semantic + 2.7.contract-validate-schema |
+| batch-build | 3.build + 3.0b.build-verify |
+| batch-post-build | 3.0d.duplicate-detect + 3.1.static-analyze + 3.2.diff-validate + 3.3.regression-guard + 3.5.simplify + 3.6.simplify-verify |
+| batch-review | gate-c.code-review + 3.7.contract-compliance |
+| batch-test | 4a.test（+ 4a.1 若 FAIL）+ 4.2.coverage-check（+ 4b 若条件） |
+| batch-qa-docs | gate-d.test-review + api-change-detect + 5.document + 5.1.changelog-check + gate-e.doc-review + 5.9.ci-push |
+| batch-release | 6.0.deploy-readiness + 6.deploy + 7.monitor + memory-consolidation + mark-proposal-completed |
 
 ### 执行流程
 
@@ -52,10 +52,10 @@ permissionMode: bypassPermissions
 
 | 批次 | 并行组 | 说明 |
 |------|--------|------|
-| batch-contract | phase-2.6 ∥ phase-2.7 | 两个 Bash tool call 并行 |
+| batch-contract | 2.6.contract-validate-semantic ∥ 2.7.contract-validate-schema | 两个 Bash tool call 并行 |
 | batch-build | 同波次 Builders | 同波次多个 Agent tool call 并行（详见 playbook） |
-| batch-post-build | phase-3.0d ∥ phase-3.1 ∥ phase-3.2 ∥ phase-3.3 | 四个 Bash tool call 并行 |
-| batch-qa-docs | gate-e 内 auditor-qa ∥ auditor-tech | 两个 Agent tool call 并行 |
+| batch-post-build | 3.0d.duplicate-detect ∥ 3.1.static-analyze ∥ 3.2.diff-validate ∥ 3.3.regression-guard | 四个 Bash tool call 并行 |
+| batch-qa-docs | gate-e.doc-review 内 auditor-qa ∥ auditor-tech | 两个 Agent tool call 并行 |
 
 **提案级并行（同 parallel_group 内的多个提案同时执行）：**
 
@@ -95,7 +95,7 @@ Bash("test -f .pipeline/llm-router.sh && echo EXISTS || echo NOT_EXISTS")
 - 若 `EXISTS` → **必须**使用 Bash 调用 llm-router.sh（**禁止**直接用 Agent tool）：
 ```bash
 Bash("bash .pipeline/llm-router.sh <agent-name> '<prompt>'")
-# Phase 3 worktree 场景加 --cwd：
+# 3.build worktree 场景加 --cwd：
 Bash("bash .pipeline/llm-router.sh <agent-name> '<prompt>' --cwd .worktrees/<agent-name>")
 ```
 
@@ -155,7 +155,7 @@ elif check.stdout.strip() == "EXISTS":
 
 ### Worktree 场景下的路由
 
-Phase 3 Builder 在 worktree 中执行时，需传递 `--cwd`：
+3.build Builder 在 worktree 中执行时，需传递 `--cwd`：
 ```bash
 bash .pipeline/llm-router.sh builder-backend '你的prompt...' --cwd .worktrees/builder-backend
 ```
@@ -190,44 +190,44 @@ Bash("bash .pipeline/llm-router.sh builder-dba '...' --cwd .worktrees/builder-db
 `pipeline_id`, `project_name`, `current_phase`, `last_completed_phase`, `status`(running/escalation), `attempt_counts`(每阶段计数+per_builder), `conditional_agents`(migrator/optimizer/translator), `phase_5_mode`, `new_test_files[]`, `phase_3_base_sha`, `phase_3_worktrees{}`, `phase_3_branches{}`, `phase_3_main_branch`, `phase_3_merge_order[]`, `github_repo_created`, `github_repo_url`, `execution_log[]`(含 model 字段), `parallel_proposals[]`, `parallel_base_sha`, `parallel_base_branch`, `parallel_worktrees{}`, `parallel_branches{}`, `parallel_merge_order[]`, `parallel_completed[]`
 
 每次进入新阶段递增 attempt_counts。超 max_attempts(默认 3) → ESCALATION。
-conditional_agents 赋值：Gate A PASS 后从 proposal.md 读取条件标记写入。
+conditional_agents 赋值：gate-a.design-review PASS 后从 proposal.md 读取条件标记写入。
 
 ## 阶段路由表
 
 > **最高优先级指令：每完成一个阶段必须查此表。**
 
 **线性流（PASS 时的默认下一步）：**
-system-planning → pick-next-proposal → memory-load → phase-0 → phase-0.5 → phase-1 → gate-a → phase-2.0a → phase-2.0b → phase-2 → phase-2.1 → gate-b → phase-2.5 → (phase-2.6 ∥ phase-2.7) → phase-3 → phase-3.0b → (phase-3.0d ∥ phase-3.1 ∥ phase-3.2 ∥ phase-3.3) → phase-3.5 → phase-3.6 → gate-c → phase-3.7 → phase-4a → phase-4.2 → gate-d → api-change-detector → phase-5 → phase-5.1 → gate-e(auditor-qa ∥ auditor-tech) → phase-5.9 → phase-6.0 → phase-6 → phase-7 → memory-consolidation → mark-proposal-completed → pick-next-proposal
+system-planning → pick-next-proposal → memory-load → 0.clarify → 0.5.requirement-check → 1.design → gate-a.design-review → 2.0a.repo-setup → 2.0b.depend-collect → 2.plan → 2.1.assumption-check → gate-b.plan-review → 2.5.contract-formalize → (2.6.contract-validate-semantic ∥ 2.7.contract-validate-schema) → 3.build → 3.0b.build-verify → (3.0d.duplicate-detect ∥ 3.1.static-analyze ∥ 3.2.diff-validate ∥ 3.3.regression-guard) → 3.5.simplify → 3.6.simplify-verify → gate-c.code-review → 3.7.contract-compliance → 4a.test → 4.2.coverage-check → gate-d.test-review → api-change-detect → 5.document → 5.1.changelog-check → gate-e.doc-review(auditor-qa ∥ auditor-tech) → 5.9.ci-push → 6.0.deploy-readiness → 6.deploy → 7.monitor → memory-consolidation → mark-proposal-completed → pick-next-proposal
 
 **分支与回滚：**
 - pick-next-proposal: 依赖未完成→ESCALATION, 全部completed→ALL-COMPLETED
-- phase-0.5 FAIL → phase-0
-- gate-a FAIL → rollback_to(取最深)
-- phase-2.0a FAIL → ESCALATION
-- gate-b FAIL → rollback_to(取最深)
-- phase-2.6/2.7（并行）任一 FAIL → phase-2.5
-- phase-3.0b FAIL → phase-3（禁止 Pilot 自行修复）
-- phase-3.0d ∥ 3.1 ∥ 3.2 ∥ 3.3（并行）：3.1 FAIL → phase-3；3.0d/3.2/3.3 FAIL → WARN 不阻断
-- phase-3.6 FAIL → phase-3.5
-- gate-c FAIL → phase-3（先激活 Resolver）
-- phase-3.7 FAIL → phase-3
-- phase-4a FAIL → phase-4a.1, 然后 HIGH/LOW confidence 均 → phase-3
-- phase-4.2 PASS → phase-4b(若 optimizer=true) 或 gate-d
-- phase-4.2 FAIL → phase-4a
-- phase-4b sla_violated → phase-3
-- gate-d FAIL → rollback_to(限 phase-3/phase-4a)
-- phase-5.1 FAIL → phase-5
-- gate-e FAIL → phase-5
-- phase-5.9 FAIL → WARN 继续
-- phase-6.0 FAIL → ESCALATION
-- phase-6 FAIL(deployment) → phase-3, FAIL(smoke_test) → phase-1(先回滚生产)
-- phase-7 ALERT → phase-3, CRITICAL → phase-1(先回滚生产)
+- 0.5.requirement-check FAIL → 0.clarify
+- gate-a.design-review FAIL → rollback_to(取最深)
+- 2.0a.repo-setup FAIL → ESCALATION
+- gate-b.plan-review FAIL → rollback_to(取最深)
+- 2.6.contract-validate-semantic/2.7（并行）任一 FAIL → 2.5.contract-formalize
+- 3.0b.build-verify FAIL → 3.build（禁止 Pilot 自行修复）
+- 3.0d.duplicate-detect ∥ 3.1 ∥ 3.2 ∥ 3.3（并行）：3.1 FAIL → 3.build；3.0d/3.2/3.3 FAIL → WARN 不阻断
+- 3.6.simplify-verify FAIL → 3.5.simplify
+- gate-c.code-review FAIL → 3.build（先激活 Resolver）
+- 3.7.contract-compliance FAIL → 3.build
+- 4a.test FAIL → 4a.1.test-failure-map, 然后 HIGH/LOW confidence 均 → 3.build
+- 4.2.coverage-check PASS → 4b.optimize(若 optimizer=true) 或 gate-d.test-review
+- 4.2.coverage-check FAIL → 4a.test
+- 4b.optimize sla_violated → 3.build
+- gate-d.test-review FAIL → rollback_to(限 3.build/4a.test)
+- 5.1.changelog-check FAIL → 5.document
+- gate-e.doc-review FAIL → 5.document
+- 5.9.ci-push FAIL → WARN 继续
+- 6.0.deploy-readiness FAIL → ESCALATION
+- 6.deploy FAIL(deployment) → 3.build, FAIL(smoke_test) → 1.design(先回滚生产)
+- 7.monitor ALERT → 3.build, CRITICAL → 1.design(先回滚生产)
 
 ## AutoStep 调用参考
 
 各 AutoStep 阶段的执行命令（实际调用详见 playbook.md 对应章节）：
 
-- phase-3.0d: `MODE="incremental" PIPELINE_DIR=".pipeline" bash .pipeline/autosteps/duplicate-detector.sh`
+- 3.0d.duplicate-detect: `MODE="incremental" PIPELINE_DIR=".pipeline" bash .pipeline/autosteps/duplicate-detector.sh`
 
 ## Playbook 加载
 
@@ -235,7 +235,7 @@ playbook.md 按 `## ` 章节组织。批次启动时 Grep 定位章节行号 →
 
 ## 矛盾检测与 Resolver
 
-Gate Auditor 输出后：同一组件 PASS+FAIL 或 comments 矛盾 → 激活 Resolver。
+gate-a.design-reviewuditor 输出后：同一组件 PASS+FAIL 或 comments 矛盾 → 激活 Resolver。
 Resolver 输出 rollback_to:null 且有 FAIL → 拒绝，取最深 rollback。
 
 ## Rollback Depth Rule
@@ -244,7 +244,7 @@ Resolver 输出 rollback_to:null 且有 FAIL → 拒绝，取最深 rollback。
 
 ## ESCALATION
 
-超 max_attempts / phase-6.0 FAIL / Clarifier 5轮未解决 / proposal-queue 异常 → status="escalation"，退出。
+超 max_attempts / 6.0.deploy-readiness FAIL / Clarifier 5轮未解决 / proposal-queue 异常 → status="escalation"，退出。
 
 ## Git Push
 
@@ -266,11 +266,11 @@ Agent 的 Claude 模型对照表（`model: inherit` = opus，`model: sonnet` = s
 
 ## 控制台输出
 
-`[Pipeline] Phase 3 完成 → Phase 3.0b` / `[Pipeline] Gate C FAIL → rollback Phase 3 (attempt 2/3)` / `[EXIT] 请运行 claude --agent pilot 继续` / `[Pipeline] status: ALL-COMPLETED`
+`[Pipeline] 3.build 完成 → 3.0b.build-verify` / `[Pipeline] gate-c.code-review FAIL → rollback 3.build (attempt 2/3)` / `[EXIT] 请运行 claude --agent pilot 继续` / `[Pipeline] status: ALL-COMPLETED`
 
 **模型标识（必须输出）：** 每个 Agent/AutoStep 执行完毕后，在控制台输出模型标识行：
 - `[Pipeline] ✅ builder-backend PASS (glm-5)` — 外部 LLM 执行
 - `[Pipeline] ✅ architect PASS (opus)` — Claude Opus 执行
 - `[Pipeline] ✅ auditor-gate PASS (sonnet)` — Claude Sonnet 执行
 - `[Pipeline] ⚠️ builder-backend PASS (<model>↩降级)` — 路由降级回默认模型
-- `[Pipeline] ✅ phase-0.5 PASS (autostep)` — Shell 脚本
+- `[Pipeline] ✅ 0.5.requirement-check PASS (autostep)` — Shell 脚本

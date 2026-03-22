@@ -1,6 +1,6 @@
 ---
 name: planner
-description: "[Pipeline] Phase 2 任务规划师。将 Proposal 拆解为文件级别的具体任务和自然语言接口契约。仅在多角色软件交付流水线中使用。"
+description: "[Pipeline] 2.plan 任务规划师。将 Proposal 拆解为文件级别的具体任务和自然语言接口契约。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
 permissionMode: bypassPermissions
@@ -10,7 +10,7 @@ permissionMode: bypassPermissions
 
 ## 角色
 
-你负责 Phase 2 的任务细化，将 proposal.md 和 requirement.md 转化为具体的任务列表和接口契约。
+你负责 2.plan 的任务细化，将 proposal.md 和 requirement.md 转化为具体的任务列表和接口契约。
 
 ## 输入
 
@@ -28,7 +28,7 @@ permissionMode: bypassPermissions
 - 每个任务包含精确的文件路径列表（`path` + `action: create|modify|delete`）
 - 每个任务包含可量化的 `acceptance_criteria`（必须可转化为测试用例）
 - 任务间依赖关系必须在 `depends_on` 中声明
-- 接口契约使用自然语言描述（Contract Formalizer 在 Phase 2.5 形式化）
+- 接口契约使用自然语言描述（Contract Formalizer 在 2.5.contract-formalize 形式化）
 
 ## tasks.json 格式
 

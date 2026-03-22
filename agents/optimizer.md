@@ -1,6 +1,6 @@
 ---
 name: optimizer
-description: "[Pipeline] Phase 4b 条件 Agent — 性能优化师。激活条件：performance_sensitive: true。性能压测、SQL 慢查询分析、内存 profiling。仅在多角色软件交付流水线中使用。"
+description: "[Pipeline] 4b.optimize 条件 Agent — 性能优化师。激活条件：performance_sensitive: true。性能压测、SQL 慢查询分析、内存 profiling。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
 permissionMode: bypassPermissions
@@ -10,7 +10,7 @@ permissionMode: bypassPermissions
 
 ## 激活条件
 
-仅当 `state.json` 中 `conditional_agents.optimizer: true` 时激活（Phase 4a + 4.2 全部 PASS 后）。
+仅当 `state.json` 中 `conditional_agents.optimizer: true` 时激活（4a.test + 4.2 全部 PASS 后）。
 激活依据：`proposal.md` 中 `performance_sensitive: true`。
 
 ## 角色
@@ -55,6 +55,6 @@ permissionMode: bypassPermissions
 
 ## 约束
 
-- `sla_violated` 字段必须存在（Pilot 读取此字段决定是否直接 rollback_to: phase-3）
-- `sla_violated: true` → Pilot 不等 Gate D，直接回退 phase-3（重新实现）
+- `sla_violated` 字段必须存在（Pilot 读取此字段决定是否直接 rollback_to: 3.build）
+- `sla_violated: true` → Pilot 不等 gate-d.test-review，直接回退 3.build（重新实现）
 - 优化只在 tasks.json 授权范围内修改代码

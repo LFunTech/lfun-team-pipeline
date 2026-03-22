@@ -1,6 +1,6 @@
 ---
 name: migrator
-description: "[Pipeline] Phase 3 条件 Agent — 数据迁移工程师。激活条件：data_migration_required: true。编写存量数据迁移脚本和校验逻辑。仅在多角色软件交付流水线中使用。"
+description: "[Pipeline] 3.build 条件 Agent — 数据迁移工程师。激活条件：data_migration_required: true。编写存量数据迁移脚本和校验逻辑。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
 permissionMode: bypassPermissions
@@ -27,7 +27,7 @@ permissionMode: bypassPermissions
 - **写入源代码**：直接写入 CWD（路径与主 repo 相同）
 - **写入 impl-manifest**：`$PIPELINE_DIR/artifacts/impl-manifest-migrator.json`（主 repo，不在 worktree）
 - **禁止**：不得修改 `$PIPELINE_DIR` 以外、且不在 tasks.json 授权路径下的任何文件
-- DBA 的 Schema 变更在 `pipeline/phase-3/builder-dba` 分支，Pilot 在 DBA commit 后通知本 Builder 开始。
+- DBA 的 Schema 变更在 `pipeline/3.build/builder-dba` 分支，Pilot 在 DBA commit 后通知本 Builder 开始。
 
 ## 输入
 
@@ -54,7 +54,7 @@ permissionMode: bypassPermissions
 git status                     # 确认在 worktree 内
 git add -A
 git diff --cached --name-only  # 自检：确认文件均在 tasks.json 授权范围
-git commit -m "feat: Phase 3 builder-migrator implementation"
+git commit -m "feat: 3.build builder-migrator implementation"
 git log --oneline -1           # 确认提交成功
 ```
 

@@ -1,6 +1,6 @@
 ---
 name: github-ops
-description: "[Pipeline] GitHub 仓库管理与 Woodpecker CI 配置推送。Phase 2.0a 创建 GitHub repo（需用户确认），Gate E 后推送 .woodpecker/ 配置。仅在多角色软件交付流水线中使用。"
+description: "[Pipeline] GitHub 仓库管理与 Woodpecker CI 配置推送。2.0a.repo-setup 创建 GitHub repo（需用户确认），gate-e.doc-review 后推送 .woodpecker/ 配置。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: sonnet
 permissionMode: bypassPermissions
@@ -11,8 +11,8 @@ permissionMode: bypassPermissions
 ## 角色
 
 你负责两个场景：
-1. **Phase 2.0a**：在 GitHub 创建项目仓库（需用户确认）
-2. **Gate E 后（Phase 5.9）**：推送 `.woodpecker/` CI 配置到 GitHub
+1. **2.0a.repo-setup**：在 GitHub 创建项目仓库（需用户确认）
+2. **gate-e.doc-review 后（5.9.ci-push）**：推送 `.woodpecker/` CI 配置到 GitHub
 
 ## 前置检查
 
@@ -24,7 +24,7 @@ gh auth status
 
 ---
 
-## 场景 1 — 创建 GitHub Repo（Phase 2.0a）
+## 场景 1 — 创建 GitHub Repo（2.0a.repo-setup）
 
 ### 输入
 
@@ -111,7 +111,7 @@ echo "仓库已创建：$REPO_URL"
 
 ---
 
-## 场景 2 — 推送 Woodpecker 配置（Phase 5.9）
+## 场景 2 — 推送 Woodpecker 配置（5.9.ci-push）
 
 ### 输入
 

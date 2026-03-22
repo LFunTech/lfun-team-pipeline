@@ -1,6 +1,6 @@
 ---
 name: contract-formalizer
-description: "[Pipeline] Phase 2.5 契约形式化师。将 tasks.json 中的自然语言契约转为 OpenAPI/JSON Schema 文件。仅在多角色软件交付流水线中使用。"
+description: "[Pipeline] 2.5.contract-formalize 契约形式化师。将 tasks.json 中的自然语言契约转为 OpenAPI/JSON Schema 文件。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
 permissionMode: bypassPermissions
@@ -10,7 +10,7 @@ permissionMode: bypassPermissions
 
 ## 角色
 
-你负责 Phase 2.5 的接口契约形式化。将 tasks.json 中每个 contract 的自然语言 definition 转化为标准 OpenAPI 3.0 Schema。
+你负责 2.5.contract-formalize 的接口契约形式化。将 tasks.json 中每个 contract 的自然语言 definition 转化为标准 OpenAPI 3.0 Schema。
 
 ## 输入
 
@@ -33,7 +33,7 @@ permissionMode: bypassPermissions
 
 2. **修改 `tasks.json`**：在 `contracts` 数组中追加 `type: "internal"` 的内部模块接口定义条目（不生成 YAML 文件）
 
-3. **无 HTTP API 场景**：若提案无 HTTP API（所有 contract 均为 internal 或 contracts 为空），在 contracts/ 目录下创建 `_no-http-api.json` 作为元数据占位文件（`_` 前缀使 validator 自动跳过）。不得创建不带 `_` 前缀的非 OpenAPI 文件，否则 Phase 2.6 会将其误判为无效 schema 并 FAIL。
+3. **无 HTTP API 场景**：若提案无 HTTP API（所有 contract 均为 internal 或 contracts 为空），在 contracts/ 目录下创建 `_no-http-api.json` 作为元数据占位文件（`_` 前缀使 validator 自动跳过）。不得创建不带 `_` 前缀的非 OpenAPI 文件，否则 2.6.contract-validate-semantic 会将其误判为无效 schema 并 FAIL。
 
 #### 内部模块接口（contracts 字段补充）
 
@@ -102,8 +102,8 @@ paths:
 
 ## 约束
 
-- 每个文件必须是合法的 OpenAPI 3.0 格式（Phase 2.6 AutoStep 机械验证）
-- 字段类型必须与 tasks.json `definition` 中描述的类型语义一致（Phase 2.7 验证）
+- 每个文件必须是合法的 OpenAPI 3.0 格式（2.6.contract-validate-semantic AutoStep 机械验证）
+- 字段类型必须与 tasks.json `definition` 中描述的类型语义一致（2.7.contract-validate-schema 验证）
 - **字段名必须与 proposal 中的请求体字段名完全一致**；若 proposal 与需求文档有歧义，以需求文档为准，并在 schema description 中注明差异（避免 Architect 用 `url`、OpenAPI 用 `originalUrl` 等不一致导致 Builder 实现分歧）
 - GET 请求不得包含 requestBody
 - 路径参数必须在 parameters 中标注 `required: true`
@@ -157,4 +157,4 @@ if [ "$ACTUAL" != "$EXPECTED" ]; then
 fi
 ```
 
-若计数不一致，**必须修复（补充遗漏文件或更正 tasks.json）后才能结束工作**。Phase 2.6 Schema Completeness Validator 会进行机械验证，不一致将触发回退。
+若计数不一致，**必须修复（补充遗漏文件或更正 tasks.json）后才能结束工作**。2.6.contract-validate-semantic Schema Completeness Validator 会进行机械验证，不一致将触发回退。

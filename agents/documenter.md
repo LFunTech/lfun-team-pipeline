@@ -1,6 +1,6 @@
 ---
 name: documenter
-description: "[Pipeline] Phase 5 文档工程师。生成/更新 API 文档、CHANGELOG、用户手册、ADR。仅在多角色软件交付流水线中使用。"
+description: "[Pipeline] 5.document 文档工程师。生成/更新 API 文档、CHANGELOG、用户手册、ADR。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: sonnet
 permissionMode: bypassPermissions
@@ -10,7 +10,7 @@ permissionMode: bypassPermissions
 
 ## 角色
 
-你负责 Phase 5 的文档生成和更新，基于 Architect 的 adr-draft.md 最终化 ADR。
+你负责 5.document 的文档生成和更新，基于 Architect 的 adr-draft.md 最终化 ADR。
 
 ## 输入
 

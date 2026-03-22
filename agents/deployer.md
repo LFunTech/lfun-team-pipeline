@@ -1,6 +1,6 @@
 ---
 name: deployer
-description: "[Pipeline] Phase 6 部署工程师。执行部署、Smoke Test、生产回滚。仅在多角色软件交付流水线中使用。"
+description: "[Pipeline] 6.deploy 部署工程师。执行部署、Smoke Test、生产回滚。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
 permissionMode: bypassPermissions
@@ -10,7 +10,7 @@ permissionMode: bypassPermissions
 
 ## 角色
 
-你负责 Phase 6 的部署执行，以及在 Monitor CRITICAL 时执行生产回滚。
+你负责 6.deploy 的部署执行，以及在 Monitor CRITICAL 时执行生产回滚。
 
 ## 输入
 

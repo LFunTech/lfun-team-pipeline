@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-VERSION="6.4"
+VERSION="6.5"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENTS_SRC="$REPO_DIR/agents"
 AGENTS_DST="$HOME/.claude/agents"
@@ -72,7 +72,7 @@ cat > "$TEAM_CMD" << 'TEAM_SCRIPT'
 # team — lfun-team-pipeline CLI
 set -euo pipefail
 
-VERSION="6.4"
+VERSION="6.5"
 TEAM_HOME="$HOME/.local/share/team-pipeline"
 
 usage() {
@@ -196,58 +196,164 @@ cmd_upgrade() {
   echo "  Upgrading lfun-team-pipeline in: $(pwd)"
   echo ""
 
-  # Upgrade playbook (always overwrite)
+  # ── Phase 1: Pre-flight — detect if migration is needed ──────────
+  MIGRATE_SCRIPT="$TEAM_HOME/scripts/migrate-phase-names.py"
+  NEEDS_MIGRATE=false
+  if [ -f ".pipeline/config.json" ] && grep -q '"phase-[0-9]' .pipeline/config.json 2>/dev/null; then
+    NEEDS_MIGRATE=true
+  fi
+  if [ -f ".pipeline/state.json" ] && grep -q '"phase-[0-9]' .pipeline/state.json 2>/dev/null; then
+    NEEDS_MIGRATE=true
+  fi
+
+  # If migration is needed but script is missing, abort early
+  if [ "$NEEDS_MIGRATE" = true ] && [ ! -f "$MIGRATE_SCRIPT" ]; then
+    echo "  ❌ Phase name migration required but migration script not found."
+    echo "     Expected: $MIGRATE_SCRIPT"
+    echo ""
+    echo "  Fix: Re-run installer first:"
+    echo "    cd /path/to/lfun-team-pipeline && bash install.sh --update"
+    echo "    cd $(pwd) && team upgrade"
+    echo ""
+    exit 1
+  fi
+
+  # ── Phase 2: Backup config/state (before anything is touched) ────
+  BACKUP_TS=$(date +%Y%m%d%H%M%S)
+  BACKUP_DIR=".pipeline/.upgrade-backup-${BACKUP_TS}"
+  if [ "$NEEDS_MIGRATE" = true ]; then
+    mkdir -p "$BACKUP_DIR"
+    [ -f ".pipeline/config.json" ] && cp .pipeline/config.json "$BACKUP_DIR/"
+    [ -f ".pipeline/state.json" ] && cp .pipeline/state.json "$BACKUP_DIR/"
+    echo "  ✓ Backup saved to $BACKUP_DIR"
+  fi
+
+  # ── Phase 3: Migrate config/state FIRST (before template upgrade) ──
+  #    Order matters: if migration fails, playbook is still old version,
+  #    so the project stays consistent and usable.
+  if [ "$NEEDS_MIGRATE" = true ]; then
+    echo ""
+    echo "  Migrating phase names (phase-X → X.semantic-name)..."
+    MIGRATE_OK=true
+
+    # Schema migration (execution_log field) — do this before phase rename
+    if [ -f ".pipeline/state.json" ]; then
+      python3 -c "
+import json
+s = json.load(open('.pipeline/state.json'))
+if 'execution_log' not in s:
+    s['execution_log'] = []
+    json.dump(s, open('.pipeline/state.json', 'w'), ensure_ascii=False, indent=2)
+    print('  ✓ state.json: added execution_log field')
+" 2>/dev/null || true
+    fi
+
+    # Phase name migration
+    if [ -f ".pipeline/config.json" ]; then
+      if ! python3 "$MIGRATE_SCRIPT" --migrate-config .pipeline/config.json; then
+        echo "  ❌ config.json migration failed"
+        MIGRATE_OK=false
+      fi
+    fi
+
+    if [ "$MIGRATE_OK" = true ] && [ -f ".pipeline/state.json" ]; then
+      if ! python3 "$MIGRATE_SCRIPT" --migrate-state .pipeline/state.json; then
+        echo "  ❌ state.json migration failed"
+        MIGRATE_OK=false
+      fi
+    fi
+
+    # Verify migration result
+    if [ "$MIGRATE_OK" = true ]; then
+      VERIFY_FAIL=false
+      # Check no old-style names remain
+      if [ -f ".pipeline/config.json" ] && grep -q '"phase-[0-9]' .pipeline/config.json 2>/dev/null; then
+        echo "  ❌ Old phase names still present in config.json"
+        VERIFY_FAIL=true
+      fi
+      if [ -f ".pipeline/state.json" ] && grep -q '"phase-[0-9]' .pipeline/state.json 2>/dev/null; then
+        echo "  ❌ Old phase names still present in state.json"
+        VERIFY_FAIL=true
+      fi
+      # Check valid JSON
+      if [ -f ".pipeline/config.json" ] && ! python3 -c "import json; json.load(open('.pipeline/config.json'))" 2>/dev/null; then
+        echo "  ❌ config.json is not valid JSON after migration"
+        VERIFY_FAIL=true
+      fi
+      if [ -f ".pipeline/state.json" ] && ! python3 -c "import json; json.load(open('.pipeline/state.json'))" 2>/dev/null; then
+        echo "  ❌ state.json is not valid JSON after migration"
+        VERIFY_FAIL=true
+      fi
+      [ "$VERIFY_FAIL" = true ] && MIGRATE_OK=false
+    fi
+
+    # Rollback on failure — restore from backup, playbook NOT yet upgraded
+    if [ "$MIGRATE_OK" = false ]; then
+      echo ""
+      echo "  ⚠  Rolling back config.json and state.json from backup..."
+      [ -f "$BACKUP_DIR/config.json" ] && cp "$BACKUP_DIR/config.json" .pipeline/config.json
+      [ -f "$BACKUP_DIR/state.json" ] && cp "$BACKUP_DIR/state.json" .pipeline/state.json
+      echo ""
+      echo "  ❌ Upgrade aborted: config/state migration failed, all files restored."
+      echo "     Your project is unchanged and still usable with the old version."
+      echo ""
+      echo "  To retry manually:"
+      echo "    python3 $MIGRATE_SCRIPT --migrate-config .pipeline/config.json"
+      echo "    python3 $MIGRATE_SCRIPT --migrate-state .pipeline/state.json"
+      echo "    team upgrade   # then retry"
+      echo ""
+      echo "  Backup kept at: $BACKUP_DIR"
+      echo ""
+      exit 1
+    fi
+
+    echo "  ✓ Phase names migrated successfully"
+    rm -rf "$BACKUP_DIR"
+    echo "  ✓ Backup cleaned up"
+  else
+    # No migration needed, still add execution_log if missing
+    if [ -f ".pipeline/state.json" ]; then
+      python3 -c "
+import json
+s = json.load(open('.pipeline/state.json'))
+if 'execution_log' not in s:
+    s['execution_log'] = []
+    json.dump(s, open('.pipeline/state.json', 'w'), ensure_ascii=False, indent=2)
+    print('  ✓ state.json: added execution_log field')
+else:
+    print('  ✓ state.json: already compatible')
+" 2>/dev/null || true
+    fi
+    echo "  ✓ Phase names: already migrated"
+  fi
+
+  # ── Phase 4: Upgrade template files (safe — config/state already migrated) ──
   cp "$TEAM_HOME/.pipeline/playbook.md" .pipeline/playbook.md
   echo "  ✓ .pipeline/playbook.md upgraded"
 
-  # Upgrade autosteps (always overwrite)
   for ext in sh py; do cp "$TEAM_HOME/.pipeline/autosteps/"*."$ext" .pipeline/autosteps/ 2>/dev/null || true; done
   AUTOSTEP_COUNT=$(ls .pipeline/autosteps/*.sh .pipeline/autosteps/*.py 2>/dev/null | wc -l)
   echo "  ✓ $AUTOSTEP_COUNT autosteps upgraded"
 
-  # Upgrade llm-router.sh (always overwrite)
   if [ -f "$TEAM_HOME/.pipeline/llm-router.sh" ]; then
     cp "$TEAM_HOME/.pipeline/llm-router.sh" .pipeline/llm-router.sh
     chmod +x .pipeline/llm-router.sh
     echo "  ✓ llm-router.sh upgraded"
   fi
 
-  # Upgrade CLAUDE.md (always overwrite)
   if [ -f "$TEAM_HOME/CLAUDE.md" ]; then
     cp "$TEAM_HOME/CLAUDE.md" CLAUDE.md
     echo "  ✓ CLAUDE.md upgraded"
   fi
 
-  # Preserved files (not touched):
   echo ""
   echo "  Preserved (not modified):"
-  echo "    .pipeline/config.json"
-  echo "    .pipeline/state.json"
   echo "    .pipeline/project-memory.json"
   echo "    .pipeline/proposal-queue.json"
   echo "    .pipeline/artifacts/*"
   echo ""
 
-  # Show version
-  echo "  Upgraded to v${VERSION}"
-
-  # Add execution_log to state.json if missing
-  if [ -f ".pipeline/state.json" ]; then
-    python3 -c "
-import json
-s = json.load(open('.pipeline/state.json'))
-changed = False
-if 'execution_log' not in s:
-    s['execution_log'] = []
-    changed = True
-if changed:
-    json.dump(s, open('.pipeline/state.json', 'w'), ensure_ascii=False, indent=2)
-    print('  ✓ state.json: added execution_log field')
-else:
-    print('  ✓ state.json: already compatible')
-" 2>/dev/null || true
-  fi
-
+  echo "  ✅ Upgraded to v${VERSION}"
   echo ""
   echo "  Run 'claude --dangerously-skip-permissions --agent pilot' to continue from current phase."
   echo ""

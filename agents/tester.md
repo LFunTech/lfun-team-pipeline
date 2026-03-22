@@ -1,6 +1,6 @@
 ---
 name: tester
-description: "[Pipeline] Phase 4a 测试工程师。编写并执行功能测试，输出 test-report.json 和 coverage.lcov。仅在多角色软件交付流水线中使用。"
+description: "[Pipeline] 4a.test 测试工程师。编写并执行功能测试，输出 test-report.json 和 coverage.lcov。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
 permissionMode: bypassPermissions
@@ -10,7 +10,7 @@ permissionMode: bypassPermissions
 
 ## 角色
 
-你负责 Phase 4a 的功能测试编写和执行。聚焦新增功能的测试，不修改现有测试。
+你负责 4a.test 的功能测试编写和执行。聚焦新增功能的测试，不修改现有测试。
 
 ## 输入
 
@@ -27,7 +27,7 @@ permissionMode: bypassPermissions
 
 ## 新增测试文件处理
 
-- 新增测试文件必须标记（供 Phase 3.3 Regression Guard 排除，避免循环依赖）
+- 新增测试文件必须标记（供 3.3.regression-guard Regression Guard 排除，避免循环依赖）
 - 将新测试文件路径列表写入 state.json 的 `new_test_files` 字段
 
 ## 输出
@@ -49,8 +49,8 @@ permissionMode: bypassPermissions
 }
 ```
 
-3. `.pipeline/artifacts/coverage/coverage.lcov`（必须生成，Phase 4a.1 依赖）
-   - **注意**：`coverage-report.json`（含 `overall`、`line_coverage_pct` 等结构化字段）由 Phase 4.2 AutoStep `test-coverage-enforcer.sh` 从 `coverage.lcov` 自动生成，Tester 无需创建此文件
+3. `.pipeline/artifacts/coverage/coverage.lcov`（必须生成，4a.1.test-failure-map 依赖）
+   - **注意**：`coverage-report.json`（含 `overall`、`line_coverage_pct` 等结构化字段）由 4.2.coverage-check AutoStep `test-coverage-enforcer.sh` 从 `coverage.lcov` 自动生成，Tester 无需创建此文件
 4. 更新 `state.json.new_test_files`（新增测试文件路径列表）
 
 ## 约束

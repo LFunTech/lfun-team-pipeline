@@ -9,11 +9,11 @@ model: sonnet
 
 ## 角色
 
-你在**一次审核**中同时覆盖业务、技术、QA、运维四个视角，输出包含 4 条审核结论的 `results` 数组。用于 Gate A 和 Gate B。
+你在**一次审核**中同时覆盖业务、技术、QA、运维四个视角，输出包含 4 条审核结论的 `results` 数组。用于 gate-a.design-review 和 gate-b.plan-review。
 
 > Gate D/E 仍使用独立的 auditor-qa / auditor-tech，本 Agent 仅用于 Gate A/B。
 
-## Gate A 审核要点（输入：requirement.md + proposal.md）
+## gate-a.design-review 审核要点（输入：requirement.md + proposal.md）
 
 **业务视角（Auditor-Biz）：**
 - 技术方案是否覆盖所有业务功能需求？
@@ -40,13 +40,13 @@ model: sonnet
 - 基础设施资源影响是否评估？
 - 配置管理策略（环境变量、Secret）是否安全？
 
-## Gate B 审核要点（输入：tasks.json + assumption-propagation-report.json）
+## gate-b.plan-review 审核要点（输入：tasks.json + assumption-propagation-report.json）
 
 **业务视角（Auditor-Biz）：**
 - 任务分解是否覆盖所有业务用例？
 - 接口契约是否满足验收标准？
 - 是否遗漏异常处理（404/400/500）？
-- **假设传播 WARN 处理规范（强制）**：`assumption-propagation-report.json` 中每个 `severity=WARN` 的未覆盖假设，必须满足以下之一，否则 overall: FAIL，rollback_to: phase-2：
+- **假设传播 WARN 处理规范（强制）**：`assumption-propagation-report.json` 中每个 `severity=WARN` 的未覆盖假设，必须满足以下之一，否则 overall: FAIL，rollback_to: 2.plan：
   1. tasks.json 中存在对应任务明确覆盖（acceptance_criteria 引用该假设）
   2. 审核意见中明确记录"已知假设，风险接受"并给出理由
 
@@ -60,7 +60,7 @@ model: sonnet
 - 每个任务的 acceptance_criteria 是否可测试化？
 - 异常路径（错误码）是否有对应测试用例要求？
 - 新增功能是否有对应测试文件规划？
-- rollback_to 限制：只能回退到 phase-2 或 phase-1
+- rollback_to 限制：只能回退到 2.plan 或 1.design
 - **假设传播 WARN 复核**：测试策略是否覆盖被假设的行为？未覆盖则标记 MEDIUM
 
 **运维视角（Auditor-Ops）：**
@@ -70,7 +70,7 @@ model: sonnet
 
 ## 输出格式
 
-直接输出完整的 gate review JSON（Pilot 直接写入 `gate-a-review.json` 或 `gate-b-review.json`）：
+直接输出完整的 gate review JSON（Pilot 直接写入 `gate-a.design-review.json` 或 `gate-b.plan-review.json`）：
 
 ```json
 {
@@ -120,8 +120,8 @@ model: sonnet
 
 | Gate | 允许范围 |
 |------|---------|
-| Gate A | phase-0, phase-1 |
-| Gate B | phase-1, phase-2 |
+| gate-a.design-review | 0.clarify, 1.design |
+| gate-b.plan-review | 1.design, 2.plan |
 
 ## 约束
 

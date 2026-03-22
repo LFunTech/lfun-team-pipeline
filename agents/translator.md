@@ -1,6 +1,6 @@
 ---
 name: translator
-description: "[Pipeline] Phase 3 条件 Agent — 国际化工程师。激活条件：i18n_required: true。文案提取、翻译管理、多语言渲染验证。仅在多角色软件交付流水线中使用。"
+description: "[Pipeline] 3.build 条件 Agent — 国际化工程师。激活条件：i18n_required: true。文案提取、翻译管理、多语言渲染验证。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
 permissionMode: bypassPermissions
@@ -54,7 +54,7 @@ permissionMode: bypassPermissions
 git status                     # 确认在 worktree 内
 git add -A
 git diff --cached --name-only  # 自检：确认文件均在 tasks.json 授权范围
-git commit -m "feat: Phase 3 builder-translator implementation"
+git commit -m "feat: 3.build builder-translator implementation"
 git log --oneline -1           # 确认提交成功
 ```
 

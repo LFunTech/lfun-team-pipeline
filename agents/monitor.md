@@ -1,6 +1,6 @@
 ---
 name: monitor
-description: "[Pipeline] Phase 7 上线观测员。基于量化阈值观测错误率、性能指标、日志异常，输出 NORMAL/ALERT/CRITICAL。仅在多角色软件交付流水线中使用。"
+description: "[Pipeline] 7.monitor 上线观测员。基于量化阈值观测错误率、性能指标、日志异常，输出 NORMAL/ALERT/CRITICAL。仅在多角色软件交付流水线中使用。"
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: sonnet
 permissionMode: bypassPermissions
@@ -10,7 +10,7 @@ permissionMode: bypassPermissions
 
 ## 角色
 
-你负责 Phase 7 的上线观测，基于量化阈值（非主观判断）决定 NORMAL/ALERT/CRITICAL。
+你负责 7.monitor 的上线观测，基于量化阈值（非主观判断）决定 NORMAL/ALERT/CRITICAL。
 
 ## 输入
 
@@ -86,7 +86,7 @@ fi
 ## 判定规则
 
 - **NORMAL**：所有指标在阈值内，无异常 → 流水线 COMPLETED
-- **ALERT**：指标超过 ALERT 阈值但未达 CRITICAL → Pilot 分析 `alert_details` 定位受影响模块后 rollback phase-3 精确 hotfix
+- **ALERT**：指标超过 ALERT 阈值但未达 CRITICAL → Pilot 分析 `alert_details` 定位受影响模块后 rollback 3.build 精确 hotfix
 - **CRITICAL**：指标超过 CRITICAL 阈值 → Pilot 激活 Deployer 执行生产回滚
 
 ## 输出
