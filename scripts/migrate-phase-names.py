@@ -287,8 +287,8 @@ def migrate_config_json(filepath):
     pairs = build_replacement_pairs()
     changed = False
 
-    # max_attempts
-    if "max_attempts" in config:
+    # max_attempts — 兼容 int（旧版简单值）和 dict（按阶段配置）两种格式
+    if "max_attempts" in config and isinstance(config["max_attempts"], dict):
         new_attempts = {}
         for key, val in config["max_attempts"].items():
             new_key = apply_replacements(key, pairs)
@@ -296,6 +296,20 @@ def migrate_config_json(filepath):
             if new_key != key:
                 changed = True
         config["max_attempts"] = new_attempts
+
+    # phases.enabled — 数组中的旧 phase 名替换
+    if "phases" in config and isinstance(config["phases"], dict):
+        if "enabled" in config["phases"] and isinstance(config["phases"]["enabled"], list):
+            new_enabled = []
+            for item in config["phases"]["enabled"]:
+                if isinstance(item, str):
+                    new_item = apply_replacements(item, pairs)
+                    if new_item != item:
+                        changed = True
+                    new_enabled.append(new_item)
+                else:
+                    new_enabled.append(item)
+            config["phases"]["enabled"] = new_enabled
 
     # gates
     if "gates" in config:
