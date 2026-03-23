@@ -1573,18 +1573,56 @@ cmd_replan() {
 
 cmd_status() {
   local status_view="overview"
+  local interactive=false
   while [ $# -gt 0 ]; do
     case "$1" in
       --view=*) status_view="${1#*=}" ;;
       --view) shift; status_view="${1:-overview}" ;;
+      --interactive|-i) interactive=true ;;
       overview|proposals|issues|execution|retries|all) status_view="$1" ;;
       *)
-        echo "❌ 用法: team status [--view <overview|proposals|issues|execution|retries|all>]"
+        echo "❌ 用法: team status [--interactive] [--view <overview|proposals|issues|execution|retries|all>]"
         return 1
         ;;
     esac
     shift || true
   done
+
+  if [ "$interactive" = true ] && [ "${TEAM_STATUS_INTERACTIVE_CHILD:-}" != "1" ]; then
+    local views=(overview proposals issues execution retries)
+    local current_index=0
+    local i
+    for i in "${!views[@]}"; do
+      if [ "${views[$i]}" = "$status_view" ]; then
+        current_index=$i
+        break
+      fi
+    done
+
+    while true; do
+      printf '\033[2J\033[H'
+      TEAM_STATUS_INTERACTIVE_CHILD=1 "$0" status --view "${views[$current_index]}"
+      echo "  操作: Tab/右箭头=下一个  Shift-Tab/左箭头=上一个  q=退出"
+
+      local key=""
+      IFS= read -rsn1 key || break
+      case "$key" in
+        q|Q) break ;;
+        $'\t') current_index=$(((current_index + 1) % ${#views[@]})) ;;
+        $'\033')
+          local rest=""
+          IFS= read -rsn2 rest || true
+          case "$rest" in
+            '[C') current_index=$(((current_index + 1) % ${#views[@]})) ;;
+            '[D') current_index=$(((current_index - 1 + ${#views[@]}) % ${#views[@]})) ;;
+            '[Z') current_index=$(((current_index - 1 + ${#views[@]}) % ${#views[@]})) ;;
+          esac
+          ;;
+      esac
+    done
+    echo ""
+    return 0
+  fi
 
   if [ ! -f ".pipeline/state.json" ]; then
     echo ""
