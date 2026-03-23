@@ -1572,6 +1572,20 @@ cmd_replan() {
 }
 
 cmd_status() {
+  local status_view="overview"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --view=*) status_view="${1#*=}" ;;
+      --view) shift; status_view="${1:-overview}" ;;
+      overview|proposals|issues|execution|retries|all) status_view="$1" ;;
+      *)
+        echo "❌ 用法: team status [--view <overview|proposals|issues|execution|retries|all>]"
+        return 1
+        ;;
+    esac
+    shift || true
+  done
+
   if [ ! -f ".pipeline/state.json" ]; then
     echo ""
     echo "  ❌ No pipeline found in current directory."
@@ -1580,7 +1594,7 @@ cmd_status() {
     exit 1
   fi
 
-  python3 - << 'PYEOF'
+  TEAM_STATUS_VIEW="$status_view" python3 - << 'PYEOF'
 import json, os, sys
 import subprocess
 import re
@@ -1773,6 +1787,14 @@ def print_panel(title, lines):
 MAX_PROPOSAL_ITEMS = 8
 MAX_WAITING_ITEMS = 3
 MAX_RECENT_ISSUES = 3
+status_view = os.environ.get('TEAM_STATUS_VIEW', 'overview')
+
+def wants(name):
+    if status_view == 'all':
+        return True
+    if status_view == 'overview':
+        return name == 'overview'
+    return status_view == name
 
 # ── Header / Overview ──────────────────────────────────────────────
 print()
@@ -1789,6 +1811,25 @@ if cond:
     inactive = [k for k, v in cond.items() if not v]
     parts = [c(GREEN, f"+{k}") for k in active] + [c(DIM, f"-{k}") for k in inactive]
     overview_lines.append(f"{c(BOLD, 'Agents:')}    {', '.join(parts)}")
+
+tab_items = [
+    ('overview', 'Overview'),
+    ('proposals', 'Proposals'),
+    ('issues', 'Issues'),
+    ('execution', 'Execution'),
+    ('retries', 'Retries'),
+]
+tab_line = []
+for key, label in tab_items:
+    if status_view == 'all':
+        tab_line.append(c(BOLD if key == 'overview' else DIM, label))
+    elif key == status_view or (status_view == 'overview' and key == 'overview'):
+        tab_line.append(c(CYAN + BOLD, f'[{label}]'))
+    else:
+        tab_line.append(c(DIM, label))
+overview_lines.append(f"{c(BOLD, 'Views:')}     {' | '.join(tab_line)}")
+if status_view == 'overview':
+    overview_lines.append(c(DIM, "提示: team status --view proposals|issues|execution|retries|all"))
 
 print_panel(f"Pipeline Status — {project}", overview_lines)
 
@@ -1838,7 +1879,17 @@ if os.path.exists(queue_file):
     if hidden_proposals:
         proposal_lines.append(c(DIM, f"  ... 另有 {hidden_proposals} 个 proposal，避免状态页过长未展开"))
 
-    print_panel("Proposals", proposal_lines)
+    if wants('proposals'):
+        print_panel("Proposals", proposal_lines)
+    elif status_view == 'overview':
+        proposal_summary = [f"{c(BOLD, 'Progress:')}  {c(BOLD, str(done))}/{total}"]
+        if running:
+            proposal_summary.append(f"{c(BOLD, 'Running:')}   {', '.join(p.get('id', '?') for p in running[:3])}")
+        else:
+            proposal_summary.append(f"{c(BOLD, 'State:')}     {c(DIM, '无运行中 proposal')}")
+        if total > len(visible_proposals):
+            proposal_summary.append(c(DIM, f"使用 `team status --view proposals` 查看全部摘要（当前隐藏 {total - len(visible_proposals)} 项）"))
+        print_panel("Proposals", proposal_summary)
 
 # ── Issues panel ───────────────────────────────────────────────────
 issue_lines = []
@@ -1954,7 +2005,21 @@ if active_workers and not os.path.isdir(results_dir):
 if not issue_lines:
     issue_lines.append(c(DIM, "暂无 issue watcher / issue run 数据"))
 
-print_panel("Issues", issue_lines)
+if wants('issues'):
+    print_panel("Issues", issue_lines)
+elif status_view == 'overview':
+    issue_summary = []
+    if issue_repo:
+        issue_summary.append(f"{c(BOLD, 'Repo:')}      {issue_repo}")
+    if queue_counts is not None:
+        issue_summary.append(
+            f"{c(BOLD, 'Queue:')}     queued={c(BLUE, str(queue_counts['queued']))} | processing={c(CYAN, str(queue_counts['processing']))} | waiting={c(YELLOW, str(queue_counts['waiting']))} | done={c(GREEN, str(queue_counts['done']))}"
+        )
+    if not issue_summary:
+        issue_summary.append(c(DIM, '暂无 issue watcher / issue run 数据'))
+    else:
+        issue_summary.append(c(DIM, '使用 `team status --view issues` 查看 issue 明细'))
+    print_panel("Issues", issue_summary)
 
 # ── Step execution log ─────────────────────────────────────────────
 index_file = ".pipeline/artifacts/logs/pipeline.index.json"
@@ -1986,7 +2051,18 @@ if steps:
         triggered_str = c(DIM, f" [by {triggered_by}]") if triggered_by else ""
         exec_lines.append(f"{c(rc + BOLD, result):>6}  {step}{attempt_str}{rollback_str}{triggered_str}")
 
-    print_panel("Execution", exec_lines)
+    if wants('execution'):
+        print_panel("Execution", exec_lines)
+    elif status_view == 'overview':
+        exec_summary = [f"{c(BOLD, 'Execution Log:')}  ({len(steps)} steps)"]
+        for s in steps[-5:]:
+            step = s.get('step', '?')
+            result = s.get('result', '?')
+            rc = RESULT_COLOR.get(result, WHITE)
+            exec_summary.append(f"{c(rc + BOLD, result):>6}  {step}")
+        if len(steps) > 5:
+            exec_summary.append(c(DIM, '使用 `team status --view execution` 查看完整执行记录'))
+        print_panel("Execution", exec_summary)
 
 # ── Retry counts (phases with >1 attempts) ─────────────────────────
 notable = {k: v for k, v in attempts.items() if isinstance(v, int) and v > 1}
@@ -1994,7 +2070,10 @@ if notable:
     retry_lines = [f"{c(BOLD, 'Retried phases:')}"]
     for k, v in sorted(notable.items()):
         retry_lines.append(f"  {c(YELLOW, k)}: {v} attempts")
-    print_panel("Retries", retry_lines)
+    if wants('retries') or status_view == 'overview':
+        if status_view == 'overview' and len(retry_lines) > 5:
+            retry_lines = retry_lines[:5] + [c(DIM, '使用 `team status --view retries` 查看全部重试阶段')]
+        print_panel("Retries", retry_lines)
 
 print()
 PYEOF
@@ -3156,7 +3235,7 @@ for item in candidates:
 
 case "${1:-}" in
   init)    shift; cmd_init "$@" ;;
-  status)  cmd_status ;;
+  status)  shift; cmd_status "$@" ;;
   upgrade) cmd_upgrade ;;
   version) cmd_version ;;
   update)  cmd_update ;;
