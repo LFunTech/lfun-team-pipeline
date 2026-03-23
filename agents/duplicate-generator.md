@@ -128,7 +128,7 @@ FunctionName(
 ```json
 {
   "generated_at": "ISO-8601 时间戳",
-  "generator_model": "模型名称（如 claude-sonnet-4-6）",
+  "generator_model": "当前平台使用的模型名称",
   "remediations": [
     {
       "group_id": "DUP-001",

@@ -1,6 +1,8 @@
 {
   "_comment": "全局模型路由配置。项目级 config.json 的 model_routing 可覆盖此处同名字段。",
   "enabled": false,
+  "cli_backend": "auto",
+  "_cli_backend_comment": "CLI 后端: auto(自动检测) | claude | codex | opencode",
   "providers": {
     "glm5": {
       "base_url": "https://coding.dashscope.aliyuncs.com/apps/anthropic",

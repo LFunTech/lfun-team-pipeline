@@ -1,6 +1,6 @@
 # lfun-team-pipeline
 
-> A multi-agent software delivery pipeline for Claude Code — 28 AI agents collaborating from requirements to production.
+> Multi-platform AI multi-agent software delivery pipeline — 28 AI agents collaborating from requirements to production.
 
 [中文](README.md) | **English**
 
@@ -8,9 +8,9 @@
 
 ## What is this?
 
-**lfun-team-pipeline** orchestrates **28 specialized AI agents** that collaborate like a real engineering team — requirements analyst, architect, multiple parallel developers, QA engineers, a deployer, and a post-launch monitor — all driven by a single Pilot.
+**lfun-team-pipeline** is a production-grade software delivery pipeline that supports **Claude Code / Codex / Cursor / OpenCode** — four major AI coding platforms. It orchestrates **28 specialized AI agents** that collaborate like a real engineering team — requirements analyst, architect, multiple parallel developers, QA engineers, a deployer, and a post-launch monitor — all driven by a single Pilot.
 
-You describe the full system you want to build. The pipeline automatically decomposes it into an ordered proposal queue and delivers each one sequentially or in parallel. Each proposal runs through the complete requirements-to-production lifecycle independently. Supports routing builder agents to external LLMs (e.g., GLM-5, Ollama) to significantly reduce Claude token costs.
+You describe the full system you want to build. The pipeline automatically decomposes it into an ordered proposal queue and delivers each one sequentially or in parallel. Each proposal runs through the complete requirements-to-production lifecycle independently. Supports routing builder agents to external LLMs (e.g., GLM-5, Ollama) to significantly reduce token costs. Team members can each use their preferred platform, and projects can seamlessly switch between platforms.
 
 ```
 system planning → proposal queue → [P-001: clarify → architect → build → test → deploy → monitor] → P-002 → ...
@@ -58,30 +58,42 @@ Memory Consolidation  Extract and persist constraints (user-confirmed)
 Mark Done     Mark proposal completed, auto-loop to next
 ```
 
+## Supported Platforms
+
+| Platform | Launch Command | Agent Format | Notes |
+|----------|---------------|-------------|-------|
+| [Claude Code](https://claude.ai/code) | `claude --agent pilot` | `.md` | Native support, CLI-driven |
+| [Codex](https://openai.com/codex) | `codex --full-auto` | `.toml` | AGENTS.md auto-loads pilot instructions |
+| [Cursor](https://cursor.sh) | Agent mode → `/pilot` | `.md` | IDE built-in Agent mode |
+| [OpenCode](https://opencode.ai) | `opencode run --agent build` | `.md` | AGENTS.md auto-loads pilot instructions |
+
+The same project can seamlessly switch between platforms — `state.json` format is fully compatible.
+
 ## Prerequisites
 
 | Requirement | Details |
 |-------------|---------|
-| [Claude Code](https://claude.ai/code) | CLI tool (requires Pro, Max, or API subscription) |
+| AI coding tool (any one) | Claude Code / Codex / Cursor / OpenCode |
 | Git | v2.28+ (worktree support required) |
+| Python 3 | Agent transpiler and state management |
 | Docker + Docker Compose | For Phase 6 deployment |
 | `gh` CLI | For GitHub integration (Phase 5.9) |
 
 ## Installation
-
-**Option A — One-liner (recommended):**
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/LFunTech/lfun-team-pipeline/main/install.sh)
-```
-
-**Option B — Clone and install:**
 
 ```bash
 git clone https://github.com/LFunTech/lfun-team-pipeline.git
 cd lfun-team-pipeline
 bash install.sh
 ```
+
+The installer sets up:
+- `team` CLI command (to `~/.local/bin/`)
+- Agent sources + transpiler (to `~/.local/share/team-pipeline/`)
+- Pipeline templates (autosteps, playbook, etc.)
+- CC agents to `~/.claude/agents/` (backward compatible)
+
+> **Important:** Agent definitions are now **persisted per-repo**. `team init` generates platform-specific agents into `.pipeline/agents/`, so each repo independently manages its own agent version.
 
 > **PATH note:** If the `team` command is not found after install, add `$HOME/.local/bin` to your PATH:
 > ```bash
@@ -91,26 +103,39 @@ bash install.sh
 ## Quick Start — New Project
 
 ```bash
-# 1. Create your project and initialize the pipeline
+# 1. Create your project and initialize the pipeline (specify platform)
 mkdir my-project && cd my-project
 git init
-team init
+team init                          # Default: Claude Code
+team init --platform codex         # Or specify: codex / cursor / opencode
 
 # 2. Edit pipeline config (set project_name, tech stack, coverage threshold)
 $EDITOR .pipeline/config.json
 
 # 3. Start the pipeline — describe the full system you want to build
-claude --dangerously-skip-permissions --agent pilot
-# First run enters System Planning, generates a proposal queue, then starts execution
-# Each run executes one batch and exits; run again to continue the next batch
+team run
 ```
 
-The pipeline uses a **batch execution model**: each `claude --dangerously-skip-permissions --agent pilot` invocation executes one batch (typically 1-3 phases), then exits. Run it again to continue. 12 batches cover the complete pipeline (Phase 0 through Phase 7).
+### `team run` per-platform behavior
+
+| Platform | Execution | Batch loop |
+|----------|-----------|------------|
+| **Claude Code** | PTY Runner watches for `[EXIT]`, kills & restarts next batch | **Full auto-loop** — one `team run` does it all |
+| **Codex** | Launches `codex --full-auto` interactive TUI with full context | **Single batch** — `team run` again to continue (uses `codex resume`) |
+| **OpenCode** | Uses TUI for interactive phases; prefers `opencode run --continue` for automatic phases | **Outer `team run` loop** — after each round it reads `state.json`, waits a few seconds, then starts the next round automatically if the pipeline is not done |
+| **Cursor** | IDE-driven, enter `/pilot` in Agent mode | **IDE interaction** |
+
+> **Codex vs OpenCode loop behavior**
+> CC uses a PTY runner inside a single `team run` process to restart `claude` batch by batch.
+> **OpenCode** uses a shell-level loop: interactive phases such as `system-planning` stay in TUI with auto-injected prompts, while automatic phases prefer `opencode run --continue`.
+> **Codex** remains primarily one interactive session per batch; run `team run` again to continue.
+
+> If you want OpenCode to stay fully interactive throughout the pipeline, set `opencode.interaction_mode` to `tui` in `.pipeline/config.json`, or run `TEAM_OPENCODE_INTERACTION_MODE=tui team run` for a temporary override.
+> `team run` now prints section banners around OpenCode output and renders phases with human-friendly labels, such as `并行实现 (3.build)` and `需求澄清 (0.clarify)`, so you can quickly tell whether the current output is TUI interaction, automatic execution, or the wait-before-next-round step.
+
+It pauses automatically when human intervention is needed:
 
 ```bash
-# Continue to the next batch
-claude --dangerously-skip-permissions --agent pilot
-
 # Check current progress (color status panel)
 team status
 ```
@@ -166,7 +191,7 @@ cat > .pipeline/config.json << 'EOF'
 EOF
 
 # Start the pipeline
-claude --dangerously-skip-permissions --agent pilot
+team run
 # → System Planning interacts with you (describe system, confirm blueprint, confirm proposal details)
 # → After planning, all proposals execute automatically with no further interaction
 ```
@@ -189,10 +214,10 @@ The pipeline can add new features or modules to any existing codebase.
 
 ```bash
 cd your-existing-repo
-team init
+team init --platform codex   # or cc / cursor / opencode
 ```
 
-This only adds `.pipeline/` and `CLAUDE.md` — it does not touch any existing code.
+This only adds `.pipeline/` (including `agents/`) and platform-specific context files (`CLAUDE.md`/`AGENTS.md`/`.cursor/rules/`) — it does not touch any existing code.
 
 **Step 2 — Configure**
 
@@ -219,17 +244,17 @@ Edit `.pipeline/config.json` to match your existing stack:
 **Step 3 — Commit the pipeline config**
 
 ```bash
-git add .pipeline/config.json .pipeline/autosteps/ CLAUDE.md
+git add .pipeline/config.json .pipeline/autosteps/ CLAUDE.md AGENTS.md .cursor/
 git commit -m "chore: add lfun-team-pipeline"
 ```
 
 **Step 4 — Start the pipeline**
 
 ```bash
-claude --dangerously-skip-permissions --agent pilot
+team run
 ```
 
-Describe the new feature or full system you want to add. On first run, the pilot enters System Planning to generate a proposal queue, then executes each proposal sequentially. Builders will read the existing codebase in their git worktrees and implement changes that are consistent with the current architecture.
+Describe the new feature or full system you want to add. On first run, the Pilot enters System Planning to generate a proposal queue, then auto-loops to execute each proposal. Builders will read the existing codebase in their git worktrees and implement changes that are consistent with the current architecture.
 
 **Important notes for existing repos:**
 
@@ -252,21 +277,16 @@ Describe system → System Planning → Proposal Queue → [P-001 execute] → [
 **Step 1 — Start**
 
 ```bash
-claude --dangerously-skip-permissions --agent pilot
+team run
 ```
 
 On first run, the Pilot enters System Planning and guides you through describing the full system. Once complete, it generates:
 - `.pipeline/artifacts/system-blueprint.md`: System blueprint (tech stack, domain decomposition, data model skeleton)
 - `.pipeline/proposal-queue.json`: Ordered proposal queue
 
-**Step 2 — Batch execution**
-
-After System Planning completes, the first proposal starts automatically. Each run executes one batch and exits; run again to continue:
+After System Planning, `team run` continues automatically by phase: interactive phases open TUI, while automatic phases go through `opencode run --continue`. If no human intervention is needed, it runs until completion.
 
 ```bash
-# Continue to the next batch
-claude --dangerously-skip-permissions --agent pilot
-
 # Check current progress
 team status
 ```
@@ -300,7 +320,7 @@ for e in s.get('execution_log', []):
 ```bash
 # Preserve completed work, re-plan remaining proposals
 team replan
-claude --agent pilot
+team run
 ```
 
 ## Project Memory
@@ -317,10 +337,14 @@ Project memory ensures that business rules and technical decisions remain consis
 
 | Command | Description |
 |---------|-------------|
-| `team init` | Initialize pipeline in the current project directory |
-| `team run` | Auto-loop batch execution until completion or human intervention needed |
-| `team status` | Show pipeline execution progress (color panel: phase, proposal queue, execution log) |
-| `team upgrade` | In-place upgrade of playbook + autosteps (preserves state.json, artifacts, proposal queue) |
+| `team init [--platform <cc\|codex\|cursor\|opencode>]` | Initialize pipeline, generate platform-specific agents to `.pipeline/agents/` |
+| `team run` | CC: auto-loop all batches; OpenCode: outer loop with TUI for interactive phases and `run --continue` for automatic phases; Codex: one TUI batch at a time |
+| `team issue run <number> [--repo <owner/repo>]` | Convert a GitHub Issue into a single-proposal pipeline run inside its own worktree |
+| `team watch-issues [--once] [--interval <sec>] [--max-workers <n>] [--labels a,b] [--exclude-labels x,y] [--dry-run]` | Poll labeled GitHub Issues and dispatch them automatically |
+| `team migrate <cc\|codex\|cursor\|opencode> [--force]` | Switch platform (regenerates `.pipeline/agents/`, auto-snapshots) |
+| `team migrate --rollback` | Rollback to pre-migration state |
+| `team status` | Show pipeline execution progress (color panels: overview, Proposals, Issues, execution log; Issues includes GitHub queued counts, status summary, and human-friendly phases) |
+| `team upgrade` | In-place upgrade of playbook + autosteps + agents (preserves state, artifacts, proposal queue) |
 | `team replan` | Re-plan proposal queue (preserves completed work) |
 | `team scan` | Manually trigger project scan (component registry) |
 | `team version` | Print version |
@@ -329,17 +353,41 @@ Project memory ensures that business rules and technical decisions remain consis
 **Upgrading the pipeline version:**
 
 ```bash
-# 1. Update global agents and templates
+# 1. Update global templates
 cd /path/to/lfun-team-pipeline && bash install.sh
 
 # 2. In-place upgrade in your project
 cd /path/to/my-project && team upgrade
 
 # 3. Continue execution
-claude --dangerously-skip-permissions --agent pilot
+team run
 ```
 
-`team upgrade` overwrites `playbook.md` and `autosteps/` while preserving `config.json`, `state.json`, `artifacts/`, and `proposal-queue.json`, ensuring upgrades don't interrupt a running pipeline.
+`team upgrade` overwrites `playbook.md`, `autosteps/`, and regenerates `agents/` for the current platform, while preserving `config.json`, `state.json`, `artifacts/`, and `proposal-queue.json`, ensuring upgrades don't interrupt a running pipeline.
+
+## Safety & Rollback
+
+All file-modifying operations have built-in protection:
+
+| Operation | Protection |
+|-----------|-----------|
+| `team init` | Auto-cleans `.pipeline/` on failure if freshly created |
+| `team migrate` | Auto-snapshots before migration; auto-rollback on transpiler failure; atomic `config.json` writes |
+| `team migrate --rollback` | One-command restore to pre-migration state (agents + config) |
+| `team upgrade` | Backs up all files before overwriting; auto-restores agents on failure |
+| `bash install.sh` | Template directory backed up before overwrite; atomic `settings.json` writes |
+
+**Global environment rollback:**
+
+```bash
+# Rollback to pre-install global state (auto-finds latest backup)
+bash scripts/rollback.sh
+
+# Specify backup directory
+bash scripts/rollback.sh ~/.local/share/team-pipeline-backup-20260322_215623
+```
+
+**Backward compatibility:** Projects created with the old `team init` (no `.pipeline/agents/`) work normally with the new CLI — `team run` automatically falls back to global `~/.claude/agents/`. `team upgrade` will suggest using `team migrate` to enable per-repo agents.
 
 ## `team init` Output
 
@@ -347,13 +395,18 @@ claude --dangerously-skip-permissions --agent pilot
 .pipeline/
 ├── config.json          ← Pipeline configuration (edit before starting, includes model routing)
 ├── playbook.md          ← Phase execution playbook (loaded on-demand by Pilot)
-├── llm-router.sh        ← Model routing dispatcher (auto-fallback to default model)
+├── llm-router.sh        ← Multi-platform model routing dispatcher
 ├── project-memory.json  ← Project memory (cross-pipeline constraint registry)
-├── autosteps/           ← 20 automated scripts (do not edit)
+├── agents/              ← ★ Platform-specific agent definitions (generated at init time)
+├── autosteps/           ← 20 automated scripts (platform-agnostic)
 ├── artifacts/           ← Runtime outputs (auto-generated)
 └── history/             ← Past proposal artifact archives
-CLAUDE.md                ← Pipeline instructions for Claude Code
+CLAUDE.md                ← Pipeline context (generated for CC/Cursor platforms)
+AGENTS.md                ← Pipeline context + Pilot instructions (generated for Codex/OpenCode)
+.cursor/rules/pipeline.md ← Cursor IDE pipeline rules (generated for Cursor platform)
 ```
+
+> The file format in `.pipeline/agents/` depends on the platform chosen at init time: CC/Cursor/OpenCode use `.md`, Codex uses `.toml`.
 
 ## Configuration Reference
 
@@ -374,6 +427,7 @@ CLAUDE.md                ← Pipeline instructions for Claude Code
   },
   "model_routing": {
     "enabled": false,                 // route some agents to external LLMs
+    "cli_backend": "auto",            // auto | claude | codex | opencode
     "providers": {
       "glm5": {
         "base_url": "https://coding.dashscope.aliyuncs.com/apps/anthropic",
@@ -399,21 +453,117 @@ CLAUDE.md                ← Pipeline instructions for Claude Code
 | `testing.coverage_threshold` | Coverage threshold (%) | `80` |
 | `max_attempts.default` | Max retries per phase | `3` |
 | `model_routing.enabled` | Enable model routing (route some agents to external LLMs) | `false` |
+| `model_routing.cli_backend` | CLI backend (`auto` / `claude` / `codex` / `opencode`) | `auto` |
+| `opencode.interaction_mode` | OpenCode interaction mode (`hybrid` / `tui` / `run`) | `hybrid` |
+| `issue_automation.repo` | Default GitHub repo watched by the issue watcher (empty = current repo) | `""` |
+| `issue_automation.inbox_label` | Label used for queued issues | `pipeline` |
+| `issue_automation.max_workers` | Max issue workers (auto-capped to 1 outside autonomous OpenCode mode) | `1` |
 | `model_routing.providers` | External LLM provider configs | `glm5`, `ollama` |
 | `model_routing.routes` | Agent → Provider mapping | see template |
+
+## GitHub Issue Automation
+
+GitHub Issues can now act as a dedicated Pilot input source:
+
+```bash
+# Process one issue
+team issue run 123
+
+# Start a watcher for label=pipeline
+team watch-issues
+
+# Scan once and exit
+team watch-issues --once
+```
+
+- `team issue run` creates an isolated workspace at `.worktrees/issues/issue-<number>`
+- It generates `.pipeline/artifacts/issue-context.md`, a single-proposal `proposal-queue.json`, and a fresh `state.json`
+- When Pilot sees `issue-context.md`, it switches into GitHub-Issue single-proposal delivery mode
+- On OpenCode, clarification phases automatically switch back to TUI; automatic phases keep using `run --continue`
+- The watcher reflects progress back to GitHub with labels for processing / waiting-human / done
+- `watch-issues` prioritizes issues labeled `urgent` / `critical` / `p0` / `bug` / `security`, then falls back to creation time ordering
+- `watch-issues --dry-run` previews the current scheduling order without actually executing issues
+- The Issues panel in `team status` shows the latest GitHub writeback time
+- The Issues panel in `team status` also shows recent issue URLs, worktrees, and log paths for quick handoff
+- The Issues panel also includes a compact `issue -> worktree/log/url` summary for fast copy/paste handoff
+- `team status` highlights `waiting-user` issues in a dedicated `Waiting-User` section and sorts them by `escalation > 0.clarify > 2.0b.depend-collect > memory-consolidation` takeover priority
+
+## Multi-Platform Support
+
+> New in v6.5
+
+The pipeline supports four AI coding platforms. Agent definitions are transpiled from canonical sources (`agents/*.md`) and **persisted per-repo** in `.pipeline/agents/`.
+
+**Core Architecture:**
+
+```
+agents/*.md (CC format, canonical source)
+      │
+      ▼
+  build-agents.py (transpiler)
+      │
+      ├── team init --platform cc      → .pipeline/agents/*.md  (CC format)
+      ├── team init --platform codex   → .pipeline/agents/*.toml (Codex format)
+      ├── team init --platform cursor  → .pipeline/agents/*.md  (Cursor format)
+      └── team init --platform opencode→ .pipeline/agents/*.md  (OpenCode format)
+```
+
+**Each repo independently manages its own platform.** Repo A can use Cursor while Repo B uses Codex, with no interference.
+
+**Platform Comparison:**
+
+| Feature | Claude Code | Codex | Cursor | OpenCode |
+|---------|------------|-------|--------|----------|
+| Agent Format | `.md` (YAML FM) | `.toml` | `.md` (YAML FM) | `.md` (YAML FM) |
+| Pilot Loading | `--agent pilot.md` | `AGENTS.md` auto-loaded | `/pilot` command | `AGENTS.md` auto-loaded |
+| Sub-agent Invocation | `Agent(name, prompt)` | `spawn_agent` / natural language | `Task(subagent_type, prompt)` | `@name` delegation |
+| Shell Tool | `Bash()` | `bash()` | `Shell()` | `bash()` |
+| Permission Model | `permissionMode` | `sandbox_mode` | `readonly` | implicit |
+
+**Skill Dependency Differences:**
+
+| Skill | Claude Code | Cursor | Codex | OpenCode |
+|-------|------------|--------|-------|----------|
+| code-review | `Skill("code-review")` (CodeRabbit CLI) | Built-in `code-reviewer` subagent | Requires CodeRabbit CLI | Requires CodeRabbit CLI |
+| code-simplifier | `Skill("code-simplifier")` (prompt) | Built-in `code-simplifier` subagent | Skill file auto-copied | Skill file auto-copied |
+| frontend-design | `Skill("frontend-design")` (prompt) | Skill file auto-copied | Skill file auto-copied | Skill file auto-copied |
+
+> The transpiler automatically converts `Skill("code-review")` to `Task(subagent_type="code-reviewer")` for Cursor — no manual adjustment needed.
+
+**Switching platforms:**
+
+```bash
+# Specify platform at init time
+team init --platform codex
+
+# Switch anytime (auto-snapshots, supports rollback)
+team migrate cursor       # Regenerates .pipeline/agents/ for Cursor
+team migrate cc           # Switch back to Claude Code
+team migrate --rollback   # Rollback to pre-migration state
+```
+
+**CLI Backend Priority (highest to lowest):**
+
+```
+$PIPELINE_CLI_BACKEND env var (current terminal only)
+    ↓
+.pipeline/config.json → model_routing.cli_backend (project-level)
+    ↓
+Auto-detect (claude > codex > opencode)
+```
 
 ## Model Routing
 
 > New in v6.4
 
-Route builder agents to external LLMs (e.g., GLM-5, local Ollama) while Claude handles review, architecture, and decision-making — significantly reducing token costs.
+Route builder agents to external LLMs (e.g., GLM-5, local Ollama) while the default model handles review, architecture, and decision-making — significantly reducing token costs.
 
 **Role Assignment:**
 
 | Role | Agents | Description |
 |------|--------|-------------|
 | External LLM (workers) | Builders, Tester, Planner, Contract-Formalizer, Documenter, Optimizer, Translator, Migrator | Code implementation, testing, docs |
-| Claude (lead) | Pilot, Clarifier, Architect, Simplifier, Inspector, all Auditors, Resolver, Deployer, Monitor | Requirements, architecture, code review, deployment decisions |
+| Default model (lead) | Pilot, Clarifier, Architect, Simplifier, Inspector, all Auditors, Resolver, Deployer, Monitor | Requirements, architecture, code review, deployment decisions |
 
 **Configuration (choose one):**
 

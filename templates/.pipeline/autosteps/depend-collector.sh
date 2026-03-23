@@ -141,7 +141,7 @@ GITIGNORE_EOF
   echo ""
   echo "## 填写完成后"
   echo ""
-  echo "在 Claude Code 对话中回复 **继续**，流水线将恢复执行。"
+  echo "在当前 AI 编程工具对话中回复 **继续**（或运行 \`team run\`），流水线将恢复执行。"
 } > "$DEPEND_DIR/README.md"
 
 # 用 bash 方式输出报告（更可靠）

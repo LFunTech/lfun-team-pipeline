@@ -6,6 +6,47 @@
 
 set -euo pipefail
 
+# --- 多平台 CLI 检测（优先级：环境变量 > config.json > llm-router.sh > 自动检测）---
+detect_pipeline_cli() {
+  if [ -n "${PIPELINE_CLI_BACKEND:-}" ]; then
+    echo "$PIPELINE_CLI_BACKEND"
+    return
+  fi
+  local config="${PIPELINE_DIR:-.pipeline}/config.json"
+  if [ -f "$config" ]; then
+    local cfg_backend
+    cfg_backend=$(python3 -c "import json; c=json.load(open('$config')); print(c.get('model_routing',{}).get('cli_backend','auto'))" 2>/dev/null || echo "auto")
+    if [ "$cfg_backend" != "auto" ] && [ -n "$cfg_backend" ]; then
+      echo "$cfg_backend"
+      return
+    fi
+  fi
+  if command -v claude &>/dev/null; then echo "claude"; return; fi
+  if command -v codex &>/dev/null; then echo "codex"; return; fi
+  if command -v opencode &>/dev/null; then echo "opencode"; return; fi
+  echo "none"
+}
+
+run_agent_cli() {
+  local agent_name="$1"
+  local prompt="$2"
+  # Try llm-router.sh first (supports model_routing)
+  local router="${PIPELINE_DIR:-.pipeline}/llm-router.sh"
+  if [ -f "$router" ]; then
+    bash "$router" "$agent_name" "$prompt" 2>/dev/null && return 0
+    local rc=$?
+    [ $rc -eq 10 ] || return $rc
+  fi
+  local cli
+  cli=$(detect_pipeline_cli)
+  case "$cli" in
+    claude)   claude --dangerously-skip-permissions --agent "$agent_name" -p "$prompt" 2>/dev/null ;;
+    codex)    codex exec --agent "$agent_name" --approval-mode never "$prompt" 2>/dev/null ;;
+    opencode) opencode exec --agent "$agent_name" "$prompt" 2>/dev/null ;;
+    *)        echo "[DuplicateDetector] 未检测到支持的 CLI (claude/codex/opencode)" >&2; return 1 ;;
+  esac
+}
+
 PIPELINE_DIR="${PIPELINE_DIR:-.pipeline}"
 MODE="${MODE:-full}"
 ARTIFACTS="$PIPELINE_DIR/artifacts"
@@ -108,8 +149,7 @@ $FEEDBACK_CONTENT"
     fi
 
     echo "[DuplicateDetector]   Generating remediation plan..."
-    claude --dangerously-skip-permissions --agent duplicate-generator \
-      -p "$GENERATOR_PROMPT" 2>/dev/null || {
+    run_agent_cli "duplicate-generator" "$GENERATOR_PROMPT" || {
       echo "[DuplicateDetector]   Generator failed"
       continue
     }
@@ -121,8 +161,7 @@ $FEEDBACK_CONTENT"
 
     # Step 3: Audit (independent process)
     echo "[DuplicateDetector]   Auditing remediation plan..."
-    claude --dangerously-skip-permissions --agent duplicate-auditor \
-      -p "审核 $REMEDIATION 中的整改方案正确性，独立验证每个 patch。输出到 $AUDIT。" 2>/dev/null || {
+    run_agent_cli "duplicate-auditor" "审核 $REMEDIATION 中的整改方案正确性，独立验证每个 patch。输出到 $AUDIT。" || {
       echo "[DuplicateDetector]   Auditor failed"
       continue
     }

@@ -1,18 +1,24 @@
 # CLAUDE.md — 多角色软件交付流水线
 
-本项目使用基于 Claude Code 的多角色软件交付流水线（v6.5）。
+本项目使用多平台多角色软件交付流水线（v6.5），支持 Claude Code / Codex / Cursor / OpenCode。
 
 ## 快速启动
 
 ```bash
-# 启动流水线（每次执行一个批次，完成后自动退出）
-claude --dangerously-skip-permissions --agent pilot
+# 启动流水线
+team run
+# CC: PTY Runner 自动循环所有批次
+# Codex: 启动交互 TUI (codex --full-auto)，单批次完成后再 team run
+# OpenCode: 交互阶段走 TUI，自动阶段由 team run 外层循环自动续跑
+# Cursor: 提示在 IDE Agent 模式中输入 /pilot
 
-# 流水线会输出 [EXIT] 提示，再次运行即可继续下一批次
-claude --dangerously-skip-permissions --agent pilot
+# 或直接调用平台 CLI
+claude --dangerously-skip-permissions --agent pilot  # Claude Code
+codex --full-auto                                    # Codex (AGENTS.md 自动加载)
+opencode                                             # OpenCode (AGENTS.md 自动加载)
 
 # 查看当前状态
-cat .pipeline/state.json | python3 -c "import json,sys; s=json.load(sys.stdin); print(f'Phase: {s[\"current_phase\"]}, Status: {s[\"status\"]}')"
+team status
 ```
 
 ## 目录结构
@@ -22,6 +28,7 @@ cat .pipeline/state.json | python3 -c "import json,sys; s=json.load(sys.stdin); 
 ├── config.json          ← 流水线配置（编辑此文件以自定义行为）
 ├── playbook.md          ← 阶段执行手册（Pilot 按需加载，勿手动修改）
 ├── project-memory.json  ← 项目记忆（跨流水线约束清单，自动维护）
+├── agents/              ← ★ 平台特定的 Agent 定义（team init 时生成，勿手动修改）
 ├── history/             ← 历次流水线产物归档（按需查阅）
 ├── state.json           ← 运行时状态（Pilot 自动管理，勿手动修改）
 ├── autosteps/           ← AutoStep Shell 脚本（20 个）
@@ -98,8 +105,25 @@ Mark Completed  → 标记提案完成，循环取下一个
 | `requirement_completeness.min_words` | 需求文档最小字数 | `200` |
 | `testing.coverage_tool` | 测试覆盖率工具 | `nyc` |
 | `testing.coverage_threshold` | 覆盖率阈值（百分比） | `80` |
+| `issue_automation.inbox_label` | 待处理 Issue 标签 | `pipeline` |
+| `issue_automation.max_workers` | Issue watcher 最大 worker 数 | `1` |
 
 ## 常见操作
+
+### GitHub Issue 自动处理
+
+```bash
+# 将单个 issue 转成单提案流水线并执行
+team issue run 123
+
+# 持续轮询带 pipeline label 的 issue
+team watch-issues
+
+# 只轮询一轮
+team watch-issues --once
+```
+
+Issue 模式会在 `.worktrees/issues/issue-<number>` 创建独立 worktree，生成 `issue-context.md` 后交给 Pilot 执行。
 
 ### 继续执行流水线
 
@@ -159,6 +183,19 @@ ls ~/.claude/skills/ | grep -E "code-simplifier|code-review"
 ```
 
 如缺失，请参考 Claude Code Skill 安装文档。
+
+### 平台迁移与回滚
+
+```bash
+# 切换平台（自动创建快照）
+team migrate cursor
+
+# 回滚到迁移前
+team migrate --rollback
+
+# 全局环境回滚（安装脚本级别）
+bash scripts/rollback.sh
+```
 
 ### 3.build Worktree 异常恢复
 
