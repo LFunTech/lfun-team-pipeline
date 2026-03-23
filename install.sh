@@ -1604,8 +1604,12 @@ cmd_status() {
     local cache_dir
     local proposals_expanded=false
     local issues_expanded=false
+    local execution_expanded=false
+    local retries_expanded=false
     local proposals_page=1
     local issues_page=1
+    local execution_page=1
+    local retries_page=1
     cache_dir=$(mktemp -d "${TMPDIR:-/tmp}/team-status.XXXXXX")
     trap 'rm -rf "$cache_dir"' RETURN
     render_status_view() {
@@ -1625,6 +1629,16 @@ cmd_status() {
           [ "$issues_expanded" = true ] && expanded="issues"
           target_page="$issues_page"
           target_file="$cache_dir/${target_view}.${issues_expanded}.${target_page}.txt"
+          ;;
+        execution)
+          [ "$execution_expanded" = true ] && expanded="execution"
+          target_page="$execution_page"
+          target_file="$cache_dir/${target_view}.${execution_expanded}.${target_page}.txt"
+          ;;
+        retries)
+          [ "$retries_expanded" = true ] && expanded="retries"
+          target_page="$retries_page"
+          target_file="$cache_dir/${target_view}.${retries_expanded}.${target_page}.txt"
           ;;
         *)
           target_file="$cache_dir/${target_view}.txt"
@@ -1653,6 +1667,8 @@ cmd_status() {
       case "$current_view" in
         proposals) cache_file="$cache_dir/${current_view}.${proposals_expanded}.${proposals_page}.txt" ;;
         issues) cache_file="$cache_dir/${current_view}.${issues_expanded}.${issues_page}.txt" ;;
+        execution) cache_file="$cache_dir/${current_view}.${execution_expanded}.${execution_page}.txt" ;;
+        retries) cache_file="$cache_dir/${current_view}.${retries_expanded}.${retries_page}.txt" ;;
       esac
       if [ ! -f "$cache_file" ]; then
         echo "  ⟳ 正在加载 ${current_view} ..."
@@ -1679,18 +1695,30 @@ cmd_status() {
               issues_expanded=$([ "$issues_expanded" = true ] && echo false || echo true)
               issues_page=1
               ;;
+            execution)
+              execution_expanded=$([ "$execution_expanded" = true ] && echo false || echo true)
+              execution_page=1
+              ;;
+            retries)
+              retries_expanded=$([ "$retries_expanded" = true ] && echo false || echo true)
+              retries_page=1
+              ;;
           esac
           ;;
         n|N)
           case "$current_view" in
             proposals) proposals_page=$((proposals_page + 1)) ;;
             issues) issues_page=$((issues_page + 1)) ;;
+            execution) execution_page=$((execution_page + 1)) ;;
+            retries) retries_page=$((retries_page + 1)) ;;
           esac
           ;;
         p|P)
           case "$current_view" in
             proposals) [ "$proposals_page" -gt 1 ] && proposals_page=$((proposals_page - 1)) ;;
             issues) [ "$issues_page" -gt 1 ] && issues_page=$((issues_page - 1)) ;;
+            execution) [ "$execution_page" -gt 1 ] && execution_page=$((execution_page - 1)) ;;
+            retries) [ "$retries_page" -gt 1 ] && retries_page=$((retries_page - 1)) ;;
           esac
           ;;
         $'\t') current_index=$(((current_index + 1) % ${#views[@]})) ;;
@@ -2303,7 +2331,15 @@ if steps:
         exec_lines.append(f"{c(rc + BOLD, result):>6}  {step}{attempt_str}{rollback_str}{triggered_str}")
 
     if wants('execution'):
-        print_panel("Execution", exec_lines)
+        if is_expanded('execution'):
+            visible_exec_lines, exec_page, exec_total_pages, _ = paginate_items(exec_lines[1:], reserved_lines=16)
+            exec_panel_lines = [exec_lines[0]] + visible_exec_lines
+            exec_panel_lines.append(c(DIM, "  已展开 execution 清单；按 e 可收起"))
+            if exec_total_pages > 1:
+                exec_panel_lines.append(c(DIM, f"  第 {exec_page}/{exec_total_pages} 页；按 n/p 翻页"))
+            print_panel("Execution", exec_panel_lines)
+        else:
+            print_panel("Execution", exec_lines)
     elif status_view == 'overview':
         exec_summary = [f"{c(BOLD, 'Execution Log:')}  ({len(steps)} steps)"]
         for s in steps[-5:]:
@@ -2324,7 +2360,15 @@ if notable:
     if wants('retries') or status_view == 'overview':
         if status_view == 'overview' and len(retry_lines) > 5:
             retry_lines = retry_lines[:5] + [c(DIM, '使用 `team status --view retries` 查看全部重试阶段')]
-        print_panel("Retries", retry_lines)
+        elif wants('retries') and is_expanded('retries'):
+            visible_retry_lines, retry_page, retry_total_pages, _ = paginate_items(retry_lines[1:], reserved_lines=14)
+            retry_panel_lines = [retry_lines[0]] + visible_retry_lines
+            retry_panel_lines.append(c(DIM, '  已展开 retries 清单；按 e 可收起'))
+            if retry_total_pages > 1:
+                retry_panel_lines.append(c(DIM, f'  第 {retry_page}/{retry_total_pages} 页；按 n/p 翻页'))
+            print_panel("Retries", retry_panel_lines)
+        else:
+            print_panel("Retries", retry_lines)
 
 print()
 PYEOF
