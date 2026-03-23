@@ -1593,12 +1593,28 @@ cmd_status() {
     local current_index=0
     local i
     local cache_dir
+    local proposals_expanded=false
+    local issues_expanded=false
     cache_dir=$(mktemp -d "${TMPDIR:-/tmp}/team-status.XXXXXX")
     trap 'rm -rf "$cache_dir"' RETURN
     render_status_view() {
       local target_view="$1"
-      local target_file="$cache_dir/${target_view}.txt"
-      TEAM_STATUS_INTERACTIVE_CHILD=1 "$0" status --view "$target_view" > "$target_file"
+      local expanded=""
+      local target_file=""
+      case "$target_view" in
+        proposals)
+          [ "$proposals_expanded" = true ] && expanded="proposals"
+          target_file="$cache_dir/${target_view}.${proposals_expanded}.txt"
+          ;;
+        issues)
+          [ "$issues_expanded" = true ] && expanded="issues"
+          target_file="$cache_dir/${target_view}.${issues_expanded}.txt"
+          ;;
+        *)
+          target_file="$cache_dir/${target_view}.txt"
+          ;;
+      esac
+      TEAM_STATUS_INTERACTIVE_CHILD=1 TEAM_STATUS_EXPANDED="$expanded" "$0" status --view "$target_view" > "$target_file"
     }
     for i in "${!views[@]}"; do
       if [ "${views[$i]}" = "$status_view" ]; then
@@ -1618,12 +1634,16 @@ cmd_status() {
       printf '\033[2J\033[H'
       local current_view="${views[$current_index]}"
       local cache_file="$cache_dir/${current_view}.txt"
+      case "$current_view" in
+        proposals) cache_file="$cache_dir/${current_view}.${proposals_expanded}.txt" ;;
+        issues) cache_file="$cache_dir/${current_view}.${issues_expanded}.txt" ;;
+      esac
       if [ ! -f "$cache_file" ]; then
         echo "  ⟳ 正在加载 ${current_view} ..."
         render_status_view "$current_view"
       fi
       cat "$cache_file"
-      echo "  操作: Tab/右箭头=下一个  Shift-Tab/左箭头=上一个  q=退出  r=刷新当前视图"
+      echo "  操作: Tab/右箭头=下一个  Shift-Tab/左箭头=上一个  q=退出  r=刷新当前视图  e=展开/收起清单"
 
       local key=""
       IFS= read -rsn1 key || break
@@ -1632,6 +1652,16 @@ cmd_status() {
         r|R)
           rm -f "$cache_file"
           render_status_view "$current_view" &
+          ;;
+        e|E)
+          case "$current_view" in
+            proposals)
+              proposals_expanded=$([ "$proposals_expanded" = true ] && echo false || echo true)
+              ;;
+            issues)
+              issues_expanded=$([ "$issues_expanded" = true ] && echo false || echo true)
+              ;;
+          esac
           ;;
         $'\t') current_index=$(((current_index + 1) % ${#views[@]})) ;;
         $'\033')
@@ -1851,6 +1881,10 @@ MAX_PROPOSAL_ITEMS = 8
 MAX_WAITING_ITEMS = 3
 MAX_RECENT_ISSUES = 3
 status_view = os.environ.get('TEAM_STATUS_VIEW', 'overview')
+expanded_flags = {x for x in os.environ.get('TEAM_STATUS_EXPANDED', '').split(',') if x}
+
+def is_expanded(name):
+    return name in expanded_flags
 
 def wants(name):
     if status_view == 'all':
@@ -1916,10 +1950,11 @@ if os.path.exists(queue_file):
     visible_proposals = []
     unfinished = [p for p in proposals if p.get("status") != "completed"]
     completed = [p for p in proposals if p.get("status") == "completed"]
+    proposal_limit = len(proposals) if is_expanded('proposals') else MAX_PROPOSAL_ITEMS
     if unfinished:
-        visible_proposals.extend(unfinished[:MAX_PROPOSAL_ITEMS])
+        visible_proposals.extend(unfinished[:proposal_limit])
     else:
-        visible_proposals.extend(completed[:min(len(completed), 3)])
+        visible_proposals.extend(completed[:(len(completed) if is_expanded('proposals') else min(len(completed), 3))])
 
     for p in visible_proposals:
         pid    = p.get("id", "?")
@@ -1941,6 +1976,8 @@ if os.path.exists(queue_file):
     hidden_proposals = max(0, len(proposals) - len(visible_proposals))
     if hidden_proposals:
         proposal_lines.append(c(DIM, f"  ... 另有 {hidden_proposals} 个 proposal，避免状态页过长未展开"))
+    elif wants('proposals') and is_expanded('proposals'):
+        proposal_lines.append(c(DIM, "  已展开全部 proposal；按 e 可收起"))
 
     if wants('proposals'):
         print_panel("Proposals", proposal_lines)
@@ -1974,13 +2011,14 @@ if os.path.exists(watch_file):
         watch = json.load(open(watch_file))
         active_workers = watch.get("workers", [])
         issue_lines.append(f"{c(BOLD, 'Watcher:')}   {len(active_workers)} worker(s) running")
-        for w in active_workers[:MAX_RECENT_ISSUES]:
+        worker_limit = len(active_workers) if is_expanded('issues') else MAX_RECENT_ISSUES
+        for w in active_workers[:worker_limit]:
             issue_no = w.get("issue_number", "?")
             pid = w.get("pid", "?")
             worktree = w.get("worktree", "")
             issue_lines.append(f"  {c(YELLOW, '#'+str(issue_no))} pid={pid} {c(DIM, worktree)}")
-        if len(active_workers) > MAX_RECENT_ISSUES:
-            issue_lines.append(c(DIM, f"  ... 另有 {len(active_workers) - MAX_RECENT_ISSUES} 个活跃 worker 未展开"))
+        if len(active_workers) > worker_limit:
+            issue_lines.append(c(DIM, f"  ... 另有 {len(active_workers) - worker_limit} 个活跃 worker 未展开"))
     except Exception as ex:
         issue_lines.append(f"{c(RED, 'watch-state 读取失败')} {c(DIM, str(ex))}")
 
@@ -2025,7 +2063,8 @@ if os.path.isdir(results_dir):
             waiting_items = sorted(waiting_items, key=waiting_takeover_priority)
             issue_lines.append(f"{c(YELLOW + BOLD, 'Waiting-User:')}  {len(waiting_items)} issue(s) need manual takeover")
             issue_lines.append(f"  {c(DIM, '优先级: escalation > 0.clarify > 2.0b.depend-collect > memory-consolidation > 其他')}" )
-            for item in waiting_items[:MAX_WAITING_ITEMS]:
+            waiting_limit = len(waiting_items) if is_expanded('issues') else MAX_WAITING_ITEMS
+            for item in waiting_items[:waiting_limit]:
                 waiting_phase = fmt_phase(item.get('phase', 'unknown'))
                 extras = []
                 if item.get('worktree'):
@@ -2036,12 +2075,13 @@ if os.path.isdir(results_dir):
                     extras.append(f"url={item.get('issue_url')}")
                 tail = c(DIM, " | ".join(extras)) if extras else ""
                 issue_lines.append(f"  {c(YELLOW, '⏸')} #{item.get('issue_number', '?')} {item.get('issue_title', '')} {c(DIM, '@ ' + waiting_phase)} {tail}")
-            if len(waiting_items) > MAX_WAITING_ITEMS:
-                issue_lines.append(c(DIM, f"  ... 另有 {len(waiting_items) - MAX_WAITING_ITEMS} 个 waiting issue 未展开"))
+            if len(waiting_items) > waiting_limit:
+                issue_lines.append(c(DIM, f"  ... 另有 {len(waiting_items) - waiting_limit} 个 waiting issue 未展开"))
         latest_feedback = max((item.get('github_feedback_at', '') for item in results), default='')
         issue_lines.append(f"{c(BOLD, 'Feedback:')}  last GitHub writeback at {fmt_ts(latest_feedback)}")
         issue_lines.append(f"{c(BOLD, 'Recent:')}    {len(results)} issue run(s)")
-        recent_items = sorted(results, key=lambda x: x.get('updated_at', ''), reverse=True)[:MAX_RECENT_ISSUES]
+        recent_limit = len(results) if is_expanded('issues') else MAX_RECENT_ISSUES
+        recent_items = sorted(results, key=lambda x: x.get('updated_at', ''), reverse=True)[:recent_limit]
         for item in recent_items:
             issue_no = item.get('issue_number', '?')
             result = item.get('result', 'unknown')
@@ -2057,8 +2097,10 @@ if os.path.isdir(results_dir):
                 extras.append(f"url={item.get('issue_url')}")
             tail = c(DIM, " | ".join(extras)) if extras else ""
             issue_lines.append(f"  {c(result_color, result_icon)} #{issue_no} {title} {c(DIM, f'({result_label} @ {fmt_phase(phase_name)})')} {tail}")
-        if len(results) > MAX_RECENT_ISSUES:
-            issue_lines.append(c(DIM, f"  ... 另有 {len(results) - MAX_RECENT_ISSUES} 条 issue 运行记录未展开"))
+        if len(results) > recent_limit:
+            issue_lines.append(c(DIM, f"  ... 另有 {len(results) - recent_limit} 条 issue 运行记录未展开"))
+        elif wants('issues') and is_expanded('issues'):
+            issue_lines.append(c(DIM, "  已展开 issue 清单；按 e 可收起"))
 
 if active_workers and not os.path.isdir(results_dir):
     issue_lines.append(
