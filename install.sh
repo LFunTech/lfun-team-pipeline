@@ -1575,23 +1575,41 @@ print(p if p not in ('auto', '') else 'cc')
 }
 
 cmd_replan() {
-  if [ ! -f ".pipeline/proposal-queue.json" ]; then
-    echo "❌ No proposal queue found. Run: claude --agent pilot"
+  if [ ! -f ".pipeline/state.json" ]; then
+    echo ""
+    echo "  ❌ No pipeline found in current directory."
+    echo "     Run: team init && team run"
+    echo ""
     exit 1
   fi
 
   echo ""
-  echo "  Re-planning: removing proposal queue to trigger System Planning"
+  echo "  Re-planning: resetting pipeline to System Planning"
   echo ""
 
-  # Archive current queue
-  BACKUP="proposal-queue.backup.$(date +%Y%m%d%H%M%S).json"
-  cp .pipeline/proposal-queue.json ".pipeline/$BACKUP" 2>/dev/null || true
-  echo "  ✓ Backed up current queue to .pipeline/$BACKUP"
+  # Archive current queue if present
+  if [ -f ".pipeline/proposal-queue.json" ]; then
+    BACKUP="proposal-queue.backup.$(date +%Y%m%d%H%M%S).json"
+    cp .pipeline/proposal-queue.json ".pipeline/$BACKUP" 2>/dev/null || true
+    echo "  ✓ Backed up current queue to .pipeline/$BACKUP"
+    rm .pipeline/proposal-queue.json
+    echo "  ✓ Removed current proposal queue"
+  else
+    echo "  ℹ  No existing proposal queue found; proceeding with state reset"
+  fi
 
-  # Remove queue to trigger re-planning
-  rm .pipeline/proposal-queue.json
-  echo "  ✓ Queue removed. Next pipeline invocation will enter System Planning."
+  python3 - <<'PY'
+import json
+from pathlib import Path
+
+path = Path('.pipeline/state.json')
+state = json.loads(path.read_text(encoding='utf-8'))
+state['current_phase'] = 'system-planning'
+state['last_completed_phase'] = None
+state['status'] = 'running'
+path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+PY
+  echo "  ✓ State reset to system-planning"
   echo ""
   echo "  Note: Completed proposals are preserved in project-memory.json."
   echo "  The new plan will build on existing progress."
