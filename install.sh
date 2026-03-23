@@ -1770,6 +1770,10 @@ def print_panel(title, lines):
     print(c(BOLD + CYAN, "  ╚" + "═" * 40))
     print()
 
+MAX_PROPOSAL_ITEMS = 8
+MAX_WAITING_ITEMS = 3
+MAX_RECENT_ISSUES = 3
+
 # ── Header / Overview ──────────────────────────────────────────────
 print()
 status_color = GREEN if status == "completed" else (YELLOW if status == "running" else RED)
@@ -1805,7 +1809,15 @@ if os.path.exists(queue_file):
     if running:
         proposal_lines.append(f"{c(BOLD, 'Running:')}   {', '.join(p.get('id', '?') for p in running)}")
 
-    for p in proposals:
+    visible_proposals = []
+    unfinished = [p for p in proposals if p.get("status") != "completed"]
+    completed = [p for p in proposals if p.get("status") == "completed"]
+    if unfinished:
+        visible_proposals.extend(unfinished[:MAX_PROPOSAL_ITEMS])
+    else:
+        visible_proposals.extend(completed[:min(len(completed), 3)])
+
+    for p in visible_proposals:
         pid    = p.get("id", "?")
         title  = p.get("title", "")
         pst    = p.get("status", "pending")
@@ -1822,6 +1834,10 @@ if os.path.exists(queue_file):
         dep_str = c(DIM, f"  ← {', '.join(deps)}") if deps else ""
         proposal_lines.append(f"  {icon} {c(color, f'[{pid}] {title}')}{dep_str}")
 
+    hidden_proposals = max(0, len(proposals) - len(visible_proposals))
+    if hidden_proposals:
+        proposal_lines.append(c(DIM, f"  ... 另有 {hidden_proposals} 个 proposal，避免状态页过长未展开"))
+
     print_panel("Proposals", proposal_lines)
 
 # ── Issues panel ───────────────────────────────────────────────────
@@ -1833,6 +1849,8 @@ watch_file = ".pipeline/issues/watch-state.json"
 active_workers = []
 if issue_repo:
     issue_lines.append(f"{c(BOLD, 'Repo:')}      {issue_repo}")
+if issue_cfg.get('source_labels'):
+    issue_lines.append(f"{c(BOLD, 'Source:')}    {issue_cfg.get('source_labels')}")
 if queue_counts is not None:
     issue_lines.append(
         f"{c(BOLD, 'Queue:')}     queued={c(BLUE, str(queue_counts['queued']))} | processing={c(CYAN, str(queue_counts['processing']))} | waiting={c(YELLOW, str(queue_counts['waiting']))} | done={c(GREEN, str(queue_counts['done']))}"
@@ -1842,12 +1860,13 @@ if os.path.exists(watch_file):
         watch = json.load(open(watch_file))
         active_workers = watch.get("workers", [])
         issue_lines.append(f"{c(BOLD, 'Watcher:')}   {len(active_workers)} worker(s) running")
-        issue_lines.append(f"{c(BOLD, 'Active:')}")
-        for w in active_workers:
+        for w in active_workers[:MAX_RECENT_ISSUES]:
             issue_no = w.get("issue_number", "?")
             pid = w.get("pid", "?")
             worktree = w.get("worktree", "")
             issue_lines.append(f"  {c(YELLOW, '#'+str(issue_no))} pid={pid} {c(DIM, worktree)}")
+        if len(active_workers) > MAX_RECENT_ISSUES:
+            issue_lines.append(c(DIM, f"  ... 另有 {len(active_workers) - MAX_RECENT_ISSUES} 个活跃 worker 未展开"))
     except Exception as ex:
         issue_lines.append(f"{c(RED, 'watch-state 读取失败')} {c(DIM, str(ex))}")
 
@@ -1892,44 +1911,40 @@ if os.path.isdir(results_dir):
             waiting_items = sorted(waiting_items, key=waiting_takeover_priority)
             issue_lines.append(f"{c(YELLOW + BOLD, 'Waiting-User:')}  {len(waiting_items)} issue(s) need manual takeover")
             issue_lines.append(f"  {c(DIM, '优先级: escalation > 0.clarify > 2.0b.depend-collect > memory-consolidation > 其他')}" )
-            for item in waiting_items[:5]:
+            for item in waiting_items[:MAX_WAITING_ITEMS]:
                 waiting_phase = fmt_phase(item.get('phase', 'unknown'))
-                issue_lines.append(
-                    f"  {c(YELLOW, '⏸')} #{item.get('issue_number', '?')} {item.get('issue_title', '')} {c(DIM, '@ ' + waiting_phase)}"
-                )
-                if item.get('issue_url'):
-                    issue_lines.append(f"    url: {c(BLUE, item.get('issue_url'))}")
+                extras = []
                 if item.get('worktree'):
-                    issue_lines.append(f"    worktree: {c(DIM, item.get('worktree'))}")
+                    extras.append(f"wt={item.get('worktree')}")
                 if item.get('log_file'):
-                    issue_lines.append(f"    log: {c(DIM, item.get('log_file'))}")
+                    extras.append(f"log={item.get('log_file')}")
+                if item.get('issue_url'):
+                    extras.append(f"url={item.get('issue_url')}")
+                tail = c(DIM, " | ".join(extras)) if extras else ""
+                issue_lines.append(f"  {c(YELLOW, '⏸')} #{item.get('issue_number', '?')} {item.get('issue_title', '')} {c(DIM, '@ ' + waiting_phase)} {tail}")
+            if len(waiting_items) > MAX_WAITING_ITEMS:
+                issue_lines.append(c(DIM, f"  ... 另有 {len(waiting_items) - MAX_WAITING_ITEMS} 个 waiting issue 未展开"))
         latest_feedback = max((item.get('github_feedback_at', '') for item in results), default='')
         issue_lines.append(f"{c(BOLD, 'Feedback:')}  last GitHub writeback at {fmt_ts(latest_feedback)}")
         issue_lines.append(f"{c(BOLD, 'Recent:')}    {len(results)} issue run(s)")
-        for item in sorted(results, key=lambda x: x.get('updated_at', ''), reverse=True)[:5]:
+        recent_items = sorted(results, key=lambda x: x.get('updated_at', ''), reverse=True)[:MAX_RECENT_ISSUES]
+        for item in recent_items:
             issue_no = item.get('issue_number', '?')
             result = item.get('result', 'unknown')
             phase_name = item.get('phase', 'unknown')
             title = item.get('issue_title', '')
             result_label, result_color, result_icon = fmt_issue_result(result)
-            issue_lines.append(
-                f"  {c(result_color, result_icon)} #{issue_no} {title} {c(DIM, f'({result_label} @ {fmt_phase(phase_name)})')}"
-            )
-            if item.get('issue_url'):
-                issue_lines.append(f"    url: {c(BLUE, item.get('issue_url'))}")
+            extras = []
             if item.get('worktree'):
-                issue_lines.append(f"    worktree: {c(DIM, item.get('worktree'))}")
+                extras.append(f"wt={item.get('worktree')}")
             if item.get('log_file'):
-                issue_lines.append(f"    log: {c(DIM, item.get('log_file'))}")
-
-        compact = []
-        for item in sorted(results, key=lambda x: x.get('updated_at', ''), reverse=True)[:5]:
-            compact.append(
-                f"#{item.get('issue_number', '?')} -> {item.get('worktree', '-') } | {item.get('log_file', '-') } | {item.get('issue_url', '-') }"
-            )
-        issue_lines.append(f"{c(BOLD, 'Quick:')}")
-        for line in compact:
-            issue_lines.append(f"  {c(DIM, line)}")
+                extras.append(f"log={item.get('log_file')}")
+            if item.get('issue_url'):
+                extras.append(f"url={item.get('issue_url')}")
+            tail = c(DIM, " | ".join(extras)) if extras else ""
+            issue_lines.append(f"  {c(result_color, result_icon)} #{issue_no} {title} {c(DIM, f'({result_label} @ {fmt_phase(phase_name)})')} {tail}")
+        if len(results) > MAX_RECENT_ISSUES:
+            issue_lines.append(c(DIM, f"  ... 另有 {len(results) - MAX_RECENT_ISSUES} 条 issue 运行记录未展开"))
 
 if active_workers and not os.path.isdir(results_dir):
     issue_lines.append(
