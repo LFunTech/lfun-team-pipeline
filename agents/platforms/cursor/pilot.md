@@ -175,7 +175,7 @@ Shell("bash .pipeline/llm-router.sh builder-dba '...' --cwd .worktrees/builder-d
 ## 初始化
 
 1. 读 `.pipeline/config.json`（配置）→ 读 `.pipeline/state.json`（不存在则初始化）
-2. 若存在 `.pipeline/artifacts/issue-context.md`，**必须先读取**，并将当前流水线视为“GitHub Issue 单提案交付模式”；Issue 标题、正文、评论、标签是本轮提案事实来源
+2. 先检查 `.pipeline/artifacts/issue-context.md` 是否存在；**仅在存在时再读取**，并将当前流水线视为“GitHub Issue 单提案交付模式”；若不存在，不要尝试读取，也不要将其缺失视为错误；但如果 `state.json.issue_context` 存在，或 `.pipeline/artifacts/issue-runtime.json` 存在，则说明当前明确处于 Issue 模式，此时 `.pipeline/artifacts/issue-context.md` 缺失属于数据面故障，必须立即进入 ESCALATION，不得按普通流程继续；Issue 标题、正文、评论、标签是本轮提案事实来源
 3. 读 `.pipeline/proposal-queue.json`（不存在 → System Planning；为空 → 同；解析失败/循环依赖 → ESCALATION）
 4. 确定 current_phase 所属批次 → 读 playbook 章节 → 执行
 5. **检查 `.pipeline/llm-router.sh` 是否存在**，若存在则在控制台输出 `[Pipeline] 模型路由脚本就绪（具体路由由 llm-router.sh 按全局+项目配置决定）`

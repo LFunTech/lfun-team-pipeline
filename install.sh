@@ -2468,14 +2468,14 @@ cmd_run() {
   # CC has a PTY runner that auto-loops batches; other platforms use their
   # own interactive sessions where the user drives batch continuation.
   if [ "$cli_backend" != "claude" ]; then
-    local PILOT_PROMPT='你是 Pilot（流水线主控）。请严格按照 AGENTS.md 中的规则执行：1) 读取 .pipeline/state.json（若不存在则初始化）确定当前阶段；2) 读取 .pipeline/playbook.md 中对应章节；3) 若存在 .pipeline/artifacts/issue-context.md，必须优先读取并按 GitHub Issue 交付模式执行；4) 执行当前批次。批次完成后更新 state.json 并输出 [EXIT]。'
+    local PILOT_PROMPT='你是 Pilot（流水线主控）。请严格按照 AGENTS.md 中的规则执行：1) 读取 .pipeline/state.json（若不存在则初始化）确定当前阶段；2) 读取 .pipeline/playbook.md 中对应章节；3) 先检查 .pipeline/artifacts/issue-context.md 是否存在，仅在存在时再读取，并按 GitHub Issue 交付模式执行；若不存在，不要尝试读取，也不要将其缺失视为错误；但如果 state.json 含 issue_context，或 .pipeline/artifacts/issue-runtime.json 存在，则说明当前就是 Issue 模式，此时 .pipeline/artifacts/issue-context.md 必须存在；若缺失，立即进入 ESCALATION，不得按普通流程继续；4) 执行当前批次。批次完成后更新 state.json 并输出 [EXIT]。'
 
     case "$cli_backend" in
       codex)
         echo ""
         local cx_msg=""
         if [ -f ".pipeline/state.json" ]; then
-          cx_msg="继续执行流水线。读取 .pipeline/state.json 确定当前阶段，读取 .pipeline/playbook.md 对应章节；若存在 .pipeline/artifacts/issue-context.md，必须优先读取并按 GitHub Issue 交付模式执行；完成后更新 state.json 并输出 [EXIT]。"
+          cx_msg="继续执行流水线。读取 .pipeline/state.json 确定当前阶段，读取 .pipeline/playbook.md 对应章节；先检查 .pipeline/artifacts/issue-context.md 是否存在，仅在存在时再读取并按 GitHub Issue 交付模式执行；若不存在，不要尝试读取，也不要将其缺失视为错误；但如果 state.json 含 issue_context，或 .pipeline/artifacts/issue-runtime.json 存在，则说明当前就是 Issue 模式，此时 .pipeline/artifacts/issue-context.md 必须存在；若缺失，立即进入 ESCALATION，不得按普通流程继续；完成后更新 state.json 并输出 [EXIT]。"
           echo "  已检测到 state.json，尝试恢复上次会话..."
         else
           cx_msg="$PILOT_PROMPT"
@@ -2488,7 +2488,7 @@ cmd_run() {
         ;;
       opencode)
         # OpenCode：交互阶段走 TUI，自动阶段优先走 run --continue。
-        local OC_CONT_MSG="继续执行流水线。读取 .pipeline/state.json 确定当前阶段，读取 .pipeline/playbook.md 对应章节；若存在 .pipeline/artifacts/issue-context.md，必须优先读取并按 GitHub Issue 交付模式执行；完成后更新 state.json 并输出 [EXIT]。"
+        local OC_CONT_MSG="继续执行流水线。读取 .pipeline/state.json 确定当前阶段，读取 .pipeline/playbook.md 对应章节；先检查 .pipeline/artifacts/issue-context.md 是否存在，仅在存在时再读取并按 GitHub Issue 交付模式执行；若不存在，不要尝试读取，也不要将其缺失视为错误；但如果 state.json 含 issue_context，或 .pipeline/artifacts/issue-runtime.json 存在，则说明当前就是 Issue 模式，此时 .pipeline/artifacts/issue-context.md 必须存在；若缺失，立即进入 ESCALATION，不得按普通流程继续；完成后更新 state.json 并输出 [EXIT]。"
         local oc_sleep="${TEAM_OPENCODE_LOOP_SLEEP:-3}"
         local oc_round=0
         while true; do

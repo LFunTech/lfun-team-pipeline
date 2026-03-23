@@ -181,14 +181,14 @@ Bash("bash .pipeline/llm-router.sh builder-dba '...' --cwd .worktrees/builder-db
 ## 初始化
 
 1. 读 `.pipeline/config.json`（配置）→ 读 `.pipeline/state.json`（不存在则初始化）
-2. 若存在 `.pipeline/artifacts/issue-context.md`，**必须先读取**，并将当前流水线视为“GitHub Issue 单提案交付模式”；Issue 标题、正文、评论、标签是本轮提案事实来源
+2. 先检查 `.pipeline/artifacts/issue-context.md` 是否存在；**仅在存在时再读取**，并将当前流水线视为“GitHub Issue 单提案交付模式”；若不存在，不要尝试读取，也不要将其缺失视为错误；但如果 `state.json.issue_context` 存在，或 `.pipeline/artifacts/issue-runtime.json` 存在，则说明当前明确处于 Issue 模式，此时 `.pipeline/artifacts/issue-context.md` 缺失属于数据面故障，必须立即进入 ESCALATION，不得按普通流程继续；Issue 标题、正文、评论、标签是该模式下的事实来源
 3. 读 `.pipeline/proposal-queue.json`（不存在 → System Planning；为空 → 同；解析失败/循环依赖 → ESCALATION）
 4. 确定 current_phase 所属批次 → 读 playbook 章节 → 执行
 5. **检查 `.pipeline/llm-router.sh` 是否存在**，若存在则在控制台输出 `[Pipeline] 模型路由脚本就绪（具体路由由 llm-router.sh 按全局+项目配置决定）`
 
 ## state.json 关键字段
 
-`pipeline_id`, `project_name`, `current_phase`, `last_completed_phase`, `status`(running/escalation), `attempt_counts`(每阶段计数+per_builder), `conditional_agents`(migrator/optimizer/translator), `phase_5_mode`, `new_test_files[]`, `phase_3_base_sha`, `phase_3_worktrees{}`, `phase_3_branches{}`, `phase_3_main_branch`, `phase_3_merge_order[]`, `github_repo_created`, `github_repo_url`, `execution_log[]`(含 model 字段), `parallel_proposals[]`, `parallel_base_sha`, `parallel_base_branch`, `parallel_worktrees{}`, `parallel_branches{}`, `parallel_merge_order[]`, `parallel_completed[]`
+`pipeline_id`, `project_name`, `current_phase`, `last_completed_phase`, `status`(running/escalation), `attempt_counts`(每阶段计数+per_builder), `conditional_agents`(migrator/optimizer/translator), `phase_5_mode`, `new_test_files[]`, `phase_3_base_sha`, `phase_3_worktrees{}`, `phase_3_branches{}`, `phase_3_main_branch`, `phase_3_merge_order[]`, `github_repo_created`, `github_repo_url`, `execution_log[]`(含 model 字段), `parallel_proposals[]`, `parallel_base_sha`, `parallel_base_branch`, `parallel_worktrees{}`, `parallel_branches{}`, `parallel_merge_order[]`, `parallel_completed[]`, `issue_context{}`(Issue 模式元数据，存在时必须联动校验 `artifacts/issue-context.md`)
 
 每次进入新阶段递增 attempt_counts。超 max_attempts(默认 3) → ESCALATION。
 conditional_agents 赋值：gate-a.design-review PASS 后从 proposal.md 读取条件标记写入。
