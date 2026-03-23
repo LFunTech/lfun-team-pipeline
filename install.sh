@@ -1573,20 +1573,29 @@ cmd_replan() {
 
 cmd_status() {
   local status_view="overview"
-  local interactive=false
+  local interactive="auto"
   while [ $# -gt 0 ]; do
     case "$1" in
       --view=*) status_view="${1#*=}" ;;
       --view) shift; status_view="${1:-overview}" ;;
       --interactive|-i) interactive=true ;;
+      --plain|--no-interactive) interactive=false ;;
       overview|proposals|issues|execution|retries|all) status_view="$1" ;;
       *)
-        echo "❌ 用法: team status [--interactive] [--view <overview|proposals|issues|execution|retries|all>]"
+        echo "❌ 用法: team status [--interactive|--plain] [--view <overview|proposals|issues|execution|retries|all>]"
         return 1
         ;;
     esac
     shift || true
   done
+
+  if [ "$interactive" = "auto" ]; then
+    if [ -t 0 ] && [ -t 1 ] && [ -z "${TEAM_STATUS_INTERACTIVE_CHILD:-}" ] && [ "$status_view" = "overview" ]; then
+      interactive=true
+    else
+      interactive=false
+    fi
+  fi
 
   if [ "$interactive" = true ] && [ "${TEAM_STATUS_INTERACTIVE_CHILD:-}" != "1" ]; then
     local views=(overview proposals issues execution retries)
