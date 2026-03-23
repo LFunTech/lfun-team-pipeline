@@ -1931,6 +1931,39 @@ def detect_issue_repo(cfg):
     except Exception:
         return ''
 
+def summarize_issue_queue_counts(items, cfg):
+    if items is None:
+        return None
+    def extract_labels(raw_labels):
+        labels = set()
+        for lbl in raw_labels or []:
+            if isinstance(lbl, dict):
+                name = lbl.get('name', '')
+            else:
+                name = str(lbl)
+            if name:
+                labels.add(name)
+        return labels
+    source_labels = {x.strip().lower() for x in str(cfg.get('source_labels', '')).split(',') if x.strip()}
+    queued = processing = waiting = done = 0
+    for item in items:
+        labels = extract_labels(item.get('labels', []))
+        lower_labels = {x.lower() for x in labels}
+        if source_labels and not (source_labels & lower_labels):
+            continue
+        state_name = str(item.get('state', 'OPEN')).lower()
+        if state_name == 'closed':
+            continue
+        if cfg['processing_label'] in labels:
+            processing += 1
+        elif cfg['waiting_label'] in labels:
+            waiting += 1
+        elif cfg['done_label'] in labels:
+            done += 1
+        else:
+            queued += 1
+    return {'queued': queued, 'processing': processing, 'waiting': waiting, 'done': done}
+
 def query_issue_queue_counts(repo, cfg):
     if not repo:
         return None
@@ -1946,22 +1979,7 @@ def query_issue_queue_counts(repo, cfg):
     except Exception:
         return None
 
-    source_labels = {x.strip().lower() for x in str(cfg.get('source_labels', '')).split(',') if x.strip()}
-    queued = processing = waiting = done = 0
-    for item in items:
-        labels = {lbl.get('name', '') for lbl in item.get('labels', [])}
-        lower_labels = {x.lower() for x in labels}
-        if source_labels and not (source_labels & lower_labels):
-            continue
-        if cfg['processing_label'] in labels:
-            processing += 1
-        elif cfg['waiting_label'] in labels:
-            waiting += 1
-        elif cfg['done_label'] in labels:
-            done += 1
-        else:
-            queued += 1
-    return {'queued': queued, 'processing': processing, 'waiting': waiting, 'done': done}
+    return summarize_issue_queue_counts(items, cfg)
 
 def query_issue_items(repo, cfg):
     if not repo:
@@ -2191,8 +2209,9 @@ if os.path.exists(queue_file):
 issue_lines = []
 issue_cfg = load_issue_cfg()
 issue_repo = detect_issue_repo(issue_cfg)
-queue_counts = query_issue_queue_counts(issue_repo, issue_cfg)
-issue_queue_items = query_issue_items(issue_repo, issue_cfg)
+need_issue_list = wants('issues') or status_view == 'all'
+issue_queue_items = query_issue_items(issue_repo, issue_cfg) if need_issue_list else []
+queue_counts = summarize_issue_queue_counts(issue_queue_items, issue_cfg) if need_issue_list else query_issue_queue_counts(issue_repo, issue_cfg)
 watch_file = ".pipeline/issues/watch-state.json"
 active_workers = []
 if issue_repo:
