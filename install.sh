@@ -1860,6 +1860,65 @@ def query_issue_queue_counts(repo, cfg):
             queued += 1
     return {'queued': queued, 'processing': processing, 'waiting': waiting, 'done': done}
 
+def query_issue_items(repo, cfg):
+    if not repo:
+        return []
+    try:
+        raw = subprocess.check_output([
+            'gh', 'issue', 'list',
+            '--repo', repo,
+            '--state', 'open',
+            '--limit', '200',
+            '--json', 'number,title,labels,createdAt,url',
+        ], text=True, stderr=subprocess.DEVNULL)
+        items = json.loads(raw)
+    except Exception:
+        return []
+
+    source_labels = {x.strip().lower() for x in str(cfg.get('source_labels', '')).split(',') if x.strip()}
+
+    def score(labels):
+        lower = {x.lower() for x in labels}
+        s = 0
+        if 'p0' in lower or 'critical' in lower or 'urgent' in lower or 'sev:critical' in lower:
+            s += 1000
+        if 'p1' in lower or 'high' in lower or 'priority:high' in lower:
+            s += 700
+        if 'bug' in lower or 'regression' in lower or 'hotfix' in lower:
+            s += 400
+        if 'security' in lower or 'security-fix' in lower:
+            s += 350
+        if 'feature' in lower or 'enhancement' in lower:
+            s += 150
+        return s
+
+    result = []
+    for item in items:
+        labels = {lbl.get('name', '') for lbl in item.get('labels', [])}
+        lower_labels = {x.lower() for x in labels}
+        if source_labels and not (source_labels & lower_labels):
+            continue
+        if cfg['processing_label'] in labels:
+            state = 'processing'
+        elif cfg['waiting_label'] in labels:
+            state = 'waiting'
+        elif cfg['done_label'] in labels:
+            state = 'done'
+        else:
+            state = 'queued'
+        result.append({
+            'number': item.get('number', '?'),
+            'title': item.get('title', ''),
+            'url': item.get('url', ''),
+            'labels': sorted(labels),
+            'created_at': item.get('createdAt', ''),
+            'score': score(labels),
+            'state': state,
+        })
+
+    result.sort(key=lambda x: ({'queued': 0, 'processing': 1, 'waiting': 2, 'done': 3}.get(x['state'], 9), -x['score'], x['created_at'], x['number']))
+    return result
+
 # ── Load state.json ────────────────────────────────────────────────
 state = json.load(open(".pipeline/state.json"))
 project   = state.get("project_name", os.path.basename(os.getcwd()))
@@ -1996,6 +2055,7 @@ issue_lines = []
 issue_cfg = load_issue_cfg()
 issue_repo = detect_issue_repo(issue_cfg)
 queue_counts = query_issue_queue_counts(issue_repo, issue_cfg)
+issue_queue_items = query_issue_items(issue_repo, issue_cfg)
 watch_file = ".pipeline/issues/watch-state.json"
 active_workers = []
 if issue_repo:
@@ -2006,6 +2066,20 @@ if queue_counts is not None:
     issue_lines.append(
         f"{c(BOLD, 'Queue:')}     queued={c(BLUE, str(queue_counts['queued']))} | processing={c(CYAN, str(queue_counts['processing']))} | waiting={c(YELLOW, str(queue_counts['waiting']))} | done={c(GREEN, str(queue_counts['done']))}"
     )
+if issue_queue_items and wants('issues'):
+    issue_lines.append(f"{c(BOLD, 'Open List:')}  {len(issue_queue_items)} issue(s)")
+    issue_item_limit = len(issue_queue_items) if is_expanded('issues') else min(len(issue_queue_items), MAX_PROPOSAL_ITEMS)
+    state_color = {'queued': BLUE, 'processing': CYAN, 'waiting': YELLOW, 'done': GREEN}
+    for item in issue_queue_items[:issue_item_limit]:
+        labels_preview = ','.join(item.get('labels', [])[:3])
+        labels_suffix = f" [{labels_preview}]" if labels_preview else ''
+        issue_lines.append(
+            f"  {c(state_color.get(item['state'], DIM), item['state']):>10}  #{item['number']} {item['title']}{c(DIM, labels_suffix)}"
+        )
+    if len(issue_queue_items) > issue_item_limit:
+        issue_lines.append(c(DIM, f"  ... 另有 {len(issue_queue_items) - issue_item_limit} 个 open issue 未展开"))
+    elif is_expanded('issues'):
+        issue_lines.append(c(DIM, "  已展开 open issue 完整清单；按 e 可收起"))
 if os.path.exists(watch_file):
     try:
         watch = json.load(open(watch_file))
