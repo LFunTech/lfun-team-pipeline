@@ -1592,6 +1592,9 @@ cmd_status() {
     local views=(overview proposals issues execution retries)
     local current_index=0
     local i
+    local cache_dir
+    cache_dir=$(mktemp -d "${TMPDIR:-/tmp}/team-status.XXXXXX")
+    trap 'rm -rf "$cache_dir"' RETURN
     for i in "${!views[@]}"; do
       if [ "${views[$i]}" = "$status_view" ]; then
         current_index=$i
@@ -1601,13 +1604,19 @@ cmd_status() {
 
     while true; do
       printf '\033[2J\033[H'
-      TEAM_STATUS_INTERACTIVE_CHILD=1 "$0" status --view "${views[$current_index]}"
-      echo "  操作: Tab/右箭头=下一个  Shift-Tab/左箭头=上一个  q=退出"
+      local current_view="${views[$current_index]}"
+      local cache_file="$cache_dir/${current_view}.txt"
+      if [ ! -f "$cache_file" ]; then
+        TEAM_STATUS_INTERACTIVE_CHILD=1 "$0" status --view "$current_view" > "$cache_file"
+      fi
+      cat "$cache_file"
+      echo "  操作: Tab/右箭头=下一个  Shift-Tab/左箭头=上一个  q=退出  r=刷新当前视图"
 
       local key=""
       IFS= read -rsn1 key || break
       case "$key" in
         q|Q) break ;;
+        r|R) rm -f "$cache_file" ;;
         $'\t') current_index=$(((current_index + 1) % ${#views[@]})) ;;
         $'\033')
           local rest=""
