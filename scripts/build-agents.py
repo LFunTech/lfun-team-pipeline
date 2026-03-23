@@ -10,6 +10,7 @@ Usage:
 """
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -97,12 +98,18 @@ def parse_frontmatter(content: str) -> tuple[dict, str]:
 
 def render_frontmatter_yaml(fm: dict) -> str:
     """Render a dict as YAML frontmatter."""
+    def quote_yaml_string(value: str) -> str:
+        return json.dumps(value, ensure_ascii=False)
+
     lines = ["---"]
     for key, val in fm.items():
         if isinstance(val, list):
             lines.append(f"{key}:")
             for item in val:
-                lines.append(f"  - {item}")
+                if isinstance(item, str):
+                    lines.append(f"  - {quote_yaml_string(item)}")
+                else:
+                    lines.append(f"  - {item}")
         elif isinstance(val, bool):
             lines.append(f"{key}: {'true' if val else 'false'}")
         elif "\n" in str(val):
@@ -110,7 +117,10 @@ def render_frontmatter_yaml(fm: dict) -> str:
             for vline in str(val).split("\n"):
                 lines.append(f"  {vline}")
         else:
-            lines.append(f"{key}: {val}")
+            if isinstance(val, str):
+                lines.append(f"{key}: {quote_yaml_string(val)}")
+            else:
+                lines.append(f"{key}: {val}")
     lines.append("---")
     return "\n".join(lines)
 

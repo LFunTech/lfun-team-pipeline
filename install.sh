@@ -1513,10 +1513,6 @@ print(c.get('model_routing',{}).get('cli_backend','cc'))
       ;;
   esac
 
-  if [ "$upgrade_platform" = "opencode" ]; then
-    sync_opencode_project_files
-  fi
-
   if [ -d "$TEAM_HOME/.cursor/rules" ]; then
     mkdir -p .cursor/rules
     cp "$TEAM_HOME/.cursor/rules/pipeline.md" .cursor/rules/pipeline.md 2>/dev/null || true
@@ -1554,6 +1550,10 @@ print(p if p not in ('auto', '') else 'cc')
   else
     echo "  ℹ  No .pipeline/agents/ found (legacy project, using global agents)"
     echo "     To enable per-repo agents: team migrate <cc|codex|cursor|opencode>"
+  fi
+
+  if [ "$upgrade_platform" = "opencode" ]; then
+    sync_opencode_project_files
   fi
 
   # ── Cleanup ───────────────────────────────────────────────────────
