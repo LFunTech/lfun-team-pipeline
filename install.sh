@@ -1595,10 +1595,22 @@ cmd_status() {
     local cache_dir
     cache_dir=$(mktemp -d "${TMPDIR:-/tmp}/team-status.XXXXXX")
     trap 'rm -rf "$cache_dir"' RETURN
+    render_status_view() {
+      local target_view="$1"
+      local target_file="$cache_dir/${target_view}.txt"
+      TEAM_STATUS_INTERACTIVE_CHILD=1 "$0" status --view "$target_view" > "$target_file"
+    }
     for i in "${!views[@]}"; do
       if [ "${views[$i]}" = "$status_view" ]; then
         current_index=$i
         break
+      fi
+    done
+
+    render_status_view "${views[$current_index]}"
+    for i in "${!views[@]}"; do
+      if [ "$i" -ne "$current_index" ]; then
+        render_status_view "${views[$i]}" &
       fi
     done
 
@@ -1607,7 +1619,8 @@ cmd_status() {
       local current_view="${views[$current_index]}"
       local cache_file="$cache_dir/${current_view}.txt"
       if [ ! -f "$cache_file" ]; then
-        TEAM_STATUS_INTERACTIVE_CHILD=1 "$0" status --view "$current_view" > "$cache_file"
+        echo "  ⟳ 正在加载 ${current_view} ..."
+        render_status_view "$current_view"
       fi
       cat "$cache_file"
       echo "  操作: Tab/右箭头=下一个  Shift-Tab/左箭头=上一个  q=退出  r=刷新当前视图"
@@ -1616,7 +1629,10 @@ cmd_status() {
       IFS= read -rsn1 key || break
       case "$key" in
         q|Q) break ;;
-        r|R) rm -f "$cache_file" ;;
+        r|R)
+          rm -f "$cache_file"
+          render_status_view "$current_view" &
+          ;;
         $'\t') current_index=$(((current_index + 1) % ${#views[@]})) ;;
         $'\033')
           local rest=""
