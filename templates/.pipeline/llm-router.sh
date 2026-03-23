@@ -272,9 +272,8 @@ run_with_backend() {
         "$prompt_content" 2>&1
       ;;
     opencode)
-      cd "$TARGET_DIR" && $TIMEOUT_CMD opencode exec \
+      cd "$TARGET_DIR" && $TIMEOUT_CMD opencode run \
         --agent "$AGENT_NAME" \
-        --max-turns "$MAX_TURNS" \
         "$prompt_content" 2>&1
       ;;
     *)

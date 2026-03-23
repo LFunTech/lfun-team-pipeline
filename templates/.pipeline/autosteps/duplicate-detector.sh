@@ -42,7 +42,7 @@ run_agent_cli() {
   case "$cli" in
     claude)   claude --dangerously-skip-permissions --agent "$agent_name" -p "$prompt" 2>/dev/null ;;
     codex)    codex exec --agent "$agent_name" --approval-mode never "$prompt" 2>/dev/null ;;
-    opencode) opencode exec --agent "$agent_name" "$prompt" 2>/dev/null ;;
+    opencode) opencode run --agent "$agent_name" "$prompt" 2>/dev/null ;;
     *)        echo "[DuplicateDetector] 未检测到支持的 CLI (claude/codex/opencode)" >&2; return 1 ;;
   esac
 }
