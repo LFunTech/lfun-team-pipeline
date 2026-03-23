@@ -842,14 +842,8 @@ EOF
         if dry_run_guard "生成 opencode.json 项目配置"; then
           cat > opencode.json << EOF
 {
-  "\$schema": "https://opencode.ai/config.schema.json",
-  "agents": {
-    "pilot": {
-      "description": "多角色软件交付流水线主控",
-      "model": "default"
-    }
-  },
-  "context": ["AGENTS.md"]
+  "\$schema": "https://opencode.ai/config.json",
+  "instructions": ["AGENTS.md"]
 }
 EOF
           log_ok "opencode.json 已生成"

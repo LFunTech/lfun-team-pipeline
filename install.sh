@@ -1080,8 +1080,8 @@ sync_opencode_project_files() {
 import json
 
 cfg = {
-    "$schema": "https://opencode.ai/config.schema.json",
-    "context": ["AGENTS.md"],
+    "$schema": "https://opencode.ai/config.json",
+    "instructions": ["AGENTS.md"],
 }
 
 with open('opencode.json', 'w', encoding='utf-8') as f:
@@ -1090,7 +1090,34 @@ with open('opencode.json', 'w', encoding='utf-8') as f:
 PY
     echo "  ✓ opencode.json"
   else
-    echo "  ⚠  opencode.json already exists, skipping"
+    local opencode_json_state
+    opencode_json_state="$(python3 - <<'PY'
+import json
+from pathlib import Path
+path = Path('opencode.json')
+try:
+    cfg = json.loads(path.read_text(encoding='utf-8'))
+except Exception:
+    print('invalid')
+    raise SystemExit(0)
+if cfg.get('$schema') == 'https://opencode.ai/config.schema.json' and cfg.get('context') == ['AGENTS.md'] and 'instructions' not in cfg:
+    cfg['$schema'] = 'https://opencode.ai/config.json'
+    cfg['instructions'] = ['AGENTS.md']
+    cfg.pop('context', None)
+    path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    print('migrated')
+elif cfg.get('$schema') == 'https://opencode.ai/config.json' and cfg.get('instructions') == ['AGENTS.md'] and 'context' not in cfg:
+    print('ok')
+else:
+    print('custom')
+PY
+ )"
+    case "$opencode_json_state" in
+      ok) echo "  ✓ opencode.json" ;;
+      migrated) echo "  ✓ opencode.json migrated to instructions" ;;
+      custom) echo "  ⚠  opencode.json already exists, skipping" ;;
+      invalid) echo "  ⚠  opencode.json exists but is invalid JSON, skipping" ;;
+    esac
   fi
 }
 

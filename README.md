@@ -409,7 +409,7 @@ bash scripts/rollback.sh ~/.local/share/team-pipeline-backup-20260322_215623
 └── history/             ← 历次提案产物归档
 CLAUDE.md                ← 流水线上下文（CC/Cursor 平台时生成）
 AGENTS.md                ← 流水线上下文 + Pilot 指令（Codex/OpenCode 平台时生成）
-opencode.json            ← OpenCode 项目配置（OpenCode 平台时生成）
+opencode.json            ← OpenCode 项目配置（OpenCode 平台时生成，使用 `instructions: ["AGENTS.md"]`）
 .opencode/agents/        ← OpenCode 项目级 Agent 定义（OpenCode 平台时生成）
 .cursor/rules/pipeline.md ← Cursor IDE 流水线规则（Cursor 平台时生成）
 ```
@@ -529,7 +529,7 @@ agents/*.md (CC 格式，canonical source)
 | Shell 工具 | `Bash()` | `bash()` | `Shell()` | `bash()` |
 | 权限模型 | `permissionMode` | `sandbox_mode` | `readonly` | 隐式 |
 
-**OpenCode 规则入口：** OpenCode 官方项目入口是 `opencode.json` 与 `.opencode/agents/`；本仓库同时生成 `AGENTS.md` 作为共享上下文。流水线内部 canonical agent 仍保存在 `.pipeline/agents/*.md`，并同步到 `.opencode/agents/*.md`；OpenCode 专用 Pilot 源定义在 `agents/platforms/opencode/pilot.md`。
+**OpenCode 规则入口：** OpenCode 官方项目入口是 `opencode.json` 与 `.opencode/agents/`；本仓库会生成 `opencode.json` 并使用 `"$schema": "https://opencode.ai/config.json"` 与 `"instructions": ["AGENTS.md"]` 把共享上下文接入 OpenCode。流水线内部 canonical agent 仍保存在 `.pipeline/agents/*.md`，并同步到 `.opencode/agents/*.md`；OpenCode 专用 Pilot 源定义在 `agents/platforms/opencode/pilot.md`。
 
 **Skill 依赖差异：**
 

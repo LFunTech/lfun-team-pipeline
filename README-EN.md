@@ -403,7 +403,7 @@ bash scripts/rollback.sh ~/.local/share/team-pipeline-backup-20260322_215623
 └── history/             ← Past proposal artifact archives
 CLAUDE.md                ← Pipeline context (generated for CC/Cursor platforms)
 AGENTS.md                ← Pipeline context + Pilot instructions (generated for Codex/OpenCode)
-opencode.json            ← OpenCode project config (generated for OpenCode)
+opencode.json            ← OpenCode project config (generated for OpenCode, using `instructions: ["AGENTS.md"]`)
 .opencode/agents/        ← OpenCode project-level agent definitions (generated for OpenCode)
 .cursor/rules/pipeline.md ← Cursor IDE pipeline rules (generated for Cursor platform)
 ```
@@ -523,7 +523,7 @@ agents/*.md (CC format, canonical source)
 | Shell Tool | `Bash()` | `bash()` | `Shell()` | `bash()` |
 | Permission Model | `permissionMode` | `sandbox_mode` | `readonly` | implicit |
 
-**OpenCode entrypoint:** OpenCode's official project entrypoints are `opencode.json` and `.opencode/agents/`. This repo also generates `AGENTS.md` as shared context. The canonical pipeline agents still live in `.pipeline/agents/*.md` and are synced to `.opencode/agents/*.md`; the OpenCode-specific Pilot source lives at `agents/platforms/opencode/pilot.md`.
+**OpenCode entrypoint:** OpenCode's official project entrypoints are `opencode.json` and `.opencode/agents/`. This repo generates `opencode.json` with `"$schema": "https://opencode.ai/config.json"` and `"instructions": ["AGENTS.md"]` so shared project instructions are loaded the OpenCode-native way. The canonical pipeline agents still live in `.pipeline/agents/*.md` and are synced to `.opencode/agents/*.md`; the OpenCode-specific Pilot source lives at `agents/platforms/opencode/pilot.md`.
 
 **Skill Dependency Differences:**
 
