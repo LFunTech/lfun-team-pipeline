@@ -535,6 +535,7 @@ agents/*.md (CC 格式，canonical source)
 
 - `opencode.json` 必须使用 `instructions`，不能再使用旧字段 `context`
 - `.opencode/agents/*.md` 的 frontmatter 需要把 `description`、`mode`、`agent`、`model` 渲染为合法字符串标量；像 `[Pipeline] ...` 这类描述必须正确加引号，避免被 YAML 误解析为数组
+- OpenCode 的 `model` 不能使用 `inherit` / `sonnet` 这类流水线内部缩写；只能写明确的 `provider/model`，否则应省略该字段，让 OpenCode 继承默认模型
 - 走 OpenCode CLI 时，路由/降级脚本应调用 `opencode run`，不能使用不存在的 `opencode exec`
 - 升级 OpenCode 项目时，应先重建 `.pipeline/agents/`，再同步到 `.opencode/agents/`，避免残留旧格式 agent 文件
 

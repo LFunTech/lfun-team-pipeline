@@ -257,15 +257,20 @@ def transpile_opencode(fm: dict, body: str, filename: str) -> str:
     desc = fm.get("description", "")
     model = fm.get("model", "inherit")
 
-    oc_model = "fast" if model == "sonnet" else "inherit"
-
     is_pilot = (name == "pilot")
     new_fm = {
         "description": desc,
         "mode": "primary" if is_pilot else "subagent",
         "agent": "pilot" if is_pilot else "build",
-        "model": oc_model,
     }
+
+    # OpenCode agent frontmatter expects a concrete provider/model id.
+    # Canonical pipeline shorthands like "inherit" and "sonnet" are valid
+    # for other platforms, but invalid in OpenCode and cause startup failures
+    # like "Model not found: inherit/". For OpenCode, omit the field unless
+    # the source already provides an explicit provider/model string.
+    if isinstance(model, str) and "/" in model:
+        new_fm["model"] = model
 
     skills = fm.get("skills", [])
     if isinstance(skills, list) and skills:

@@ -529,6 +529,7 @@ agents/*.md (CC format, canonical source)
 
 - `opencode.json` must use `instructions`; do not generate the legacy `context` field
 - `.opencode/agents/*.md` frontmatter must render `description`, `mode`, `agent`, and `model` as valid string scalars; descriptions like `[Pipeline] ...` must be quoted so YAML does not parse them as arrays
+- OpenCode `model` cannot use pipeline-internal shorthands like `inherit` or `sonnet`; use an explicit `provider/model` id or omit the field so OpenCode inherits the default model
 - OpenCode CLI routing/fallback paths should call `opencode run`, not the non-existent `opencode exec`
 - During OpenCode project upgrades, regenerate `.pipeline/agents/` first and sync `.opencode/agents/` afterward so stale agent files do not survive the upgrade
 
