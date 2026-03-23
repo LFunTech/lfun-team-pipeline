@@ -1,9 +1,15 @@
 #!/bin/bash
-# llm-router.sh — 模型路由调度器
-# 用法: bash .pipeline/llm-router.sh <agent-name> <prompt> [--cwd <dir>]
+# llm-router.sh — 多平台模型路由调度器
+# 用法: bash .pipeline/llm-router.sh <agent-name> <prompt> [--cwd <dir>] [--backend <cli>]
+#
+# 支持的 CLI 后端: claude, codex, opencode (自动检测或手动指定)
 #
 # 配置合并优先级（高→低）：
 #   项目 .pipeline/config.json → 全局 ~/.config/team-pipeline/routing.json
+#
+# CLI 后端优先级（高→低）：
+#   --backend 参数 → $PIPELINE_CLI_BACKEND 环境变量
+#   → config.json 的 cli_backend 字段 → 自动检测
 #
 # API Key 优先级（高→低）：
 #   项目 config.json 的 api_key → 全局 routing.json 的 api_key
@@ -12,8 +18,8 @@
 # 退出码:
 #   0  = 成功（外部 LLM 执行完成）
 #   1  = Agent 执行失败（应走 rollback）
-#   10 = 降级：应改用默认模型（未启用/未路由/无 key/provider 缺失）
-#        Pilot 收到 exit=10 时，改用 Agent tool 重新调用，不算失败
+#   10 = 降级：应改用默认模型（未启用/未路由/无 key/provider 缺失/无 CLI）
+#        Pilot 收到 exit=10 时，改用平台原生 Agent 调度重新调用，不算失败
 
 set -euo pipefail
 
@@ -22,18 +28,72 @@ EXIT_FALLBACK=10  # 降级退出码
 PIPELINE_DIR="${PIPELINE_DIR:-.pipeline}"
 CONFIG_FILE="$PIPELINE_DIR/config.json"
 GLOBAL_CONFIG="${HOME}/.config/team-pipeline/routing.json"
-AGENT_NAME="${1:?用法: llm-router.sh <agent-name> <prompt> [--cwd <dir>]}"
+AGENT_NAME="${1:?用法: llm-router.sh <agent-name> <prompt> [--cwd <dir>] [--backend <cli>]}"
 PROMPT="${2:?缺少 prompt 参数}"
 CWD="."
+CLI_BACKEND_ARG=""
 
 # 解析可选参数
 shift 2
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --cwd) CWD="$2"; shift 2 ;;
+    --backend) CLI_BACKEND_ARG="$2"; shift 2 ;;
     *) echo "[llm-router] 未知参数: $1" >&2; exit 2 ;;
   esac
 done
+
+# --- 检测 CLI 后端 ---
+detect_cli_backend() {
+  # 1. 命令行参数最优先
+  if [ -n "$CLI_BACKEND_ARG" ]; then
+    echo "$CLI_BACKEND_ARG"
+    return
+  fi
+
+  # 2. 环境变量
+  if [ -n "${PIPELINE_CLI_BACKEND:-}" ]; then
+    echo "$PIPELINE_CLI_BACKEND"
+    return
+  fi
+
+  # 3. 配置文件中的 cli_backend 字段
+  local cfg_backend
+  cfg_backend=$(python3 -c "
+import json, os
+for path in ['$CONFIG_FILE', '$GLOBAL_CONFIG']:
+    if os.path.exists(path):
+        try:
+            cfg = json.load(open(path))
+            mr = cfg.get('model_routing', cfg)
+            b = mr.get('cli_backend', '')
+            if b and b != 'auto':
+                print(b)
+                exit(0)
+        except Exception:
+            pass
+print('auto')
+" 2>/dev/null) || echo "auto"
+
+  if [ "$cfg_backend" != "auto" ]; then
+    echo "$cfg_backend"
+    return
+  fi
+
+  # 4. 自动检测可用 CLI
+  if command -v claude &>/dev/null; then echo "claude"; return; fi
+  if command -v codex &>/dev/null; then echo "codex"; return; fi
+  if command -v opencode &>/dev/null; then echo "opencode"; return; fi
+
+  echo "none"
+}
+
+CLI_BACKEND=$(detect_cli_backend)
+if [ "$CLI_BACKEND" = "none" ]; then
+  echo "[llm-router] 未检测到可用 CLI 后端 (claude/codex/opencode)，降级" >&2
+  exit $EXIT_FALLBACK
+fi
+echo "[llm-router] CLI 后端: $CLI_BACKEND" >&2
 
 # --- 合并读取路由配置（全局 + 项目） ---
 ROUTE_INFO=$(python3 -c "
@@ -150,11 +210,29 @@ fi
 echo "[llm-router] $AGENT_NAME → $PROVIDER ($MODEL)" >&2
 
 # --- 构建环境变量 ---
-export ANTHROPIC_BASE_URL="$BASE_URL"
-export ANTHROPIC_MODEL="$MODEL"
-if [ -n "$RESOLVED_KEY" ]; then
-  export ANTHROPIC_AUTH_TOKEN="$RESOLVED_KEY"
-fi
+# Claude Code 使用 ANTHROPIC_* 环境变量
+# Codex 使用 OPENAI_* 或兼容 Anthropic 网关
+# OpenCode 使用其自身配置或 OPENAI_* 环境变量
+setup_env_for_backend() {
+  case "$CLI_BACKEND" in
+    claude)
+      export ANTHROPIC_BASE_URL="$BASE_URL"
+      export ANTHROPIC_MODEL="$MODEL"
+      [ -n "$RESOLVED_KEY" ] && export ANTHROPIC_AUTH_TOKEN="$RESOLVED_KEY"
+      ;;
+    codex)
+      export OPENAI_BASE_URL="$BASE_URL"
+      export OPENAI_MODEL="$MODEL"
+      [ -n "$RESOLVED_KEY" ] && export OPENAI_API_KEY="$RESOLVED_KEY"
+      ;;
+    opencode)
+      export OPENAI_BASE_URL="$BASE_URL"
+      export OPENAI_MODEL="$MODEL"
+      [ -n "$RESOLVED_KEY" ] && export OPENAI_API_KEY="$RESOLVED_KEY"
+      ;;
+  esac
+}
+setup_env_for_backend
 
 # --- 启动 Agent ---
 PROMPT_FILE=$(mktemp)
@@ -163,7 +241,7 @@ trap "rm -f '$PROMPT_FILE'" EXIT
 
 TARGET_DIR="$(cd "$CWD" && pwd)"
 
-echo "[llm-router] 启动 $AGENT_NAME (provider=$PROVIDER, max_turns=$MAX_TURNS, cwd=$TARGET_DIR)" >&2
+echo "[llm-router] 启动 $AGENT_NAME (backend=$CLI_BACKEND, provider=$PROVIDER, model=$MODEL, max_turns=$MAX_TURNS, cwd=$TARGET_DIR)" >&2
 
 # 确定 timeout 命令（macOS 兼容）
 TIMEOUT_CMD=""
@@ -173,14 +251,42 @@ elif command -v gtimeout &>/dev/null; then
   TIMEOUT_CMD="gtimeout ${TIMEOUT}s"
 fi
 
-# 在子 shell 中 cd 到目标目录再执行 claude -p
-OUTPUT=$(cd "$TARGET_DIR" && $TIMEOUT_CMD claude -p \
-  --agent "$AGENT_NAME" \
-  --max-turns "$MAX_TURNS" \
-  --dangerously-skip-permissions \
-  "$(cat "$PROMPT_FILE")" 2>&1) || {
+# 按 CLI 后端选择执行命令
+run_with_backend() {
+  local prompt_content
+  prompt_content="$(cat "$PROMPT_FILE")"
+
+  case "$CLI_BACKEND" in
+    claude)
+      cd "$TARGET_DIR" && $TIMEOUT_CMD claude -p \
+        --agent "$AGENT_NAME" \
+        --max-turns "$MAX_TURNS" \
+        --dangerously-skip-permissions \
+        "$prompt_content" 2>&1
+      ;;
+    codex)
+      cd "$TARGET_DIR" && $TIMEOUT_CMD codex exec \
+        --agent "$AGENT_NAME" \
+        --max-turns "$MAX_TURNS" \
+        --approval-mode never \
+        "$prompt_content" 2>&1
+      ;;
+    opencode)
+      cd "$TARGET_DIR" && $TIMEOUT_CMD opencode exec \
+        --agent "$AGENT_NAME" \
+        --max-turns "$MAX_TURNS" \
+        "$prompt_content" 2>&1
+      ;;
+    *)
+      echo "[llm-router] 不支持的后端: $CLI_BACKEND" >&2
+      return 10
+      ;;
+  esac
+}
+
+OUTPUT=$(run_with_backend) || {
   EXIT_CODE=$?
-  echo "[llm-router] $AGENT_NAME 执行失败 (exit=$EXIT_CODE)" >&2
+  echo "[llm-router] $AGENT_NAME 执行失败 (backend=$CLI_BACKEND, exit=$EXIT_CODE)" >&2
   echo "$OUTPUT" >&2
   exit 1
 }

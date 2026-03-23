@@ -73,6 +73,7 @@
   },
   "model_routing": {
     "enabled": false,
+    "cli_backend": "auto",
     "providers": {
       "dashscope-glm5": {
         "base_url": "https://coding.dashscope.aliyuncs.com/apps/anthropic",
@@ -113,7 +114,22 @@
       "optimizer":            "dashscope-glm5"
     },
     "_comment_routes": "上下文重的 agent(builder-backend/frontend, planner, tester, documenter) → kimi-k2.5(2M ctx)；精度优先的 agent → glm-5(200K ctx, 深度思考)",
-    "_comment_boss": "clarifier/architect/simplifier/inspector/auditor-*/resolver/deployer/monitor → Claude"
+    "_comment_boss": "clarifier/architect/simplifier/inspector/auditor-*/resolver/deployer/monitor → Claude",
+    "_comment_cli_backend": "cli_backend: auto(自动检测) | claude | codex | opencode — 或用环境变量 PIPELINE_CLI_BACKEND"
+  },
+  "opencode": {
+    "interaction_mode": "hybrid"
+  },
+  "issue_automation": {
+    "repo": "",
+    "source_labels": "",
+    "processing_label": "pipeline:processing",
+    "waiting_label": "pipeline:waiting-user",
+    "done_label": "pipeline:done",
+    "auto_close": false,
+    "poll_interval_seconds": 30,
+    "max_workers": 1,
+    "worktree_dir": ".worktrees/issues"
   },
   "component_registry": {
     "enabled": true,

@@ -99,7 +99,7 @@ model: inherit
 ```json
 {
   "audited_at": "ISO-8601",
-  "auditor_model": "模型名称（如 claude-sonnet-4-5）",
+  "auditor_model": "当前平台使用的模型名称",
   "overall": "PASS|FAIL",
   "remediations": [
     {

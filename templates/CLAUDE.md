@@ -99,6 +99,8 @@ Mark Completed  → 标记提案完成，循环取下一个
 | `requirement_completeness.min_words` | 需求文档最小字数 | `200` |
 | `testing.coverage_tool` | 测试覆盖率工具 | `nyc` |
 | `testing.coverage_threshold` | 覆盖率阈值（百分比） | `80` |
+| `issue_automation.inbox_label` | 待处理 Issue 标签 | `pipeline` |
+| `issue_automation.max_workers` | Issue watcher 最大 worker 数 | `1` |
 
 ## 模型路由（Model Routing）
 
@@ -127,6 +129,21 @@ Mark Completed  → 标记提案完成，循环取下一个
 # 方式 B：项目级配置（仅当前项目生效，可覆盖全局）
 # 编辑 .pipeline/config.json 的 model_routing 部分
 ```
+
+## GitHub Issue 自动处理
+
+```bash
+# 将单个 issue 转成单提案流水线并执行
+team issue run 123
+
+# 持续轮询带 pipeline label 的 issue
+team watch-issues
+
+# 只轮询一轮
+team watch-issues --once
+```
+
+Issue 模式会在 `.worktrees/issues/issue-<number>` 创建独立 worktree，生成 `issue-context.md` 后交给 Pilot 执行。
 
 ```bash
 # 正常运行流水线（自动识别路由配置）

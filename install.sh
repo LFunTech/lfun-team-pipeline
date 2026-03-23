@@ -3,8 +3,9 @@
 # Installs agents, templates, and the `team` CLI command.
 #
 # Usage:
-#   bash install.sh              # normal install
-#   bash install.sh --update     # update existing installation
+#   bash install.sh                    # normal install (Claude Code only)
+#   bash install.sh --update           # update existing installation
+#   bash install.sh --all-platforms    # install to all detected platforms (CC/Codex/Cursor/OpenCode)
 
 set -euo pipefail
 
@@ -15,52 +16,157 @@ AGENTS_DST="$HOME/.claude/agents"
 TEMPLATES_DST="$HOME/.local/share/team-pipeline"
 BIN_DIR="$HOME/.local/bin"
 TEAM_CMD="$BIN_DIR/team"
+DIST_DIR="$REPO_DIR/dist"
 
-UPDATE_MODE="${1:-}"
+UPDATE_MODE=""
+ALL_PLATFORMS=false
+for arg in "$@"; do
+  case "$arg" in
+    --update) UPDATE_MODE="--update" ;;
+    --all-platforms) ALL_PLATFORMS=true ;;
+  esac
+done
 
 print_header() {
   echo ""
   echo "╔══════════════════════════════════════════════════════╗"
   echo "║       lfun-team-pipeline  v${VERSION}  installer        ║"
-  echo "║       Claude Code Multi-Agent Delivery Pipeline      ║"
+  echo "║       Multi-Platform Agent Delivery Pipeline         ║"
   echo "╚══════════════════════════════════════════════════════╝"
   echo ""
 }
 
-print_header
+# Install agents from a dist directory to a target directory
+install_agents_to() {
+  local src_dir="$1"
+  local dst_dir="$2"
+  local platform_label="$3"
+  local ext="${4:-.md}"
 
-# ── 1. Install agents to ~/.claude/agents/ ──────────────────────────
-echo "▶ Step 1/4 — Installing agents to $AGENTS_DST"
+  mkdir -p "$dst_dir"
+
+  local existing
+  existing=$(find "$dst_dir" -maxdepth 1 -name "*${ext}" 2>/dev/null | wc -l)
+  if [ "$existing" -gt 0 ] && [ "$UPDATE_MODE" != "--update" ]; then
+    local backup="$dst_dir.backup.$(date +%Y%m%d%H%M%S)"
+    echo "    ⚠  Backing up $existing existing agents → $backup"
+    cp -r "$dst_dir" "$backup"
+  fi
+
+  local count=0
+  while IFS= read -r f; do
+    cp "$f" "$dst_dir/$(basename "$f")"
+    count=$((count + 1))
+  done < <(find "$src_dir" -maxdepth 1 -name "*${ext}" | sort)
+
+  echo "    ✓ $platform_label: $count agents installed → $dst_dir"
+}
+
+print_header
 
 if [ ! -d "$AGENTS_SRC" ]; then
   echo "  ❌ agents/ directory not found. Run this script from the repo root."
   exit 1
 fi
 
-mkdir -p "$AGENTS_DST"
+# ── 1. Agent handling ──────────────────────────────────────────────────
+# New architecture: agents are persisted per-repo via `team init --platform <x>`.
+# Global install only stores agent sources + transpiler for use by `team init/migrate`.
+# Legacy global install (to ~/.claude/agents/ etc.) is kept behind --all-platforms for backward compat.
 
-EXISTING=$(find "$AGENTS_DST" -maxdepth 1 -name "*.md" 2>/dev/null | wc -l)
-if [ "$EXISTING" -gt 0 ] && [ "$UPDATE_MODE" != "--update" ]; then
-  BACKUP_DIR="$AGENTS_DST.backup.$(date +%Y%m%d%H%M%S)"
-  echo "  ⚠  Backing up $EXISTING existing agents → $BACKUP_DIR"
-  cp -r "$AGENTS_DST" "$BACKUP_DIR"
+if [ "$ALL_PLATFORMS" = true ]; then
+  echo "▶ Step 1/4 — Building agents for all platforms (legacy global install)"
+  echo ""
+
+  if ! python3 "$REPO_DIR/scripts/build-agents.py" --output "$DIST_DIR" 2>&1; then
+    echo "  ❌ Agent transpiler failed"
+    exit 1
+  fi
+  echo ""
+
+  DETECTED_PLATFORMS=("cc")
+  if command -v codex &>/dev/null || [ -d "$HOME/.codex" ]; then
+    DETECTED_PLATFORMS+=("codex")
+  fi
+  if [ -d "$HOME/.cursor" ]; then
+    DETECTED_PLATFORMS+=("cursor")
+  fi
+  if command -v opencode &>/dev/null || [ -d "$HOME/.config/opencode" ]; then
+    DETECTED_PLATFORMS+=("opencode")
+  fi
+
+  echo "  Detected platforms: ${DETECTED_PLATFORMS[*]}"
+  echo ""
+
+  for platform in "${DETECTED_PLATFORMS[@]}"; do
+    case "$platform" in
+      cc)
+        install_agents_to "$DIST_DIR/cc" "$HOME/.claude/agents" "Claude Code" ".md"
+        ;;
+      codex)
+        install_agents_to "$DIST_DIR/codex" "$HOME/.codex/agents" "Codex" ".toml"
+        ;;
+      cursor)
+        install_agents_to "$DIST_DIR/cursor" "$HOME/.cursor/agents" "Cursor" ".md"
+        ;;
+      opencode)
+        mkdir -p "$HOME/.config/opencode/agents"
+        install_agents_to "$DIST_DIR/opencode" "$HOME/.config/opencode/agents" "OpenCode" ".md"
+        ;;
+    esac
+  done
+
+  echo ""
+  echo "  ℹ  Global agents installed for backward compatibility."
+  echo "     Preferred: use 'team init --platform <x>' to persist agents per-repo."
+
+else
+  # Default: install CC agents globally (backward compatible) + agent sources for transpiler
+  echo "▶ Step 1/4 — Installing CC agents to $AGENTS_DST"
+
+  mkdir -p "$AGENTS_DST"
+
+  EXISTING=$(find "$AGENTS_DST" -maxdepth 1 -name "*.md" 2>/dev/null | wc -l)
+  if [ "$EXISTING" -gt 0 ] && [ "$UPDATE_MODE" != "--update" ]; then
+    BACKUP_DIR="$AGENTS_DST.backup.$(date +%Y%m%d%H%M%S)"
+    echo "  ⚠  Backing up $EXISTING existing agents → $BACKUP_DIR"
+    cp -r "$AGENTS_DST" "$BACKUP_DIR"
+  fi
+
+  INSTALLED=0
+  while IFS= read -r f; do
+    cp "$f" "$AGENTS_DST/$(basename "$f")"
+    INSTALLED=$((INSTALLED + 1))
+  done < <(find "$AGENTS_SRC" -maxdepth 1 -name "*.md" | sort)
+
+  echo "  ✓ $INSTALLED CC agents installed globally"
+  echo "  ℹ  For other platforms: use 'team init --platform <x>' per-repo"
 fi
-
-INSTALLED=0
-while IFS= read -r f; do
-  cp "$f" "$AGENTS_DST/$(basename "$f")"
-  INSTALLED=$((INSTALLED + 1))
-done < <(find "$AGENTS_SRC" -maxdepth 1 -name "*.md" | sort)
-
-echo "  ✓ $INSTALLED agents installed"
 
 # ── 2. Copy templates to ~/.local/share/team-pipeline/ ──────────────
 echo ""
 echo "▶ Step 2/4 — Installing templates to $TEMPLATES_DST"
 
+if [ -d "$TEMPLATES_DST" ] && [ "$(ls -A "$TEMPLATES_DST" 2>/dev/null)" ]; then
+  TMPL_BACKUP="${TEMPLATES_DST}.pre-upgrade.$(date +%Y%m%d%H%M%S)"
+  cp -r "$TEMPLATES_DST" "$TMPL_BACKUP"
+  echo "  ✓ Old templates backed up → $TMPL_BACKUP"
+fi
+
 mkdir -p "$TEMPLATES_DST"
-cp -r "$REPO_DIR/templates/." "$TEMPLATES_DST/"
-echo "  ✓ Pipeline templates installed"
+if cp -r "$REPO_DIR/templates/." "$TEMPLATES_DST/"; then
+  echo "  ✓ Pipeline templates installed"
+  # Clean up backup on success
+  [ -n "${TMPL_BACKUP:-}" ] && [ -d "${TMPL_BACKUP:-}" ] && rm -rf "$TMPL_BACKUP"
+else
+  echo "  ❌ Template install failed"
+  if [ -n "${TMPL_BACKUP:-}" ] && [ -d "${TMPL_BACKUP:-}" ]; then
+    rm -rf "$TEMPLATES_DST"
+    mv "$TMPL_BACKUP" "$TEMPLATES_DST"
+    echo "  ✓ Restored from backup"
+  fi
+  exit 1
+fi
 
 # ── 3. Install `team` CLI to ~/.local/bin/ ───────────────────────────
 echo ""
@@ -82,20 +188,880 @@ usage() {
   echo "  Usage: team <command>"
   echo ""
   echo "  Commands:"
-  echo "    init      Initialize pipeline in the current project directory"
+  echo "    init [--platform <cc|codex|cursor|opencode>]"
+  echo "              Initialize pipeline (agents persisted to .pipeline/agents/)"
   echo "    status    Show current pipeline execution progress"
-  echo "    upgrade   Upgrade playbook + autosteps in-place (preserves state)"
-  echo "    version   Print version"
-  echo "    replan    Re-plan the proposal queue (keeps completed work)"
   echo "    run       Auto-run pipeline batches until done or intervention needed"
+  echo "    migrate <cc|codex|cursor|opencode>"
+  echo "              Switch agents to another platform (replaces .pipeline/agents/)"
+  echo "    issue run <number> [--repo <owner/repo>]"
+  echo "              将 GitHub Issue 转为单提案流水线并执行"
+  echo "    watch-issues [--repo <owner/repo>] [--interval <sec>] [--max-workers <n>] [--labels a,b] [--exclude-labels x,y] [--dry-run] [--once]"
+  echo "              轮询 GitHub Issue 队列并自动调度处理"
+  echo "    upgrade   Upgrade playbook + autosteps in-place (preserves state)"
+  echo "    replan    Re-plan the proposal queue (keeps completed work)"
   echo "    scan      Scan codebase for components and detect duplicates"
+  echo "    version   Print version"
   echo "    update    Re-run installer to update agents and templates"
   echo ""
   echo "  Examples:"
-  echo "    cd my-project && team init"
+  echo "    cd my-project && team init --platform codex"
   echo "    team run"
+  echo "    team migrate cursor"
+  echo "    team issue run 123"
+  echo "    team watch-issues --once"
   echo "    team status"
+  echo "    team migrate codex              # migrate current project to Codex"
+  echo "    team migrate cursor --dry-run   # preview Cursor migration"
   echo ""
+}
+
+detect_platform() {
+  if command -v claude &>/dev/null; then echo "cc"
+  elif command -v codex &>/dev/null; then echo "codex"
+  elif [ -d "$HOME/.cursor" ]; then echo "cursor"
+  elif command -v opencode &>/dev/null; then echo "opencode"
+  else echo "cc"
+  fi
+}
+
+platform_label() {
+  case "$1" in
+    cc)       echo "Claude Code" ;;
+    codex)    echo "Codex" ;;
+    cursor)   echo "Cursor" ;;
+    opencode) echo "OpenCode" ;;
+    *)        echo "$1" ;;
+  esac
+}
+
+platform_ext() {
+  case "$1" in
+    codex) echo ".toml" ;;
+    *)     echo ".md" ;;
+  esac
+}
+
+run_tui_with_auto_submit() {
+  if [ "$#" -lt 2 ]; then
+    echo "  ❌ run_tui_with_auto_submit 用法: run_tui_with_auto_submit '<prompt>' <command...>" >&2
+    return 1
+  fi
+
+  local auto_prompt="$1"
+  shift
+
+  python3 - "$@" <<'PY'
+import os, sys, select, signal, termios, tty, fcntl, time, subprocess
+
+cmd = sys.argv[1:]
+stdout_fd = sys.stdout.fileno()
+prompt = os.environ.get("TEAM_TUI_AUTO_PROMPT", "")
+
+if not cmd:
+    sys.stderr.write("missing command\n")
+    sys.exit(2)
+
+try:
+    tty_fd = os.open("/dev/tty", os.O_RDWR)
+except OSError:
+    tty_fd = None
+
+if tty_fd is None or not os.isatty(tty_fd):
+    sys.stderr.write(
+        "\n  ❌  需要在真实终端中运行交互式会话。\n"
+        "     请直接在 shell 中执行 team run。\n\n"
+    )
+    sys.exit(1)
+
+saved_tty = termios.tcgetattr(tty_fd)
+
+def resize_pty(master_fd):
+    try:
+        ws = fcntl.ioctl(stdout_fd, termios.TIOCGWINSZ, b'\x00' * 8)
+        fcntl.ioctl(master_fd, termios.TIOCSWINSZ, ws)
+    except Exception:
+        pass
+
+def child_setup():
+    os.setsid()
+    try:
+        fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+    except Exception:
+        pass
+
+master_fd, slave_fd = os.openpty()
+resize_pty(master_fd)
+proc = subprocess.Popen(
+    cmd,
+    stdin=slave_fd,
+    stdout=slave_fd,
+    stderr=slave_fd,
+    close_fds=True,
+    preexec_fn=child_setup,
+)
+os.close(slave_fd)
+
+prompt_injected = False
+submit_sent = False
+quit_sent = False
+t0 = time.monotonic()
+t_last_out = t0
+exit_code = 0
+prompt_sent_at = None
+exit_seen_at = None
+buf = b""
+track_exit = False
+
+def on_winch(sig, frame):
+    resize_pty(master_fd)
+
+signal.signal(signal.SIGWINCH, on_winch)
+tty.setraw(tty_fd)
+
+try:
+    while True:
+        try:
+            r, _, _ = select.select([master_fd, tty_fd], [], [], 0.2)
+        except (select.error, ValueError):
+            break
+
+        now = time.monotonic()
+        # 先注入文本，再单独发一次回车；避免“文本出现了但回车没触发提交”。
+        if not prompt_injected and (
+            (now - t_last_out > 2.5 and now - t0 > 1.0) or now - t0 > 6.0
+        ):
+            if prompt:
+                os.write(master_fd, prompt.encode("utf-8"))
+            prompt_injected = True
+            prompt_sent_at = now
+
+        if prompt_injected and not submit_sent and prompt_sent_at is not None and now - prompt_sent_at >= 0.35:
+            os.write(master_fd, b"\r")
+            submit_sent = True
+            prompt_sent_at = now
+            buf = b""
+
+        # 只有在本轮 prompt 真正提交后一段时间，才开始监听新的 [EXIT]。
+        # 避免恢复旧会话时把历史消息中的 [EXIT] 误判为本轮完成。
+        if submit_sent and not track_exit and prompt_sent_at is not None and now - prompt_sent_at >= 2.0:
+            track_exit = True
+            buf = b""
+
+        # 检测到 [EXIT] 后，给 TUI 一点时间落盘，再自动退出进入下一轮。
+        if exit_seen_at is not None and not quit_sent and now - exit_seen_at >= 1.0:
+            os.write(master_fd, b"/quit\r")
+            quit_sent = True
+
+        # 若 /quit 未能让进程退出，则强制结束，避免卡住外层循环。
+        if exit_seen_at is not None and quit_sent and now - exit_seen_at >= 4.0 and proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=1)
+            except Exception:
+                try:
+                    proc.kill()
+                    proc.wait(timeout=1)
+                except Exception:
+                    pass
+            exit_code = proc.returncode or 0
+            break
+
+        for fd in r:
+            if fd == master_fd:
+                try:
+                    data = os.read(master_fd, 4096)
+                except OSError:
+                    data = b''
+                if data:
+                    os.write(stdout_fd, data)
+                    t_last_out = time.monotonic()
+                    if track_exit and exit_seen_at is None:
+                        buf += data
+                        if len(buf) > 16384:
+                            buf = buf[-16384:]
+                        if b"[EXIT]" in buf:
+                            exit_seen_at = time.monotonic()
+            else:
+                try:
+                    data = os.read(tty_fd, 1024)
+                except OSError:
+                    data = b''
+                if data:
+                    os.write(master_fd, data)
+
+        if proc.poll() is not None:
+            exit_code = proc.returncode or 0
+            break
+
+    # 进程退出后尽量把剩余输出刷完。
+    while True:
+        try:
+            data = os.read(master_fd, 4096)
+        except OSError:
+            break
+        if not data:
+            break
+        os.write(stdout_fd, data)
+finally:
+    termios.tcsetattr(tty_fd, termios.TCSADRAIN, saved_tty)
+    try:
+        os.close(master_fd)
+    except Exception:
+        pass
+    try:
+        os.close(tty_fd)
+    except Exception:
+        pass
+    if proc.poll() is None:
+        try:
+            proc.wait(timeout=1)
+        except Exception:
+            pass
+
+sys.exit(exit_code)
+PY
+}
+
+opencode_batch_mode() {
+  python3 - <<'PY'
+import json
+import os
+
+state_path = '.pipeline/state.json'
+config_path = '.pipeline/config.json'
+env_mode = os.environ.get('TEAM_OPENCODE_INTERACTION_MODE', '').strip().lower()
+
+if not os.path.exists(state_path):
+    print('tui-initial')
+    raise SystemExit
+
+with open(state_path, 'r', encoding='utf-8') as f:
+    state = json.load(f)
+
+phase = state.get('current_phase', '')
+status = state.get('status', 'running')
+dep = state.get('depend_collector_result', {})
+unfilled = len(dep.get('unfilled_deps', []))
+
+if phase == 'ALL-COMPLETED' or status == 'completed':
+    print('done')
+    raise SystemExit
+if status == 'escalation':
+    print('escalation')
+    raise SystemExit
+if unfilled > 0:
+    print('pause')
+    raise SystemExit
+
+autonomous_mode = False
+interaction_mode = 'hybrid'
+if os.path.exists(config_path):
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+            autonomous_mode = bool(config.get('autonomous_mode', False))
+            interaction_mode = str(
+                config.get('opencode', {}).get('interaction_mode', 'hybrid')
+            ).strip().lower() or 'hybrid'
+    except Exception:
+        autonomous_mode = False
+        interaction_mode = 'hybrid'
+
+if env_mode:
+    interaction_mode = env_mode
+
+if interaction_mode not in {'hybrid', 'tui', 'run'}:
+    interaction_mode = 'hybrid'
+
+if interaction_mode == 'tui':
+    print('tui-initial' if not os.path.exists(state_path) else 'tui-continue')
+    raise SystemExit
+
+interactive_phases = {'system-planning'}
+if not autonomous_mode:
+    interactive_phases.update({'0.clarify', 'memory-consolidation'})
+
+if phase in interactive_phases:
+    print('tui-continue')
+elif interaction_mode == 'run':
+    print('run-continue')
+else:
+    print('run-continue')
+PY
+}
+
+opencode_state_brief() {
+  python3 - <<'PY'
+import json
+import os
+
+PHASE_LABELS = {
+    'initial': '初始化',
+    'system-planning': '系统规划',
+    'pick-next-proposal': '提案选取',
+    'memory-load': '项目记忆加载',
+    '0.clarify': '需求澄清',
+    '0.5.requirement-check': '需求完整性检查',
+    '1.design': '方案设计',
+    'gate-a.design-review': '方案审核',
+    '2.0a.repo-setup': '仓库初始化',
+    '2.0b.depend-collect': '依赖与凭证收集',
+    '2.plan': '任务细化',
+    '2.1.assumption-check': '假设传播校验',
+    'gate-b.plan-review': '计划审核',
+    '2.5.contract-formalize': '契约形式化',
+    '2.6.contract-validate-semantic': '契约语义校验',
+    '2.7.contract-validate-schema': '契约 Schema 校验',
+    '3.build': '并行实现',
+    '3.0b.build-verify': '构建验证',
+    '3.0d.duplicate-detect': '重复代码检测',
+    '3.1.static-analyze': '静态分析',
+    '3.2.diff-validate': 'Diff 校验',
+    '3.3.regression-guard': '回归防护',
+    '3.5.simplify': '代码精简',
+    '3.6.simplify-verify': '精简后验证',
+    'gate-c.code-review': '代码审查',
+    '3.7.contract-compliance': '契约一致性检查',
+    '4a.test': '功能测试',
+    '4a.1.test-failure-map': '测试失败归因',
+    '4.2.coverage-check': '覆盖率检查',
+    '4b.optimize': '性能优化',
+    'gate-d.test-review': '测试验收',
+    'api-change-detect': 'API 变更检测',
+    '5.document': '文档编写',
+    '5.1.changelog-check': '变更日志检查',
+    'gate-e.doc-review': '文档审核',
+    '5.9.ci-push': 'CI 推送',
+    '6.0.deploy-readiness': '部署就绪检查',
+    '6.deploy': '部署执行',
+    '7.monitor': '上线观测',
+    'memory-consolidation': '项目记忆固化',
+    'mark-proposal-completed': '提案完成标记',
+    'ALL-COMPLETED': '全部完成',
+    'none': '无',
+    'unknown': '未知阶段',
+}
+
+STATUS_LABELS = {
+    'not-started': '未开始',
+    'running': '运行中',
+    'completed': '已完成',
+    'escalation': '需人工介入',
+    'failed': '失败',
+}
+
+def fmt_phase(value: str) -> str:
+    label = PHASE_LABELS.get(value, value)
+    return f'{label} ({value})' if value not in ('none', 'unknown', 'initial') else label
+
+def fmt_status(value: str) -> str:
+    label = STATUS_LABELS.get(value, value)
+    return f'{label} ({value})' if label != value else label
+
+state_path = '.pipeline/state.json'
+if not os.path.exists(state_path):
+    print(f'phase={fmt_phase("initial")}|status={fmt_status("not-started")}|last={fmt_phase("none")}')
+    raise SystemExit
+
+with open(state_path, 'r', encoding='utf-8') as f:
+    state = json.load(f)
+
+phase = state.get('current_phase', '') or 'unknown'
+status = state.get('status', 'running') or 'running'
+last = state.get('last_completed_phase') or 'none'
+print(f'phase={fmt_phase(phase)}|status={fmt_status(status)}|last={fmt_phase(last)}')
+PY
+}
+
+print_opencode_banner() {
+  local title="$1"
+  echo ""
+  echo "  ===== ${title} ====="
+}
+
+print_opencode_state() {
+  local label="$1"
+  local state_line
+  state_line=$(opencode_state_brief 2>/dev/null || echo "phase=unknown|status=unknown|last=unknown")
+  local phase status last
+  phase=$(printf '%s' "$state_line" | python3 -c "import sys; s=sys.stdin.read().strip(); parts=dict(item.split('=',1) for item in s.split('|') if '=' in item); print(parts.get('phase','未知阶段'))")
+  status=$(printf '%s' "$state_line" | python3 -c "import sys; s=sys.stdin.read().strip(); parts=dict(item.split('=',1) for item in s.split('|') if '=' in item); print(parts.get('status','未知状态'))")
+  last=$(printf '%s' "$state_line" | python3 -c "import sys; s=sys.stdin.read().strip(); parts=dict(item.split('=',1) for item in s.split('|') if '=' in item); print(parts.get('last','未知阶段'))")
+  echo "  ${label}: 当前阶段=${phase} | 状态=${status} | 上一完成阶段=${last}"
+}
+
+ensure_gh_auth() {
+  if ! gh auth status >/dev/null 2>&1; then
+    echo "❌ gh 未认证。请先执行: gh auth login"
+    exit 1
+  fi
+}
+
+load_issue_automation_config() {
+  python3 - <<'PY'
+import json
+import os
+
+cfg = {
+    'repo': '',
+    'source_labels': '',
+    'processing_label': 'pipeline:processing',
+    'waiting_label': 'pipeline:waiting-user',
+    'done_label': 'pipeline:done',
+    'auto_close': False,
+    'poll_interval_seconds': 30,
+    'max_workers': 1,
+    'worktree_dir': '.worktrees/issues',
+}
+
+path = '.pipeline/config.json'
+if os.path.exists(path):
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            user_cfg = json.load(f).get('issue_automation', {})
+        if isinstance(user_cfg, dict):
+            cfg.update({k: user_cfg[k] for k in user_cfg if k in cfg})
+            if not cfg.get('source_labels') and user_cfg.get('inbox_label'):
+                cfg['source_labels'] = user_cfg['inbox_label']
+    except Exception:
+        pass
+
+print('|'.join([
+    str(cfg.get('repo', '')),
+    str(cfg.get('source_labels', '')),
+    str(cfg.get('processing_label', 'pipeline:processing')),
+    str(cfg.get('waiting_label', 'pipeline:waiting-user')),
+    str(cfg.get('done_label', 'pipeline:done')),
+    'true' if cfg.get('auto_close') else 'false',
+    str(cfg.get('poll_interval_seconds', 30)),
+    str(cfg.get('max_workers', 1)),
+    str(cfg.get('worktree_dir', '.worktrees/issues')),
+]))
+PY
+}
+
+resolve_issue_repo() {
+  local override="${1:-}"
+  if [ -n "$override" ]; then
+    printf '%s\n' "$override"
+    return
+  fi
+
+  local cfg
+  cfg=$(load_issue_automation_config 2>/dev/null || true)
+  if [ -n "$cfg" ]; then
+    local cfg_repo
+    cfg_repo=$(printf '%s' "$cfg" | python3 -c "import sys; parts=sys.stdin.read().split('|'); print(parts[0] if parts else '')")
+    if [ -n "$cfg_repo" ]; then
+      printf '%s\n' "$cfg_repo"
+      return
+    fi
+  fi
+
+  gh repo view --json nameWithOwner --jq '.nameWithOwner'
+}
+
+ensure_issue_runtime_dirs() {
+  mkdir -p .pipeline/issues/cache .pipeline/issues/results .pipeline/issues/logs
+}
+
+ensure_issue_label() {
+  local repo="$1"
+  local label="$2"
+  local color="$3"
+  local desc="$4"
+  gh label create "$label" --repo "$repo" --color "$color" --description "$desc" >/dev/null 2>&1 || true
+}
+
+set_issue_processing_state() {
+  local repo="$1"
+  local issue_number="$2"
+  local add_label="$3"
+  shift 3
+  local remove_labels=("$@")
+
+  if [ -n "$add_label" ]; then
+    gh issue edit "$issue_number" --repo "$repo" --add-label "$add_label" >/dev/null 2>&1 || true
+  fi
+  local remove_label
+  for remove_label in "${remove_labels[@]}"; do
+    [ -n "$remove_label" ] || continue
+    gh issue edit "$issue_number" --repo "$repo" --remove-label "$remove_label" >/dev/null 2>&1 || true
+  done
+}
+
+render_issue_worker_result() {
+  python3 - "$1" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, 'r', encoding='utf-8') as f:
+    data = json.load(f)
+
+status = data.get('result', 'unknown')
+phase = data.get('phase', 'unknown')
+title = data.get('issue_title', '')
+url = data.get('issue_url', '')
+worktree = data.get('worktree', '')
+
+print(f"Issue #{data.get('issue_number')} {title}")
+print(f"结果: {status}")
+print(f"阶段: {phase}")
+if url:
+    print(f"URL: {url}")
+if worktree:
+    print(f"Worktree: {worktree}")
+PY
+}
+
+build_issue_pipeline_files() {
+  local issue_json="$1"
+  local worktree="$2"
+  local repo="$3"
+  python3 - "$issue_json" "$worktree" "$repo" <<'PY'
+import json
+import os
+import re
+import sys
+from datetime import datetime, timezone
+
+issue_path, worktree, repo = sys.argv[1:4]
+with open(issue_path, 'r', encoding='utf-8') as f:
+    issue = json.load(f)
+
+cfg_path = os.path.join(worktree, '.pipeline', 'config.json')
+with open(cfg_path, 'r', encoding='utf-8') as f:
+    cfg = json.load(f)
+
+number = issue['number']
+title = issue.get('title', '').strip() or f'Issue #{number}'
+body = (issue.get('body') or '').strip()
+labels = [item.get('name', '') for item in issue.get('labels', []) if item.get('name')]
+comments = issue.get('comments', [])
+issue_url = issue.get('url') or issue.get('html_url') or ''
+project_name = cfg.get('project_name', 'PROJECT')
+autonomous_mode = bool(cfg.get('autonomous_mode', False))
+
+def compact_lines(text: str):
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return lines[:8]
+
+body_lines = compact_lines(body)
+comment_lines = []
+for comment in comments[:5]:
+    author = ((comment.get('author') or {}).get('login') or (comment.get('authorAssociation') or 'unknown'))
+    text = (comment.get('body') or '').strip().replace('\r', '')
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    if len(text) > 300:
+        text = text[:297] + '...'
+    if text:
+        comment_lines.append(f'- @{author}: {text}')
+
+scope_parts = [f'基于 GitHub Issue #{number} 完成交付。']
+if body_lines:
+    scope_parts.append('Issue 描述要点：' + '；'.join(body_lines[:4]))
+
+detail = {
+    'user_stories': [f'作为维护者，我希望完成 Issue #{number}《{title}》中的需求。'],
+    'business_rules': [f'以 GitHub Issue #{number} 的标题、正文、评论和标签为最高优先级输入。'],
+    'acceptance_criteria': [
+        f'最终实现满足 Issue #{number} 中描述的问题或需求。',
+        f'完成后需要可向 GitHub Issue 回写处理结果。',
+    ],
+    'api_overview': [],
+    'data_entities': [],
+    'non_functional': [
+        '在不破坏现有架构约束的前提下完成修改。',
+    ],
+}
+
+for line in body_lines[:4]:
+    detail['acceptance_criteria'].append(line)
+
+proposal = {
+    'id': f'ISSUE-{number}',
+    'title': f'处理 Issue #{number}: {title}',
+    'scope': ' '.join(scope_parts),
+    'domains': ['Issue'],
+    'depends_on': [],
+    'status': 'pending',
+    'parallel_group': 0,
+    'detail': detail if autonomous_mode else {},
+    'source_issue': {
+        'repo': repo,
+        'number': number,
+        'url': issue_url,
+        'labels': labels,
+    },
+}
+
+queue = {
+    'system_name': f'{project_name} Issue Intake',
+    'source': {'type': 'github_issue', 'repo': repo, 'number': number, 'url': issue_url},
+    'proposals': [proposal],
+}
+
+pipeline_id = f'issue-{number}-{datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")}'
+state = {
+    'pipeline_id': pipeline_id,
+    'project_name': project_name,
+    'current_phase': 'pick-next-proposal',
+    'last_completed_phase': None,
+    'status': 'running',
+    'attempt_counts': {
+        '0.clarify': 0, '0.5.requirement-check': 0, '1.design': 0, 'gate-a.design-review': 0,
+        '2.0a.repo-setup': 0, '2.0b.depend-collect': 0, '2.plan': 0, '2.1.assumption-check': 0, 'gate-b.plan-review': 0,
+        '2.5.contract-formalize': 0, '2.6.contract-validate-semantic': 0, '2.7.contract-validate-schema': 0,
+        '3.build': 0, '3.0b.build-verify': 0, '3.0d.duplicate-detect': 0, '3.1.static-analyze': 0,
+        '3.2.diff-validate': 0, '3.3.regression-guard': 0, '3.5.simplify': 0, '3.6.simplify-verify': 0,
+        'gate-c.code-review': 0, '3.7.contract-compliance': 0, '4a.test': 0, '4a.1.test-failure-map': 0,
+        '4.2.coverage-check': 0, '4b.optimize': 0, 'gate-d.test-review': 0, 'api-change-detect': 0,
+        '5.document': 0, '5.1.changelog-check': 0, 'gate-e.doc-review': 0, '5.9.ci-push': 0,
+        '6.0.deploy-readiness': 0, '6.deploy': 0, '7.monitor': 0, 'per_builder': {},
+    },
+    'conditional_agents': {'migrator': False, 'optimizer': False, 'translator': False},
+    'phase_5_mode': 'full',
+    'new_test_files': [],
+    'phase_3_base_sha': None,
+    'phase_3_worktrees': {},
+    'phase_3_branches': {},
+    'phase_3_main_branch': None,
+    'phase_3_merge_order': [],
+    'github_repo_created': False,
+    'github_repo_url': None,
+    'execution_log': [],
+    'parallel_proposals': [],
+    'parallel_base_sha': None,
+    'parallel_base_branch': None,
+    'parallel_worktrees': {},
+    'parallel_branches': {},
+    'parallel_merge_order': [],
+    'parallel_completed': [],
+    'issue_context': {
+        'repo': repo,
+        'number': number,
+        'title': title,
+        'url': issue_url,
+        'labels': labels,
+        'autonomous_mode': autonomous_mode,
+    },
+}
+
+artifacts_dir = os.path.join(worktree, '.pipeline', 'artifacts')
+os.makedirs(artifacts_dir, exist_ok=True)
+with open(os.path.join(worktree, '.pipeline', 'proposal-queue.json'), 'w', encoding='utf-8') as f:
+    json.dump(queue, f, ensure_ascii=False, indent=2)
+with open(os.path.join(worktree, '.pipeline', 'state.json'), 'w', encoding='utf-8') as f:
+    json.dump(state, f, ensure_ascii=False, indent=2)
+with open(os.path.join(artifacts_dir, 'issue-runtime.json'), 'w', encoding='utf-8') as f:
+    json.dump({'repo': repo, 'issue': issue, 'pipeline_id': pipeline_id}, f, ensure_ascii=False, indent=2)
+
+context_lines = [
+    f'# GitHub Issue 上下文：#{number} {title}',
+    '',
+    f'- 仓库：`{repo}`',
+    f'- Issue：`#{number}`',
+    f'- URL：{issue_url}',
+    f'- 标签：{", ".join(labels) if labels else "无"}',
+    f'- 自治模式：{autonomous_mode}',
+    '',
+    '## 正文',
+    body or '(无正文)',
+    '',
+    '## 最近评论',
+]
+if comment_lines:
+    context_lines.extend(comment_lines)
+else:
+    context_lines.append('- 暂无评论')
+context_lines.extend([
+    '',
+    '## Pilot 执行要求',
+    '- 将 GitHub Issue 标题、正文、评论、标签视为当前提案的事实来源。',
+    '- 若信息不足，在允许交互的阶段主动澄清；若处于自治模式，尽量基于 issue 内容做最小合理假设。',
+    '- 完成后需要产出可回写到 GitHub Issue 的处理结果摘要。',
+])
+with open(os.path.join(artifacts_dir, 'issue-context.md'), 'w', encoding='utf-8') as f:
+    f.write('\n'.join(context_lines).rstrip() + '\n')
+PY
+}
+
+bootstrap_issue_workspace() {
+  local root_dir="$1"
+  local worktree="$2"
+  local issue_json="$3"
+  local repo="$4"
+
+  mkdir -p "$worktree"
+  rm -rf "$worktree/.pipeline"
+  mkdir -p "$worktree/.pipeline"
+
+  cp "$root_dir/.pipeline/config.json" "$worktree/.pipeline/config.json"
+  cp "$root_dir/.pipeline/playbook.md" "$worktree/.pipeline/playbook.md"
+  cp "$root_dir/.pipeline/project-memory.json" "$worktree/.pipeline/project-memory.json"
+  [ -f "$root_dir/.pipeline/llm-router.sh" ] && cp "$root_dir/.pipeline/llm-router.sh" "$worktree/.pipeline/llm-router.sh"
+  mkdir -p "$worktree/.pipeline/autosteps" "$worktree/.pipeline/history" "$worktree/.pipeline/artifacts" "$worktree/.pipeline/agents"
+  cp -R "$root_dir/.pipeline/autosteps/." "$worktree/.pipeline/autosteps/"
+  cp -R "$root_dir/.pipeline/agents/." "$worktree/.pipeline/agents/"
+
+  [ -f "$root_dir/AGENTS.md" ] && cp "$root_dir/AGENTS.md" "$worktree/AGENTS.md"
+  [ -f "$root_dir/CLAUDE.md" ] && cp "$root_dir/CLAUDE.md" "$worktree/CLAUDE.md"
+  if [ -d "$root_dir/.cursor/rules" ]; then
+    mkdir -p "$worktree/.cursor/rules"
+    cp -R "$root_dir/.cursor/rules/." "$worktree/.cursor/rules/"
+  fi
+
+  build_issue_pipeline_files "$issue_json" "$worktree" "$repo"
+}
+
+prepare_issue_worktree() {
+  local issue_number="$1"
+  local repo="$2"
+  local worktree_dir="$3"
+  local root_dir="$4"
+
+  local issue_json=".pipeline/issues/cache/issue-${issue_number}.json"
+  gh issue view "$issue_number" --repo "$repo" --json number,title,body,url,labels,comments,author > "$issue_json"
+
+  local abs_worktree_dir="$root_dir/$worktree_dir"
+  mkdir -p "$abs_worktree_dir"
+
+  local worktree_path="$abs_worktree_dir/issue-${issue_number}"
+  local branch="pipeline/issue-${issue_number}"
+  if [ ! -d "$worktree_path/.git" ] && [ ! -f "$worktree_path/.git" ]; then
+    rm -rf "$worktree_path"
+    if git show-ref --verify --quiet "refs/heads/$branch"; then
+      git worktree add "$worktree_path" "$branch" >/dev/null
+    else
+      git worktree add -b "$branch" "$worktree_path" HEAD >/dev/null
+    fi
+  fi
+
+  bootstrap_issue_workspace "$root_dir" "$worktree_path" "$issue_json" "$repo"
+  printf '%s\n' "$worktree_path"
+}
+
+write_issue_worker_result() {
+  local result_file="$1"
+  local result="$2"
+  local phase="$3"
+  local worktree="$4"
+  local issue_number="$5"
+  local issue_title="$6"
+  local issue_url="$7"
+  local log_file="${8:-}"
+  python3 - "$result_file" "$result" "$phase" "$worktree" "$issue_number" "$issue_title" "$issue_url" "$log_file" <<'PY'
+import json
+import os
+import sys
+from datetime import datetime, timezone
+
+path, result, phase, worktree, issue_number, issue_title, issue_url, log_file = sys.argv[1:9]
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(path, 'w', encoding='utf-8') as f:
+    json.dump({
+        'result': result,
+        'phase': phase,
+        'worktree': worktree,
+        'issue_number': int(issue_number),
+        'issue_title': issue_title,
+        'issue_url': issue_url,
+        'log_file': log_file,
+        'updated_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'github_feedback_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'github_feedback_written': True,
+    }, f, ensure_ascii=False, indent=2)
+PY
+}
+
+generate_agents_for_platform() {
+  local platform="$1"
+  local dest_dir="$2"
+  local transpiler="$TEAM_HOME/scripts/build-agents.py"
+  local agents_src="$TEAM_HOME/agents"
+
+  if [ ! -f "$transpiler" ]; then
+    echo "  ❌ Transpiler not found: $transpiler" >&2
+    return 1
+  fi
+
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  if ! python3 "$transpiler" --platforms "$platform" --output "$tmpdir" --agents-dir "$agents_src" >/dev/null 2>&1; then
+    echo "  ❌ Transpiler failed for platform: $platform" >&2
+    rm -rf "$tmpdir"
+    return 1
+  fi
+
+  mkdir -p "$dest_dir"
+  rm -f "$dest_dir"/*.md "$dest_dir"/*.toml 2>/dev/null
+
+  local ext
+  ext=$(platform_ext "$platform")
+  local count=0
+  for f in "$tmpdir/$platform/"*"$ext"; do
+    [ -f "$f" ] || continue
+    cp "$f" "$dest_dir/$(basename "$f")"
+    count=$((count + 1))
+  done
+
+  rm -rf "$tmpdir"
+  echo "$count"
+}
+
+# Generate AGENTS.md with embedded pilot instructions for codex/opencode.
+# CC/Cursor use CLAUDE.md for context and load pilot via --agent flag, so
+# their AGENTS.md stays as a lightweight overview.
+generate_agents_md_with_pilot() {
+  local platform="$1"
+  local base_agents_md="$TEAM_HOME/AGENTS.md"
+
+  case "$platform" in
+    codex|opencode) ;;
+    *) return 0 ;;
+  esac
+
+  if [ ! -f "$base_agents_md" ]; then
+    return 0
+  fi
+
+  local pilot_file=""
+  case "$platform" in
+    codex)    pilot_file=".pipeline/agents/pilot.toml" ;;
+    opencode) pilot_file=".pipeline/agents/pilot.md" ;;
+  esac
+
+  cp "$base_agents_md" AGENTS.md
+
+  if [ -f "$pilot_file" ]; then
+    python3 -c "
+import re, sys
+
+platform = '$platform'
+pilot_path = '$pilot_file'
+content = open(pilot_path).read()
+
+instructions = ''
+if platform == 'codex':
+    m = re.search(r'developer_instructions\s*=\s*\"\"\"(.*?)\"\"\"', content, re.DOTALL)
+    if m:
+        instructions = m.group(1).strip()
+elif platform == 'opencode':
+    if content.startswith('---'):
+        end = content.index('---', 3) + 3
+        instructions = content[end:].strip()
+    else:
+        instructions = content.strip()
+
+if instructions:
+    with open('AGENTS.md', 'a') as f:
+        f.write('\n\n---\n\n')
+        f.write(instructions)
+        f.write('\n')
+" 2>/dev/null && echo "  ✓ AGENTS.md (含 Pilot 指令)" || echo "  ⚠  AGENTS.md Pilot 指令追加失败" >&2
+  fi
 }
 
 cmd_init() {
@@ -104,14 +1070,54 @@ cmd_init() {
     exit 1
   fi
 
+  # Parse --platform argument
+  local platform="${PIPELINE_PLATFORM:-}"
+  local next_is_platform=false
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --platform=*) platform="${1#*=}" ;;
+      --platform)   next_is_platform=true ;;
+      cc|codex|cursor|opencode)
+        if [ "$next_is_platform" = true ] || [ -z "$platform" ]; then
+          platform="$1"
+          next_is_platform=false
+        fi ;;
+      *) next_is_platform=false ;;
+    esac
+    shift
+  done
+
+  # Auto-detect if not specified
+  if [ -z "$platform" ]; then
+    platform=$(detect_platform)
+  fi
+
+  local label
+  label=$(platform_label "$platform")
+
   echo ""
   echo "  Initializing lfun-team-pipeline in: $(pwd)"
+  echo "  Target platform: $label"
   echo ""
 
-  # Create directory structure
-  mkdir -p .pipeline/autosteps .pipeline/artifacts .pipeline/history
+  # Track if .pipeline/ is newly created (for cleanup on failure)
+  local is_fresh=false
+  if [ ! -d ".pipeline" ]; then
+    is_fresh=true
+  fi
 
-  # Copy config
+  _init_cleanup() {
+    if [ "$is_fresh" = true ] && [ -d ".pipeline" ]; then
+      echo "  ⚠  Cleaning up failed initialization..."
+      rm -rf .pipeline
+      echo "  ✓ .pipeline/ removed"
+    fi
+  }
+  trap '_init_cleanup' ERR
+
+  # ── 1. Platform-agnostic files ──────────────────────────────
+  mkdir -p .pipeline/autosteps .pipeline/artifacts .pipeline/history .pipeline/agents
+
   if [ -f ".pipeline/config.json" ]; then
     echo "  ⚠  .pipeline/config.json already exists, skipping"
   else
@@ -119,11 +1125,9 @@ cmd_init() {
     echo "  ✓ .pipeline/config.json"
   fi
 
-  # Copy playbook
   cp "$TEAM_HOME/.pipeline/playbook.md" .pipeline/playbook.md
   echo "  ✓ .pipeline/playbook.md"
 
-  # Copy project-memory template (only if not exists, preserve user data)
   if [ -f ".pipeline/project-memory.json" ]; then
     echo "  ⚠  .pipeline/project-memory.json already exists, skipping"
   else
@@ -131,11 +1135,6 @@ cmd_init() {
     echo "  ✓ .pipeline/project-memory.json"
   fi
 
-  # Note: proposal-queue.json is NOT copied here.
-  # It is generated by System Planning (first run of `claude --agent pilot`).
-  # Copying an empty template would bypass System Planning and cause immediate ALL-COMPLETED.
-
-  # Copy autosteps
   STEP_COUNT=0
   while IFS= read -r f; do
     dest=".pipeline/autosteps/$(basename "$f")"
@@ -144,27 +1143,94 @@ cmd_init() {
   done < <(find "$TEAM_HOME/.pipeline/autosteps" \( -name "*.sh" -o -name "*.py" \) | sort)
   echo "  ✓ .pipeline/autosteps/ ($STEP_COUNT scripts)"
 
-  # Copy llm-router.sh
   if [ -f "$TEAM_HOME/.pipeline/llm-router.sh" ]; then
     cp "$TEAM_HOME/.pipeline/llm-router.sh" .pipeline/llm-router.sh
     chmod +x .pipeline/llm-router.sh
     echo "  ✓ .pipeline/llm-router.sh"
   fi
 
-  # Copy CLAUDE.md
-  if [ -f "CLAUDE.md" ]; then
-    echo "  ⚠  CLAUDE.md already exists, skipping"
+  # ── 2. Platform-specific agents → .pipeline/agents/ ─────────
+  local agent_count
+  agent_count=$(generate_agents_for_platform "$platform" ".pipeline/agents")
+  if [ -n "$agent_count" ] && [ "$agent_count" -gt 0 ] 2>/dev/null; then
+    echo "  ✓ .pipeline/agents/ ($agent_count agents for $label)"
   else
-    cp "$TEAM_HOME/CLAUDE.md" CLAUDE.md
-    echo "  ✓ CLAUDE.md"
+    echo "  ⚠  Agent generation failed, falling back to CC format"
+    # Fallback: copy raw CC agents
+    local raw_agents="$TEAM_HOME/../agents"
+    [ -d "$raw_agents" ] || raw_agents="$TEAM_HOME/agents"
+    if [ -d "$raw_agents" ]; then
+      for f in "$raw_agents"/*.md; do
+        [ -f "$f" ] || continue
+        cp "$f" ".pipeline/agents/$(basename "$f")"
+      done
+      echo "  ✓ .pipeline/agents/ (CC fallback)"
+    fi
   fi
 
+  # Record platform in config.json
+  if [ -f ".pipeline/config.json" ]; then
+    python3 -c "
+import json, sys
+try:
+    c = json.load(open('.pipeline/config.json'))
+    mr = c.setdefault('model_routing', {})
+    mr['cli_backend'] = '$platform' if '$platform' != 'cc' else 'auto'
+    with open('.pipeline/config.json', 'w') as f:
+        json.dump(c, f, indent=2, ensure_ascii=False)
+except Exception:
+    pass
+" 2>/dev/null
+  fi
+
+  # ── 3. Platform-specific context files ──────────────────────
+  case "$platform" in
+    cc|cursor)
+      if [ ! -f "CLAUDE.md" ]; then
+        cp "$TEAM_HOME/CLAUDE.md" CLAUDE.md
+        echo "  ✓ CLAUDE.md"
+      fi
+      ;;
+  esac
+
+  case "$platform" in
+    codex|opencode)
+      if [ ! -f "AGENTS.md" ]; then
+        generate_agents_md_with_pilot "$platform"
+      else
+        echo "  ⚠  AGENTS.md already exists, skipping"
+      fi
+      ;;
+  esac
+
+  case "$platform" in
+    cursor)
+      if [ -d "$TEAM_HOME/.cursor/rules" ]; then
+        mkdir -p .cursor/rules
+        cp "$TEAM_HOME/.cursor/rules/pipeline.md" .cursor/rules/pipeline.md 2>/dev/null || true
+        echo "  ✓ .cursor/rules/pipeline.md"
+      fi
+      ;;
+  esac
+
   echo ""
-  echo "  ✅ Pipeline initialized! Next steps:"
+  echo "  ✅ Pipeline initialized for $label!"
   echo ""
+  echo "     Next steps:"
   echo "     1. Edit .pipeline/config.json  ← set project_name and tech stack"
-  echo "     2. claude --dangerously-skip-permissions --agent pilot ← start the pipeline"
+  echo "     2. Start: team run"
+  case "$platform" in
+    cc)       echo "        Or: claude --dangerously-skip-permissions --agent pilot" ;;
+    codex)    echo "        Or: codex --full-auto" ;;
+    cursor)   echo "        Or: Cursor Agent mode → /pilot" ;;
+    opencode) echo "        Or: opencode run --agent build" ;;
+  esac
   echo ""
+  echo "     Platform agents saved to: .pipeline/agents/"
+  echo "     Switch platform: team migrate <codex|cursor|opencode>"
+  echo ""
+
+  trap - ERR
 }
 
 cmd_version() {
@@ -308,8 +1374,7 @@ if 'execution_log' not in s:
     fi
 
     echo "  ✓ Phase names migrated successfully"
-    rm -rf "$BACKUP_DIR"
-    echo "  ✓ Backup cleaned up"
+    # Backup kept until all phases complete (deleted at function end)
   else
     # No migration needed, still add execution_log if missing
     if [ -f ".pipeline/state.json" ]; then
@@ -327,7 +1392,20 @@ else:
     echo "  ✓ Phase names: already migrated"
   fi
 
-  # ── Phase 4: Upgrade template files (safe — config/state already migrated) ──
+  # ── Phase 4: Snapshot before overwriting files ─────────────────────
+  # Ensure BACKUP_DIR exists even if migration was skipped
+  if [ -z "${BACKUP_DIR:-}" ]; then
+    BACKUP_TS=$(date +%Y%m%d%H%M%S)
+    BACKUP_DIR=".pipeline/.upgrade-backup-${BACKUP_TS}"
+  fi
+  mkdir -p "$BACKUP_DIR"
+  [ -f ".pipeline/playbook.md" ] && cp .pipeline/playbook.md "$BACKUP_DIR/" 2>/dev/null || true
+  [ -f ".pipeline/llm-router.sh" ] && cp .pipeline/llm-router.sh "$BACKUP_DIR/" 2>/dev/null || true
+  [ -f "CLAUDE.md" ] && cp CLAUDE.md "$BACKUP_DIR/CLAUDE.md.bak" 2>/dev/null || true
+  [ -f "AGENTS.md" ] && cp AGENTS.md "$BACKUP_DIR/AGENTS.md.bak" 2>/dev/null || true
+  [ -d ".pipeline/agents" ] && cp -r .pipeline/agents "$BACKUP_DIR/agents" 2>/dev/null || true
+
+  # ── Phase 5: Upgrade template files ───────────────────────────────
   cp "$TEAM_HOME/.pipeline/playbook.md" .pipeline/playbook.md
   echo "  ✓ .pipeline/playbook.md upgraded"
 
@@ -341,21 +1419,90 @@ else:
     echo "  ✓ llm-router.sh upgraded"
   fi
 
+  # Context files: backup old → write new (backup already saved above)
   if [ -f "$TEAM_HOME/CLAUDE.md" ]; then
     cp "$TEAM_HOME/CLAUDE.md" CLAUDE.md
-    echo "  ✓ CLAUDE.md upgraded"
+    echo "  ✓ CLAUDE.md upgraded (backup in $BACKUP_DIR)"
   fi
+
+  # Detect current platform for AGENTS.md generation
+  local upgrade_platform="cc"
+  if [ -f ".pipeline/config.json" ]; then
+    upgrade_platform=$(python3 -c "
+import json
+c = json.load(open('.pipeline/config.json'))
+print(c.get('model_routing',{}).get('cli_backend','cc'))
+" 2>/dev/null || echo "cc")
+    [ "$upgrade_platform" = "auto" ] && upgrade_platform="cc"
+  fi
+
+  case "$upgrade_platform" in
+    codex|opencode)
+      generate_agents_md_with_pilot "$upgrade_platform"
+      echo "     (backup in $BACKUP_DIR)"
+      ;;
+    *)
+      if [ -f "$TEAM_HOME/AGENTS.md" ]; then
+        cp "$TEAM_HOME/AGENTS.md" AGENTS.md
+        echo "  ✓ AGENTS.md upgraded (backup in $BACKUP_DIR)"
+      fi
+      ;;
+  esac
+
+  if [ -d "$TEAM_HOME/.cursor/rules" ]; then
+    mkdir -p .cursor/rules
+    cp "$TEAM_HOME/.cursor/rules/pipeline.md" .cursor/rules/pipeline.md 2>/dev/null || true
+    echo "  ✓ .cursor/rules/pipeline.md upgraded"
+  fi
+
+  # ── Phase 6: Upgrade project-local agents (.pipeline/agents/) ─────
+  if [ -d ".pipeline/agents" ]; then
+    local current_platform="cc"
+    if [ -f ".pipeline/config.json" ]; then
+      current_platform=$(python3 -c "
+import json
+c = json.load(open('.pipeline/config.json'))
+p = c.get('model_routing', {}).get('cli_backend', 'auto')
+print(p if p not in ('auto', '') else 'cc')
+" 2>/dev/null || echo "cc")
+    fi
+    if [ "$current_platform" = "cc" ] && ls .pipeline/agents/*.toml &>/dev/null; then
+      current_platform="codex"
+    fi
+
+    local label
+    label=$(platform_label "$current_platform")
+    local agent_count
+    agent_count=$(generate_agents_for_platform "$current_platform" ".pipeline/agents")
+    if [ -n "$agent_count" ] && [ "$agent_count" -gt 0 ] 2>/dev/null; then
+      echo "  ✓ .pipeline/agents/ upgraded ($agent_count agents for $label)"
+    else
+      echo "  ⚠  Agent upgrade failed — restoring from backup"
+      if [ -d "$BACKUP_DIR/agents" ]; then
+        rm -rf .pipeline/agents
+        cp -r "$BACKUP_DIR/agents" .pipeline/agents
+      fi
+    fi
+  else
+    echo "  ℹ  No .pipeline/agents/ found (legacy project, using global agents)"
+    echo "     To enable per-repo agents: team migrate <cc|codex|cursor|opencode>"
+  fi
+
+  # ── Cleanup ───────────────────────────────────────────────────────
+  rm -rf "$BACKUP_DIR"
 
   echo ""
   echo "  Preserved (not modified):"
+  echo "    .pipeline/config.json"
   echo "    .pipeline/project-memory.json"
   echo "    .pipeline/proposal-queue.json"
+  echo "    .pipeline/state.json"
   echo "    .pipeline/artifacts/*"
   echo ""
 
   echo "  ✅ Upgraded to v${VERSION}"
   echo ""
-  echo "  Run 'claude --dangerously-skip-permissions --agent pilot' to continue from current phase."
+  echo "  Run 'team run' to continue from current phase."
   echo ""
 }
 
@@ -376,7 +1523,7 @@ cmd_replan() {
 
   # Remove queue to trigger re-planning
   rm .pipeline/proposal-queue.json
-  echo "  ✓ Queue removed. Next 'claude --agent pilot' will enter System Planning."
+  echo "  ✓ Queue removed. Next pipeline invocation will enter System Planning."
   echo ""
   echo "  Note: Completed proposals are preserved in project-memory.json."
   echo "  The new plan will build on existing progress."
@@ -387,13 +1534,15 @@ cmd_status() {
   if [ ! -f ".pipeline/state.json" ]; then
     echo ""
     echo "  ❌ No pipeline found in current directory."
-    echo "     Run: team init && claude --dangerously-skip-permissions --agent pilot"
+    echo "     Run: team init && team run"
     echo ""
     exit 1
   fi
 
   python3 - << 'PYEOF'
 import json, os, sys
+import subprocess
+import re
 from datetime import datetime, timezone
 
 # ── ANSI colors ────────────────────────────────────────────────────
@@ -409,6 +1558,160 @@ WHITE  = "\033[37m"
 
 def c(color, text): return f"{color}{text}{RESET}"
 
+PHASE_LABELS = {
+    'system-planning': '系统规划',
+    'pick-next-proposal': '提案选取',
+    'memory-load': '项目记忆加载',
+    '0.clarify': '需求澄清',
+    '0.5.requirement-check': '需求完整性检查',
+    '1.design': '方案设计',
+    'gate-a.design-review': '方案审核',
+    '2.0a.repo-setup': '仓库初始化',
+    '2.0b.depend-collect': '依赖与凭证收集',
+    '2.plan': '任务细化',
+    '2.1.assumption-check': '假设传播校验',
+    'gate-b.plan-review': '计划审核',
+    '2.5.contract-formalize': '契约形式化',
+    '2.6.contract-validate-semantic': '契约语义校验',
+    '2.7.contract-validate-schema': '契约 Schema 校验',
+    '3.build': '并行实现',
+    '3.0b.build-verify': '构建验证',
+    '3.0d.duplicate-detect': '重复代码检测',
+    '3.1.static-analyze': '静态分析',
+    '3.2.diff-validate': 'Diff 校验',
+    '3.3.regression-guard': '回归防护',
+    '3.5.simplify': '代码精简',
+    '3.6.simplify-verify': '精简后验证',
+    'gate-c.code-review': '代码审查',
+    '3.7.contract-compliance': '契约一致性检查',
+    '4a.test': '功能测试',
+    '4a.1.test-failure-map': '测试失败归因',
+    '4.2.coverage-check': '覆盖率检查',
+    '4b.optimize': '性能优化',
+    'gate-d.test-review': '测试验收',
+    'api-change-detect': 'API 变更检测',
+    '5.document': '文档编写',
+    '5.1.changelog-check': '变更日志检查',
+    'gate-e.doc-review': '文档审核',
+    '5.9.ci-push': 'CI 推送',
+    '6.0.deploy-readiness': '部署就绪检查',
+    '6.deploy': '部署执行',
+    '7.monitor': '上线观测',
+    'memory-consolidation': '项目记忆固化',
+    'mark-proposal-completed': '提案完成标记',
+    'ALL-COMPLETED': '全部完成',
+}
+
+def fmt_phase(value):
+    if value in (None, '', '?', '-'):
+        return '-'
+    label = PHASE_LABELS.get(value)
+    return f"{label} ({value})" if label else str(value)
+
+def fmt_issue_result(value):
+    mapping = {
+        'done': ('已完成', GREEN, '✓'),
+        'waiting': ('等待人工', YELLOW, '⏸'),
+        'escalation': ('需人工介入', RED, '!'),
+        'running': ('处理中', CYAN, '…'),
+        'unknown': ('未知', DIM, '?'),
+    }
+    label, color, icon = mapping.get(value, (str(value), DIM, '?'))
+    return label, color, icon
+
+def fmt_ts(value):
+    if not value:
+        return '-'
+    return str(value).replace('T', ' ').replace('Z', ' UTC')
+
+def waiting_takeover_priority(item):
+    phase = item.get('phase', '') or ''
+    result = item.get('result', '') or ''
+    priority_map = {
+        '0.clarify': 1000,
+        '2.0b.depend-collect': 900,
+        'memory-consolidation': 800,
+        'gate-d.test-review': 700,
+        '6.0.deploy-readiness': 650,
+    }
+    score = priority_map.get(phase, 100)
+    if result == 'escalation':
+        score += 1200
+    return (-score, item.get('updated_at', ''), item.get('issue_number', 0))
+
+def parse_github_repo(remote_url):
+    if not remote_url:
+        return ''
+    remote_url = remote_url.strip()
+    m = re.search(r'github\.com[:/](.+?)(?:\.git)?$', remote_url)
+    return m.group(1) if m else ''
+
+def load_issue_cfg():
+    cfg = {
+        'repo': '',
+        'source_labels': '',
+        'processing_label': 'pipeline:processing',
+        'waiting_label': 'pipeline:waiting-user',
+        'done_label': 'pipeline:done',
+    }
+    cfg_path = '.pipeline/config.json'
+    if os.path.exists(cfg_path):
+        try:
+            with open(cfg_path, 'r', encoding='utf-8') as f:
+                issue_cfg = json.load(f).get('issue_automation', {})
+            if isinstance(issue_cfg, dict):
+                for key in cfg:
+                    if key in issue_cfg:
+                        cfg[key] = issue_cfg[key]
+                if not cfg.get('source_labels') and issue_cfg.get('inbox_label'):
+                    cfg['source_labels'] = issue_cfg['inbox_label']
+        except Exception:
+            pass
+    return cfg
+
+def detect_issue_repo(cfg):
+    if cfg.get('repo'):
+        return cfg['repo']
+    try:
+        remote = subprocess.check_output(
+            ['git', 'remote', 'get-url', 'origin'], text=True, stderr=subprocess.DEVNULL
+        ).strip()
+        return parse_github_repo(remote)
+    except Exception:
+        return ''
+
+def query_issue_queue_counts(repo, cfg):
+    if not repo:
+        return None
+    try:
+        raw = subprocess.check_output([
+            'gh', 'issue', 'list',
+            '--repo', repo,
+            '--state', 'open',
+            '--limit', '200',
+            '--json', 'number,labels',
+        ], text=True, stderr=subprocess.DEVNULL)
+        items = json.loads(raw)
+    except Exception:
+        return None
+
+    source_labels = {x.strip().lower() for x in str(cfg.get('source_labels', '')).split(',') if x.strip()}
+    queued = processing = waiting = done = 0
+    for item in items:
+        labels = {lbl.get('name', '') for lbl in item.get('labels', [])}
+        lower_labels = {x.lower() for x in labels}
+        if source_labels and not (source_labels & lower_labels):
+            continue
+        if cfg['processing_label'] in labels:
+            processing += 1
+        elif cfg['waiting_label'] in labels:
+            waiting += 1
+        elif cfg['done_label'] in labels:
+            done += 1
+        else:
+            queued += 1
+    return {'queued': queued, 'processing': processing, 'waiting': waiting, 'done': done}
+
 # ── Load state.json ────────────────────────────────────────────────
 state = json.load(open(".pipeline/state.json"))
 project   = state.get("project_name", os.path.basename(os.getcwd()))
@@ -419,24 +1722,32 @@ pipeline_id = state.get("pipeline_id", "-")
 cond      = state.get("conditional_agents", {})
 attempts  = state.get("attempt_counts", {})
 
-# ── Header ─────────────────────────────────────────────────────────
-print()
-print(c(BOLD + CYAN, f"  ╔══ Pipeline Status — {project} ══"))
-print(c(CYAN,         f"  ║"))
+def print_panel(title, lines):
+    print(c(BOLD + CYAN, f"  ╔══ {title} ══"))
+    for line in lines:
+        print(c(CYAN, "  ║") + f"  {line}")
+    print(c(BOLD + CYAN, "  ╚" + "═" * 40))
+    print()
 
+# ── Header / Overview ──────────────────────────────────────────────
+print()
 status_color = GREEN if status == "completed" else (YELLOW if status == "running" else RED)
-print(c(CYAN, "  ║") + f"  {c(BOLD, 'Pipeline:')}  {pipeline_id}")
-print(c(CYAN, "  ║") + f"  {c(BOLD, 'Status:')}    {c(status_color + BOLD, status.upper())}")
-print(c(CYAN, "  ║") + f"  {c(BOLD, 'Phase:')}     {c(BOLD, phase)}  {c(DIM, f'(last done: {last_done})')}")
+overview_lines = [
+    f"{c(BOLD, 'Pipeline:')}  {pipeline_id}",
+    f"{c(BOLD, 'Status:')}    {c(status_color + BOLD, status.upper())}",
+    f"{c(BOLD, 'Phase:')}     {c(BOLD, fmt_phase(phase))}  {c(DIM, f'(last done: {fmt_phase(last_done)})')}",
+]
 
 # ── Conditional agents ─────────────────────────────────────────────
 if cond:
     active = [k for k, v in cond.items() if v]
     inactive = [k for k, v in cond.items() if not v]
     parts = [c(GREEN, f"+{k}") for k in active] + [c(DIM, f"-{k}") for k in inactive]
-    print(c(CYAN, "  ║") + f"  {c(BOLD, 'Agents:')}    {', '.join(parts)}")
+    overview_lines.append(f"{c(BOLD, 'Agents:')}    {', '.join(parts)}")
 
-# ── Proposal queue ─────────────────────────────────────────────────
+print_panel(f"Pipeline Status — {project}", overview_lines)
+
+# ── Proposals panel ────────────────────────────────────────────────
 queue_file = ".pipeline/proposal-queue.json"
 if os.path.exists(queue_file):
     q = json.load(open(queue_file))
@@ -446,12 +1757,12 @@ if os.path.exists(queue_file):
     done  = sum(1 for p in proposals if p.get("status") == "completed")
     running = [p for p in proposals if p.get("status") == "running"]
 
-    print(c(CYAN, "  ║"))
-    print(c(CYAN, "  ║") + f"  {c(BOLD, 'System:')}    {system_name}")
+    proposal_lines = [f"{c(BOLD, 'System:')}    {system_name}"]
     bar_filled = int(done / total * 20) if total else 0
     bar = c(GREEN, "█" * bar_filled) + c(DIM, "░" * (20 - bar_filled))
-    print(c(CYAN, "  ║") + f"  {c(BOLD, 'Proposals:')} [{bar}{RESET}] {c(BOLD, str(done))}/{total}")
-    print(c(CYAN, "  ║"))
+    proposal_lines.append(f"{c(BOLD, 'Progress:')}  [{bar}{RESET}] {c(BOLD, str(done))}/{total}")
+    if running:
+        proposal_lines.append(f"{c(BOLD, 'Running:')}   {', '.join(p.get('id', '?') for p in running)}")
 
     for p in proposals:
         pid    = p.get("id", "?")
@@ -468,7 +1779,126 @@ if os.path.exists(queue_file):
             color = ""
         deps = p.get("depends_on", [])
         dep_str = c(DIM, f"  ← {', '.join(deps)}") if deps else ""
-        print(c(CYAN, "  ║") + f"    {icon} {c(color, f'[{pid}] {title}')}{dep_str}")
+        proposal_lines.append(f"  {icon} {c(color, f'[{pid}] {title}')}{dep_str}")
+
+    print_panel("Proposals", proposal_lines)
+
+# ── Issues panel ───────────────────────────────────────────────────
+issue_lines = []
+issue_cfg = load_issue_cfg()
+issue_repo = detect_issue_repo(issue_cfg)
+queue_counts = query_issue_queue_counts(issue_repo, issue_cfg)
+watch_file = ".pipeline/issues/watch-state.json"
+active_workers = []
+if issue_repo:
+    issue_lines.append(f"{c(BOLD, 'Repo:')}      {issue_repo}")
+if queue_counts is not None:
+    issue_lines.append(
+        f"{c(BOLD, 'Queue:')}     queued={c(BLUE, str(queue_counts['queued']))} | processing={c(CYAN, str(queue_counts['processing']))} | waiting={c(YELLOW, str(queue_counts['waiting']))} | done={c(GREEN, str(queue_counts['done']))}"
+    )
+if os.path.exists(watch_file):
+    try:
+        watch = json.load(open(watch_file))
+        active_workers = watch.get("workers", [])
+        issue_lines.append(f"{c(BOLD, 'Watcher:')}   {len(active_workers)} worker(s) running")
+        issue_lines.append(f"{c(BOLD, 'Active:')}")
+        for w in active_workers:
+            issue_no = w.get("issue_number", "?")
+            pid = w.get("pid", "?")
+            worktree = w.get("worktree", "")
+            issue_lines.append(f"  {c(YELLOW, '#'+str(issue_no))} pid={pid} {c(DIM, worktree)}")
+    except Exception as ex:
+        issue_lines.append(f"{c(RED, 'watch-state 读取失败')} {c(DIM, str(ex))}")
+
+results_dir = ".pipeline/issues/results"
+if os.path.isdir(results_dir):
+    results = []
+    for name in sorted(os.listdir(results_dir)):
+        if not name.endswith('.json'):
+            continue
+        path = os.path.join(results_dir, name)
+        try:
+            results.append(json.load(open(path)))
+        except Exception:
+            continue
+    if results:
+        processing_ids = {str(w.get('issue_number')) for w in active_workers}
+        waiting_count = 0
+        done_count = 0
+        escalation_count = 0
+        waiting_items = []
+        seen = set()
+        for item in sorted(results, key=lambda x: x.get('updated_at', ''), reverse=True):
+            issue_key = str(item.get('issue_number', '?'))
+            if issue_key in seen:
+                continue
+            seen.add(issue_key)
+            result = item.get('result', 'unknown')
+            if issue_key in processing_ids:
+                continue
+            if result == 'done':
+                done_count += 1
+            elif result == 'waiting':
+                waiting_count += 1
+                waiting_items.append(item)
+            elif result == 'escalation':
+                escalation_count += 1
+
+        issue_lines.append(
+            f"{c(BOLD, 'Summary:')}   processing={c(CYAN, str(len(processing_ids)))} | waiting={c(YELLOW, str(waiting_count))} | done={c(GREEN, str(done_count))} | escalation={c(RED, str(escalation_count))}"
+        )
+        if waiting_items:
+            waiting_items = sorted(waiting_items, key=waiting_takeover_priority)
+            issue_lines.append(f"{c(YELLOW + BOLD, 'Waiting-User:')}  {len(waiting_items)} issue(s) need manual takeover")
+            issue_lines.append(f"  {c(DIM, '优先级: escalation > 0.clarify > 2.0b.depend-collect > memory-consolidation > 其他')}" )
+            for item in waiting_items[:5]:
+                waiting_phase = fmt_phase(item.get('phase', 'unknown'))
+                issue_lines.append(
+                    f"  {c(YELLOW, '⏸')} #{item.get('issue_number', '?')} {item.get('issue_title', '')} {c(DIM, '@ ' + waiting_phase)}"
+                )
+                if item.get('issue_url'):
+                    issue_lines.append(f"    url: {c(BLUE, item.get('issue_url'))}")
+                if item.get('worktree'):
+                    issue_lines.append(f"    worktree: {c(DIM, item.get('worktree'))}")
+                if item.get('log_file'):
+                    issue_lines.append(f"    log: {c(DIM, item.get('log_file'))}")
+        latest_feedback = max((item.get('github_feedback_at', '') for item in results), default='')
+        issue_lines.append(f"{c(BOLD, 'Feedback:')}  last GitHub writeback at {fmt_ts(latest_feedback)}")
+        issue_lines.append(f"{c(BOLD, 'Recent:')}    {len(results)} issue run(s)")
+        for item in sorted(results, key=lambda x: x.get('updated_at', ''), reverse=True)[:5]:
+            issue_no = item.get('issue_number', '?')
+            result = item.get('result', 'unknown')
+            phase_name = item.get('phase', 'unknown')
+            title = item.get('issue_title', '')
+            result_label, result_color, result_icon = fmt_issue_result(result)
+            issue_lines.append(
+                f"  {c(result_color, result_icon)} #{issue_no} {title} {c(DIM, f'({result_label} @ {fmt_phase(phase_name)})')}"
+            )
+            if item.get('issue_url'):
+                issue_lines.append(f"    url: {c(BLUE, item.get('issue_url'))}")
+            if item.get('worktree'):
+                issue_lines.append(f"    worktree: {c(DIM, item.get('worktree'))}")
+            if item.get('log_file'):
+                issue_lines.append(f"    log: {c(DIM, item.get('log_file'))}")
+
+        compact = []
+        for item in sorted(results, key=lambda x: x.get('updated_at', ''), reverse=True)[:5]:
+            compact.append(
+                f"#{item.get('issue_number', '?')} -> {item.get('worktree', '-') } | {item.get('log_file', '-') } | {item.get('issue_url', '-') }"
+            )
+        issue_lines.append(f"{c(BOLD, 'Quick:')}")
+        for line in compact:
+            issue_lines.append(f"  {c(DIM, line)}")
+
+if active_workers and not os.path.isdir(results_dir):
+    issue_lines.append(
+        f"{c(BOLD, 'Summary:')}   processing={c(CYAN, str(len(active_workers)))} | waiting={c(YELLOW, '0')} | done={c(GREEN, '0')} | escalation={c(RED, '0')}"
+    )
+
+if not issue_lines:
+    issue_lines.append(c(DIM, "暂无 issue watcher / issue run 数据"))
+
+print_panel("Issues", issue_lines)
 
 # ── Step execution log ─────────────────────────────────────────────
 index_file = ".pipeline/artifacts/logs/pipeline.index.json"
@@ -482,8 +1912,7 @@ elif ex_log:
     steps = ex_log
 
 if steps:
-    print(c(CYAN, "  ║"))
-    print(c(CYAN, "  ║") + f"  {c(BOLD, 'Execution Log:')}  ({len(steps)} steps)")
+    exec_lines = [f"{c(BOLD, 'Execution Log:')}  ({len(steps)} steps)"]
 
     RESULT_COLOR = {"PASS": GREEN, "WARN": YELLOW, "FAIL": RED, "SKIP": DIM, "ERROR": RED}
 
@@ -499,22 +1928,18 @@ if steps:
         attempt_str = c(DIM, f" ×{attempt}") if attempt > 1 else ""
         rollback_str = c(YELLOW, f" → rollback to {rollback_to}") if rollback_to else ""
         triggered_str = c(DIM, f" [by {triggered_by}]") if triggered_by else ""
+        exec_lines.append(f"{c(rc + BOLD, result):>6}  {step}{attempt_str}{rollback_str}{triggered_str}")
 
-        is_last = (i == len(steps) - 1)
-        prefix = c(CYAN, "  ║") + ("  └─" if is_last else "  ├─")
-        print(f"{prefix} {c(rc + BOLD, result):>6}  {step}{attempt_str}{rollback_str}{triggered_str}")
+    print_panel("Execution", exec_lines)
 
 # ── Retry counts (phases with >1 attempts) ─────────────────────────
 notable = {k: v for k, v in attempts.items() if isinstance(v, int) and v > 1}
 if notable:
-    print(c(CYAN, "  ║"))
-    print(c(CYAN, "  ║") + f"  {c(BOLD, 'Retried phases:')}")
+    retry_lines = [f"{c(BOLD, 'Retried phases:')}"]
     for k, v in sorted(notable.items()):
-        print(c(CYAN, "  ║") + f"    {c(YELLOW, k)}: {v} attempts")
+        retry_lines.append(f"  {c(YELLOW, k)}: {v} attempts")
+    print_panel("Retries", retry_lines)
 
-# ── Footer ─────────────────────────────────────────────────────────
-print(c(CYAN, "  ║"))
-print(c(BOLD + CYAN, "  ╚" + "═" * 40))
 print()
 PYEOF
 }
@@ -525,14 +1950,248 @@ cmd_run() {
     exit 1
   fi
 
-  # Write the PTY runner to a temp file and execute it.
-  # Architecture: Python opens a PTY pair, runs claude with the slave end
-  # (so claude sees a real terminal and its full TUI works), proxies all
-  # I/O between the user's real terminal and the master end, and monitors
-  # the output stream for [EXIT].
-  # On [EXIT]: terminate the current claude process and start a FRESH one
-  # for the next batch — matching the intended `claude --agent pilot`
-  # single-batch-then-exit contract described in CLAUDE.md.
+  # Read cli_backend from config.json, env, or auto-detect
+  local cli_backend="${PIPELINE_CLI_BACKEND:-auto}"
+  if [ "$cli_backend" = "auto" ] && [ -f ".pipeline/config.json" ]; then
+    local cfg_backend
+    cfg_backend=$(python3 -c "import json; c=json.load(open('.pipeline/config.json')); print(c.get('model_routing',{}).get('cli_backend','auto'))" 2>/dev/null || echo "auto")
+    if [ "$cfg_backend" != "auto" ] && [ -n "$cfg_backend" ]; then
+      cli_backend="$cfg_backend"
+    fi
+  fi
+  if [ "$cli_backend" = "auto" ] || [ "$cli_backend" = "cc" ]; then
+    if command -v claude &>/dev/null; then cli_backend="claude"
+    elif command -v codex &>/dev/null; then cli_backend="codex"
+    elif command -v opencode &>/dev/null; then cli_backend="opencode"
+    else
+      echo "❌ No supported CLI found. Install one of: claude, codex, opencode"
+      echo "   Or use Cursor IDE Agent mode with /pilot"
+      exit 1
+    fi
+  fi
+  echo "  Using CLI backend: $cli_backend"
+
+  # Check for project-local agents in .pipeline/agents/
+  local agent_dir=".pipeline/agents"
+  local pilot_agent=""
+  if [ -d "$agent_dir" ]; then
+    if [ -f "$agent_dir/pilot.md" ]; then
+      pilot_agent="$agent_dir/pilot.md"
+    elif [ -f "$agent_dir/pilot.toml" ]; then
+      pilot_agent="$agent_dir/pilot.toml"
+    fi
+  fi
+
+  if [ -z "$pilot_agent" ]; then
+    echo "  ⚠  No project-local agents in .pipeline/agents/"
+    echo "     Falling back to global agents (run 'team init' to generate)"
+  else
+    echo "  Using project agents: $agent_dir/"
+  fi
+
+  # Non-claude backends: launch in native interactive mode
+  # CC has a PTY runner that auto-loops batches; other platforms use their
+  # own interactive sessions where the user drives batch continuation.
+  if [ "$cli_backend" != "claude" ]; then
+    local PILOT_PROMPT='你是 Pilot（流水线主控）。请严格按照 AGENTS.md 中的规则执行：1) 读取 .pipeline/state.json（若不存在则初始化）确定当前阶段；2) 读取 .pipeline/playbook.md 中对应章节；3) 若存在 .pipeline/artifacts/issue-context.md，必须优先读取并按 GitHub Issue 交付模式执行；4) 执行当前批次。批次完成后更新 state.json 并输出 [EXIT]。'
+
+    case "$cli_backend" in
+      codex)
+        echo ""
+        local cx_msg=""
+        if [ -f ".pipeline/state.json" ]; then
+          cx_msg="继续执行流水线。读取 .pipeline/state.json 确定当前阶段，读取 .pipeline/playbook.md 对应章节；若存在 .pipeline/artifacts/issue-context.md，必须优先读取并按 GitHub Issue 交付模式执行；完成后更新 state.json 并输出 [EXIT]。"
+          echo "  已检测到 state.json，尝试恢复上次会话..."
+        else
+          cx_msg="$PILOT_PROMPT"
+          echo "  首次运行 — 启动 codex 交互 TUI..."
+        fi
+        echo "  (AGENTS.md 已包含 Pilot 指令，codex 自动加载)"
+        echo ""
+        # codex 支持 positional PROMPT 自动提交
+        codex --full-auto "$cx_msg"
+        ;;
+      opencode)
+        # OpenCode：交互阶段走 TUI，自动阶段优先走 run --continue。
+        local OC_CONT_MSG="继续执行流水线。读取 .pipeline/state.json 确定当前阶段，读取 .pipeline/playbook.md 对应章节；若存在 .pipeline/artifacts/issue-context.md，必须优先读取并按 GitHub Issue 交付模式执行；完成后更新 state.json 并输出 [EXIT]。"
+        local oc_sleep="${TEAM_OPENCODE_LOOP_SLEEP:-3}"
+        local oc_round=0
+        while true; do
+          oc_round=$((oc_round + 1))
+          print_opencode_banner "OpenCode 第 ${oc_round} 轮"
+          echo "  (AGENTS.md 已包含 Pilot 指令，opencode 自动加载)"
+          print_opencode_state "本轮开始前"
+
+	          local oc_mode
+	          oc_mode=$(opencode_batch_mode 2>/dev/null || echo "tui-continue")
+
+	          case "$oc_mode" in
+            done)
+              echo "  ✅ Pipeline ALL-COMPLETED."
+              echo ""
+              return
+              ;;
+            escalation)
+              echo "  ⚠  Pipeline ESCALATION — 需要人工介入。运行: team status"
+              echo ""
+              return
+              ;;
+            pause)
+              echo "  ⏸  凭证未就绪：请填写 .depend/*.env 后再次执行 team run"
+              echo ""
+              return
+              ;;
+	            tui-initial|tui-continue)
+	              local oc_tui_msg="$PILOT_PROMPT"
+	              if [ "$oc_mode" = "tui-continue" ] && [ -f ".pipeline/state.json" ]; then
+	                oc_tui_msg="$OC_CONT_MSG"
+	                print_opencode_banner "交互模式输出（TUI）"
+	                echo "  决策: 当前 phase 需要人工交互，切换到 TUI 恢复会话并自动提交 prompt"
+	                print_opencode_state "进入 TUI 前"
+	                echo ""
+	                if ! TEAM_TUI_AUTO_PROMPT="$oc_tui_msg" run_tui_with_auto_submit "$oc_tui_msg" opencode --continue; then
+	                  echo "  ⚠  --continue 失败，尝试新开 TUI 会话..."
+	                  echo ""
+	                  TEAM_TUI_AUTO_PROMPT="$oc_tui_msg" run_tui_with_auto_submit "$oc_tui_msg" opencode || true
+	                fi
+	              else
+	                print_opencode_banner "交互模式输出（TUI）"
+	                echo "  决策: 当前 phase 需要人工交互，启动 TUI 并自动填充 prompt"
+	                print_opencode_state "进入 TUI 前"
+	                echo ""
+	                TEAM_TUI_AUTO_PROMPT="$oc_tui_msg" run_tui_with_auto_submit "$oc_tui_msg" opencode || true
+	              fi
+	              print_opencode_banner "交互模式结束"
+	              print_opencode_state "退出 TUI 后"
+	              echo "  退出 TUI（/quit）后，若流水线未完成将自动进入下一轮。"
+	              ;;
+	            run-continue)
+	              print_opencode_banner "自动模式输出（run --continue）"
+	              echo "  决策: 当前 phase 无需人工交互，直接使用 run --continue"
+	              print_opencode_state "进入自动模式前"
+	              echo "  下方开始是 OpenCode 本轮自动执行输出"
+	              echo ""
+	              if ! opencode run --continue "$OC_CONT_MSG"; then
+	                echo "  ⚠  run --continue 失败，回退到 TUI 恢复会话..."
+	                echo ""
+	                if ! TEAM_TUI_AUTO_PROMPT="$OC_CONT_MSG" run_tui_with_auto_submit "$OC_CONT_MSG" opencode --continue; then
+	                  echo "  ⚠  TUI 恢复失败，尝试新开 TUI 会话..."
+	                  echo ""
+	                  TEAM_TUI_AUTO_PROMPT="$OC_CONT_MSG" run_tui_with_auto_submit "$OC_CONT_MSG" opencode || true
+	                fi
+	              fi
+	              echo ""
+	              print_opencode_banner "自动模式结束"
+	              print_opencode_state "本轮自动执行后"
+	              ;;
+	          esac
+
+          local oc_after
+          oc_after=$(python3 -c "
+import json, os
+if not os.path.exists('.pipeline/state.json'):
+    print('continue')
+    raise SystemExit
+s = json.load(open('.pipeline/state.json'))
+phase = s.get('current_phase', '')
+status = s.get('status', 'running')
+dep = s.get('depend_collector_result', {})
+unfilled = len(dep.get('unfilled_deps', []))
+if phase == 'ALL-COMPLETED' or status == 'completed':
+    print('done')
+    raise SystemExit
+if status == 'escalation':
+    print('escalation')
+    raise SystemExit
+if unfilled > 0:
+    print('pause')
+    raise SystemExit
+print('continue')
+" 2>/dev/null || echo "continue")
+
+          case "$oc_after" in
+            done)
+              echo ""
+              echo "  ✅ Pipeline ALL-COMPLETED."
+              echo ""
+              return
+              ;;
+            escalation)
+              echo ""
+              echo "  ⚠  ESCALATION — 运行: team status"
+              echo ""
+              return
+              ;;
+            pause)
+              echo ""
+              echo "  ⏸  请填写凭证后再次: team run"
+              echo ""
+              return
+              ;;
+          esac
+
+          print_opencode_banner "等待下一轮"
+          print_opencode_state "准备休眠前"
+          echo "  ⟳ 流水线未结束 — ${oc_sleep}s 后启动下一轮（Ctrl+C 可完全退出 team run）"
+          sleep "$oc_sleep"
+        done
+        return
+        ;;
+      cursor)
+        echo ""
+        echo "  Cursor 是 IDE 驱动的，请在 Cursor IDE 中："
+        echo "    1. 打开 Agent 模式 (Cmd+I / Ctrl+I)"
+        echo "    2. 输入 /pilot 启动流水线"
+        echo ""
+        return
+        ;;
+      *)
+        echo "❌ Unsupported backend: $cli_backend"
+        exit 1
+        ;;
+    esac
+
+    # After session ends, show state summary and hint
+    echo ""
+    local post_check
+    post_check=$(python3 -c "
+import json, os
+if not os.path.exists('.pipeline/state.json'):
+    print('none')
+    exit()
+s = json.load(open('.pipeline/state.json'))
+phase = s.get('current_phase', '')
+status = s.get('status', 'running')
+if phase == 'ALL-COMPLETED' or status == 'completed':
+    print('done')
+elif status == 'escalation':
+    print('escalation')
+else:
+    print('running|' + phase)
+" 2>/dev/null || echo "unknown")
+
+    case "$post_check" in
+      done)
+        echo "  ✅ Pipeline ALL-COMPLETED."
+        ;;
+      escalation)
+        echo "  ⚠  Pipeline ESCALATION — 需要人工介入。"
+        echo "     Run: team status"
+        ;;
+      none)
+        echo "  ℹ  state.json 尚未创建。"
+        ;;
+      running|*)
+        local phase="${post_check#running|}"
+        echo "  ℹ  当前阶段: $phase"
+        echo "     继续执行: team run"
+        ;;
+    esac
+    echo ""
+    return
+  fi
+
+  # PTY runner for claude backend (full TUI support)
   _RUNNER=$(mktemp "${TMPDIR:-/tmp}/team-runner-XXXXXX")
   trap 'rm -f "$_RUNNER"' EXIT
 
@@ -625,8 +2284,13 @@ def main():
             except Exception:
                 pass
 
+        agent_ref = 'pilot'
+        local_pilot = os.path.join('.pipeline', 'agents', 'pilot.md')
+        if os.path.isfile(local_pilot):
+            agent_ref = local_pilot
+
         p = subprocess.Popen(
-            ['claude', '--dangerously-skip-permissions', '--agent', 'pilot'],
+            ['claude', '--dangerously-skip-permissions', '--agent', agent_ref],
             stdin=sfd, stdout=sfd, stderr=sfd,
             env=env, preexec_fn=child_setup, close_fds=True,
         )
@@ -780,15 +2444,649 @@ cmd_scan() {
   echo ""
 }
 
+cmd_migrate() {
+  local platform="${1:-}"
+  local force=false
+  local rollback=false
+
+  # Parse arguments
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      cc|codex|cursor|opencode)
+        platform="$1" ;;
+      --force)  force=true ;;
+      --rollback) rollback=true ;;
+      *) ;;
+    esac
+    shift
+  done
+
+  # --- Rollback mode ---
+  if [ "$rollback" = true ]; then
+    local snap=".pipeline/.migrate-snapshot"
+    if [ ! -d "$snap" ]; then
+      echo "❌ 没有可回滚的迁移快照 (.pipeline/.migrate-snapshot 不存在)"
+      exit 1
+    fi
+    echo ""
+    echo "  回滚到上次迁移前的状态..."
+    echo ""
+    # Restore agents
+    rm -rf .pipeline/agents
+    if [ -d "$snap/agents" ]; then
+      cp -r "$snap/agents" .pipeline/agents
+      echo "  ✓ .pipeline/agents/ 已恢复"
+    else
+      echo "  ✓ .pipeline/agents/ 已移除（迁移前不存在）"
+    fi
+    # Restore config.json
+    if [ -f "$snap/config.json" ]; then
+      cp "$snap/config.json" .pipeline/config.json
+      echo "  ✓ config.json 已恢复"
+    fi
+    local old_platform="unknown"
+    if [ -f "$snap/config.json" ]; then
+      old_platform=$(python3 -c "
+import json
+c = json.load(open('$snap/config.json'))
+print(c.get('model_routing',{}).get('cli_backend','cc'))
+" 2>/dev/null || echo "cc")
+    fi
+    rm -rf "$snap"
+    echo "  ✓ 快照已清理"
+    echo ""
+    echo "  ✅ 已回滚到 $(platform_label "$old_platform")"
+    echo ""
+    return
+  fi
+
+  # --- Normal migrate ---
+  if [ -z "$platform" ]; then
+    echo ""
+    echo "  用法: team migrate <cc|codex|cursor|opencode> [--force]"
+    echo "        team migrate --rollback"
+    echo ""
+    echo "  切换当前项目到目标平台（替换 .pipeline/agents/ 中的 agent 定义）。"
+    echo "  迁移前自动创建快照，支持 --rollback 一键回滚。"
+    echo ""
+    exit 1
+  fi
+
+  case "$platform" in
+    cc|codex|cursor|opencode) ;;
+    *)
+      echo "❌ 不支持的平台: $platform"
+      echo "   支持: cc, codex, cursor, opencode"
+      exit 1
+      ;;
+  esac
+
+  if [ ! -d ".pipeline" ]; then
+    echo "❌ No .pipeline/ directory found. Run: team init"
+    exit 1
+  fi
+
+  local label
+  label=$(platform_label "$platform")
+
+  # Detect current platform
+  local current="cc"
+  if [ -f ".pipeline/config.json" ]; then
+    current=$(python3 -c "
+import json
+c = json.load(open('.pipeline/config.json'))
+print(c.get('model_routing',{}).get('cli_backend','cc'))
+" 2>/dev/null || echo "cc")
+    [ "$current" = "auto" ] && current="cc"
+  fi
+
+  echo ""
+  echo "  Migrating: $(platform_label "$current") → $label"
+  echo ""
+
+  # Confirm unless --force
+  if [ "$force" != true ]; then
+    read -p "  确认迁移? [y/N] " confirm
+    case "$confirm" in
+      y|Y|yes|YES) ;;
+      *)
+        echo "  已取消。"
+        return
+        ;;
+    esac
+    echo ""
+  fi
+
+  # --- Snapshot before migration ---
+  local snap=".pipeline/.migrate-snapshot"
+  if [ -d "$snap" ]; then
+    echo "  ⚠  存在上次迁移的快照（尚未回滚）"
+    if [ "$force" != true ]; then
+      read -p "  覆盖旧快照继续? [y/N] " snap_confirm
+      case "$snap_confirm" in
+        y|Y|yes|YES) ;;
+        *)
+          echo "  已取消。先执行 team migrate --rollback 回滚上次迁移。"
+          return
+          ;;
+      esac
+    fi
+  fi
+  rm -rf "$snap"
+  mkdir -p "$snap"
+  if [ -d ".pipeline/agents" ]; then
+    cp -r ".pipeline/agents" "$snap/agents"
+  fi
+  if [ -f ".pipeline/config.json" ]; then
+    cp ".pipeline/config.json" "$snap/config.json"
+  fi
+  echo "  ✓ 快照已保存 (team migrate --rollback 可回滚)"
+
+  # --- Generate new agents ---
+  local agent_count
+  agent_count=$(generate_agents_for_platform "$platform" ".pipeline/agents")
+  if [ -n "$agent_count" ] && [ "$agent_count" -gt 0 ] 2>/dev/null; then
+    echo "  ✓ .pipeline/agents/ replaced ($agent_count agents for $label)"
+  else
+    echo "  ❌ Agent generation failed — rolling back..."
+    # Auto-rollback on failure
+    if [ -d "$snap/agents" ]; then
+      rm -rf .pipeline/agents
+      cp -r "$snap/agents" .pipeline/agents
+    fi
+    if [ -f "$snap/config.json" ]; then
+      cp "$snap/config.json" .pipeline/config.json
+    fi
+    rm -rf "$snap"
+    echo "  ✓ 已自动回滚到迁移前状态"
+    exit 1
+  fi
+
+  # --- Update config.json (atomic write, rollback on failure) ---
+  if [ -f ".pipeline/config.json" ]; then
+    if ! python3 -c "
+import json, os, tempfile
+sf = '.pipeline/config.json'
+c = json.load(open(sf))
+mr = c.setdefault('model_routing', {})
+mr['cli_backend'] = '$platform' if '$platform' != 'cc' else 'auto'
+d = os.path.dirname(sf)
+fd, tmp = tempfile.mkstemp(dir=d, suffix='.tmp')
+with os.fdopen(fd, 'w') as f:
+    json.dump(c, f, indent=2, ensure_ascii=False)
+os.replace(tmp, sf)
+" 2>/dev/null; then
+      echo "  ❌ config.json update failed — rolling back..."
+      if [ -f "$snap/config.json" ]; then
+        cp "$snap/config.json" .pipeline/config.json
+      fi
+      if [ -d "$snap/agents" ]; then
+        rm -rf .pipeline/agents
+        cp -r "$snap/agents" .pipeline/agents
+      fi
+      rm -rf "$snap"
+      echo "  ✓ 已自动回滚到迁移前状态"
+      exit 1
+    fi
+    echo "  ✓ config.json cli_backend → $platform"
+  fi
+
+  # --- Update context files ---
+  case "$platform" in
+    cc|cursor)
+      if [ ! -f "CLAUDE.md" ] && [ -f "$TEAM_HOME/CLAUDE.md" ]; then
+        cp "$TEAM_HOME/CLAUDE.md" CLAUDE.md
+        echo "  ✓ CLAUDE.md created"
+      fi
+      ;;
+    codex|opencode)
+      # Always regenerate AGENTS.md with pilot instructions on migrate
+      generate_agents_md_with_pilot "$platform"
+      ;;
+  esac
+
+  if [ "$platform" = "cursor" ]; then
+    if [ -d "$TEAM_HOME/.cursor/rules" ]; then
+      mkdir -p .cursor/rules
+      cp "$TEAM_HOME/.cursor/rules/pipeline.md" .cursor/rules/pipeline.md 2>/dev/null || true
+      echo "  ✓ .cursor/rules/pipeline.md"
+    fi
+  fi
+
+  echo ""
+  echo "  ✅ Migrated to $label!"
+  echo "     Agent definitions: .pipeline/agents/"
+  echo "     Start: team run"
+  echo ""
+  echo "     ↩ 回滚: team migrate --rollback"
+  echo ""
+}
+
+cmd_issue_worker() {
+  local worktree="$1"
+  local repo="$2"
+  local issue_number="$3"
+  local processing_label="$4"
+  local waiting_label="$5"
+  local done_label="$6"
+  local inbox_label="$7"
+  local auto_close="$8"
+  local detached="${9:-false}"
+  local root_dir="${10:-$(pwd)}"
+  local log_file="${11:-}"
+
+  local result_file="$root_dir/.pipeline/issues/results/issue-${issue_number}.json"
+  local issue_json="$root_dir/.pipeline/issues/cache/issue-${issue_number}.json"
+  local issue_title
+  issue_title=$(python3 - "$issue_json" <<'PY'
+import json, sys
+with open(sys.argv[1], 'r', encoding='utf-8') as f:
+    print(json.load(f).get('title', '').strip())
+PY
+)
+  local issue_url
+  issue_url=$(python3 - "$issue_json" <<'PY'
+import json, sys
+with open(sys.argv[1], 'r', encoding='utf-8') as f:
+    data = json.load(f)
+    print(data.get('url', '') or data.get('html_url', ''))
+PY
+)
+
+  echo ""
+  echo "  ▶ 开始处理 Issue #${issue_number}: ${issue_title}"
+  echo "     worktree: ${worktree}"
+  echo ""
+
+  (
+    cd "$worktree"
+    if [ "$detached" = true ]; then
+      export TEAM_OPENCODE_INTERACTION_MODE=run
+    fi
+    cmd_run
+  )
+
+  local outcome
+  outcome=$(python3 - "$worktree/.pipeline/state.json" <<'PY'
+import json
+import os
+import sys
+
+path = sys.argv[1]
+if not os.path.exists(path):
+    print('unknown|unknown')
+    raise SystemExit
+with open(path, 'r', encoding='utf-8') as f:
+    state = json.load(f)
+phase = state.get('current_phase', 'unknown') or 'unknown'
+status = state.get('status', 'running') or 'running'
+if phase == 'ALL-COMPLETED' or status == 'completed':
+    print(f'done|{phase}')
+elif status == 'escalation':
+    print(f'escalation|{phase}')
+else:
+    dep = state.get('depend_collector_result', {})
+    if isinstance(dep, dict) and dep.get('unfilled_deps'):
+        print(f'waiting|{phase}')
+    else:
+        print(f'running|{phase}')
+PY
+)
+
+  local result phase
+  result="${outcome%%|*}"
+  phase="${outcome#*|}"
+
+  case "$result" in
+    done)
+      set_issue_processing_state "$repo" "$issue_number" "$done_label" "$processing_label" "$waiting_label" "$inbox_label"
+      local done_body
+      done_body=$(cat <<EOF
+已完成 Issue #${issue_number} 的流水线交付。
+
+- 结果：完成
+- 当前阶段：${phase}
+- 工作目录：\`${worktree}\`
+EOF
+)
+      gh issue comment "$issue_number" --repo "$repo" --body "$done_body" >/dev/null 2>&1 || true
+      if [ "$auto_close" = true ]; then
+        gh issue close "$issue_number" --repo "$repo" --comment "已由流水线处理完成，自动关闭。" >/dev/null 2>&1 || true
+      fi
+      ;;
+    waiting|escalation)
+      set_issue_processing_state "$repo" "$issue_number" "$waiting_label" "$processing_label" "$done_label"
+      local waiting_body
+      waiting_body=$(cat <<EOF
+Issue #${issue_number} 处理暂停，等待人工介入。
+
+- 结果：${result}
+- 当前阶段：${phase}
+- 工作目录：\`${worktree}\`
+
+请在对应终端继续处理后，再重新执行 watcher 或手动进入该 worktree。
+EOF
+)
+      gh issue comment "$issue_number" --repo "$repo" --body "$waiting_body" >/dev/null 2>&1 || true
+      ;;
+    *)
+      set_issue_processing_state "$repo" "$issue_number" "$processing_label" "$waiting_label" "$done_label" "$inbox_label"
+      ;;
+  esac
+
+  write_issue_worker_result "$result_file" "$result" "$phase" "$worktree" "$issue_number" "$issue_title" "$issue_url" "$log_file"
+}
+
+cmd_issue() {
+  local subcmd="${1:-}"
+  shift || true
+
+  case "$subcmd" in
+    run)
+      local issue_number=""
+      local repo_override=""
+      local detached=false
+      local log_file_override=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --repo=*) repo_override="${1#*=}" ;;
+          --repo) shift; repo_override="${1:-}" ;;
+          --detach) detached=true ;;
+          --log-file=*) log_file_override="${1#*=}" ;;
+          --log-file) shift; log_file_override="${1:-}" ;;
+          [0-9]*) issue_number="$1" ;;
+        esac
+        shift || true
+      done
+
+      if [ -z "$issue_number" ]; then
+        echo "❌ 用法: team issue run <number> [--repo <owner/repo>] [--detach]"
+        exit 1
+      fi
+      if [ ! -d ".pipeline" ]; then
+        echo "❌ No .pipeline/ directory found. Run: team init"
+        exit 1
+      fi
+
+      ensure_gh_auth
+      ensure_issue_runtime_dirs
+
+      local cfg repo source_labels processing_label waiting_label done_label auto_close poll_interval max_workers worktree_dir
+      cfg=$(load_issue_automation_config)
+      IFS='|' read -r repo source_labels processing_label waiting_label done_label auto_close poll_interval max_workers worktree_dir <<< "$cfg"
+      repo=$(resolve_issue_repo "$repo_override")
+
+      ensure_issue_label "$repo" "$processing_label" "FBCA04" "流水线处理中"
+      ensure_issue_label "$repo" "$waiting_label" "D93F0B" "等待人工处理"
+      ensure_issue_label "$repo" "$done_label" "0E8A16" "流水线已完成"
+
+      set_issue_processing_state "$repo" "$issue_number" "$processing_label" "$waiting_label" "$done_label"
+
+      local root_dir
+      root_dir=$(pwd)
+      local worktree
+      worktree=$(prepare_issue_worktree "$issue_number" "$repo" "$worktree_dir" "$root_dir")
+
+      if [ "$detached" = true ]; then
+        local log_file="$root_dir/.pipeline/issues/logs/issue-${issue_number}.log"
+        nohup "$0" __issue-worker "$worktree" "$repo" "$issue_number" "$processing_label" "$waiting_label" "$done_label" "$source_labels" "$auto_close" true "$root_dir" > "$log_file" 2>&1 &
+        local pid=$!
+        python3 - "$root_dir/.pipeline/issues/watch-state.json" "$issue_number" "$pid" "$worktree" "$log_file" <<'PY'
+import json, os, sys
+path, issue_number, pid, worktree, log_file = sys.argv[1:6]
+os.makedirs(os.path.dirname(path), exist_ok=True)
+data = {'workers': []}
+if os.path.exists(path):
+    with open(path, 'r', encoding='utf-8') as f:
+        try:
+            data = json.load(f)
+        except Exception:
+            data = {'workers': []}
+workers = [w for w in data.get('workers', []) if str(w.get('issue_number')) != issue_number]
+workers.append({'issue_number': int(issue_number), 'pid': int(pid), 'worktree': worktree, 'log_file': log_file, 'status': 'running'})
+data['workers'] = workers
+with open(path, 'w', encoding='utf-8') as f:
+    json.dump(data, f, ensure_ascii=False, indent=2)
+PY
+        echo "  ✓ Issue #${issue_number} 已进入后台处理 (pid=${pid})"
+        echo "    日志: ${log_file}"
+      else
+        cmd_issue_worker "$worktree" "$repo" "$issue_number" "$processing_label" "$waiting_label" "$done_label" "$source_labels" "$auto_close" false "$root_dir" "$log_file_override"
+      fi
+      ;;
+    *)
+      echo "❌ 用法: team issue run <number> [--repo <owner/repo>]"
+      exit 1
+      ;;
+  esac
+}
+
+cmd_watch_issues() {
+  if [ ! -d ".pipeline" ]; then
+    echo "❌ No .pipeline/ directory found. Run: team init"
+    exit 1
+  fi
+
+  ensure_gh_auth
+  ensure_issue_runtime_dirs
+
+  local repo_override=""
+  local interval_override=""
+  local workers_override=""
+  local include_labels_override=""
+  local exclude_labels_override=""
+  local dry_run=false
+  local once=false
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --repo=*) repo_override="${1#*=}" ;;
+      --repo) shift; repo_override="${1:-}" ;;
+      --interval=*) interval_override="${1#*=}" ;;
+      --interval) shift; interval_override="${1:-}" ;;
+      --max-workers=*) workers_override="${1#*=}" ;;
+      --max-workers) shift; workers_override="${1:-}" ;;
+      --labels=*) include_labels_override="${1#*=}" ;;
+      --labels) shift; include_labels_override="${1:-}" ;;
+      --exclude-labels=*) exclude_labels_override="${1#*=}" ;;
+      --exclude-labels) shift; exclude_labels_override="${1:-}" ;;
+      --dry-run) dry_run=true ;;
+      --once) once=true ;;
+    esac
+    shift || true
+  done
+
+  local cfg repo source_labels processing_label waiting_label done_label auto_close poll_interval max_workers worktree_dir
+  cfg=$(load_issue_automation_config)
+  IFS='|' read -r repo source_labels processing_label waiting_label done_label auto_close poll_interval max_workers worktree_dir <<< "$cfg"
+
+  repo=$(resolve_issue_repo "$repo_override")
+  [ -n "$interval_override" ] && poll_interval="$interval_override"
+  [ -n "$workers_override" ] && max_workers="$workers_override"
+
+  local autonomous_mode=false
+  local cli_backend=auto
+  if [ -f ".pipeline/config.json" ]; then
+    autonomous_mode=$(python3 -c "import json; print(str(bool(json.load(open('.pipeline/config.json')).get('autonomous_mode', False))).lower())" 2>/dev/null || echo false)
+    cli_backend=$(python3 -c "import json; print(json.load(open('.pipeline/config.json')).get('model_routing', {}).get('cli_backend', 'auto'))" 2>/dev/null || echo auto)
+  fi
+  if [ "$autonomous_mode" != "true" ] && [ "${max_workers:-1}" -gt 1 ] 2>/dev/null; then
+    echo "  ⚠  非自治模式下为保证 TUI 交互可用，watcher 将最大并发降为 1"
+    max_workers=1
+  fi
+  if [ "${max_workers:-1}" -gt 1 ] 2>/dev/null && [ "$cli_backend" != "opencode" ]; then
+    echo "  ⚠  当前仅对 OpenCode 后端启用后台并行 worker，已将最大并发降为 1"
+    max_workers=1
+  fi
+
+  ensure_issue_label "$repo" "$processing_label" "FBCA04" "流水线处理中"
+  ensure_issue_label "$repo" "$waiting_label" "D93F0B" "等待人工处理"
+  ensure_issue_label "$repo" "$done_label" "0E8A16" "流水线已完成"
+
+  echo ""
+  echo "  ▶ 启动 Issue Watcher"
+  echo "    repo: ${repo}"
+  if [ -n "$source_labels" ]; then
+    echo "    source labels: ${source_labels}"
+  else
+    echo "    source labels: (all open issues)"
+  fi
+  [ -n "$include_labels_override" ] && echo "    include labels: ${include_labels_override}"
+  [ -n "$exclude_labels_override" ] && echo "    exclude labels: ${exclude_labels_override}"
+  [ -n "$include_labels_override" ] && echo "    note: --labels 是在 source labels 基础上的追加过滤"
+  [ "$dry_run" = true ] && echo "    mode: dry-run（仅预览，不实际执行）"
+  echo "    scheduling: urgent/bug/security 优先，其次按创建时间"
+  echo "    max workers: ${max_workers}"
+  echo "    poll interval: ${poll_interval}s"
+  echo ""
+
+  while true; do
+    local active_workers=0
+    if [ -f ".pipeline/issues/watch-state.json" ]; then
+      active_workers=$(python3 - ".pipeline/issues/watch-state.json" <<'PY'
+import json, os, signal, sys
+path = sys.argv[1]
+with open(path, 'r', encoding='utf-8') as f:
+    data = json.load(f)
+alive = []
+for worker in data.get('workers', []):
+    pid = worker.get('pid')
+    if not pid:
+        continue
+    try:
+        os.kill(int(pid), 0)
+        alive.append(worker)
+    except OSError:
+        pass
+data['workers'] = alive
+with open(path, 'w', encoding='utf-8') as f:
+    json.dump(data, f, ensure_ascii=False, indent=2)
+print(len(alive))
+PY
+)
+    fi
+
+    local slots=$((max_workers - active_workers))
+    if [ "$slots" -lt 0 ]; then
+      slots=0
+    fi
+
+    if [ "$slots" -gt 0 ]; then
+      local candidates raw_issues
+      raw_issues=$(gh issue list --repo "$repo" --state open --limit 100 --json number,title,labels,createdAt,url)
+      candidates=$(printf '%s' "$raw_issues" | python3 -c '
+import json
+import sys
+
+source_csv, processing, waiting, done, include_csv, exclude_csv = sys.argv[1:7]
+items = json.load(sys.stdin)
+
+source_labels = {x.strip().lower() for x in source_csv.split(",") if x.strip()}
+include_labels = {x.strip().lower() for x in include_csv.split(",") if x.strip()}
+exclude_labels = {x.strip().lower() for x in exclude_csv.split(",") if x.strip()}
+
+def score(labels):
+    score = 0
+    lower = {x.lower() for x in labels}
+    if "p0" in lower or "critical" in lower or "urgent" in lower or "sev:critical" in lower:
+        score += 1000
+    if "p1" in lower or "high" in lower or "priority:high" in lower:
+        score += 700
+    if "bug" in lower or "regression" in lower or "hotfix" in lower:
+        score += 400
+    if "security" in lower or "security-fix" in lower:
+        score += 350
+    if "feature" in lower or "enhancement" in lower:
+        score += 150
+    if "question" in lower or "docs" in lower or "documentation" in lower:
+        score += 50
+    return score
+
+candidates = []
+for item in items:
+    labels = {lbl.get("name", "") for lbl in item.get("labels", [])}
+    lower_labels = {x.lower() for x in labels}
+    if processing in labels or waiting in labels or done in labels:
+        continue
+    if source_labels and not (source_labels & lower_labels):
+        continue
+    if include_labels and not (include_labels & lower_labels):
+        continue
+    if exclude_labels and (exclude_labels & lower_labels):
+        continue
+    candidates.append({
+        "number": item.get("number"),
+        "title": item.get("title", ""),
+        "url": item.get("url", ""),
+        "score": score(labels),
+        "labels": sorted(labels),
+        "created_at": item.get("createdAt", ""),
+    })
+
+candidates.sort(key=lambda x: (-x["score"], x["created_at"], x["number"]))
+for item in candidates:
+    print(json.dumps(item, ensure_ascii=False))
+' "$source_labels" "$processing_label" "$waiting_label" "$done_label" "$include_labels_override" "$exclude_labels_override")
+
+      if [ -n "$candidates" ]; then
+        local candidate_line issue_number
+        local preview_count=0
+        while IFS= read -r candidate_line; do
+          [ -n "$candidate_line" ] || continue
+          issue_number=$(printf '%s' "$candidate_line" | python3 -c "import json,sys; print(json.loads(sys.stdin.read())['number'])")
+          if [ "$dry_run" = true ]; then
+            preview_count=$((preview_count + 1))
+            printf '%s' "$candidate_line" | python3 -c "import json,sys; x=json.loads(sys.stdin.read()); print(f\"  - #{x['number']} score={x['score']} labels={','.join(x.get('labels', [])) or '-'} title={x.get('title','')} url={x.get('url','-')}\")"
+          else
+            if [ "$max_workers" -gt 1 ] 2>/dev/null; then
+              cmd_issue run "$issue_number" --repo "$repo" --detach
+            else
+              cmd_issue run "$issue_number" --repo "$repo"
+            fi
+          fi
+          slots=$((slots - 1))
+          [ "$slots" -le 0 ] && break
+        done <<< "$candidates"
+        if [ "$dry_run" = true ]; then
+          if [ "$preview_count" -eq 0 ]; then
+            echo "  ℹ  dry-run: 本轮没有可执行 issue"
+          else
+            echo "  ✓ dry-run: 以上为本轮按优先级排序后的候选 issue"
+          fi
+        fi
+      else
+        echo "  ℹ  当前没有待处理 issue"
+        if [ "$raw_issues" = "[]" ]; then
+          echo "  ℹ  该仓库当前没有 open issue"
+        elif [ -n "$source_labels" ]; then
+          echo "  ℹ  原因：没有 issue 匹配 source labels = ${source_labels}"
+        fi
+      fi
+    else
+      echo "  ℹ  当前活跃 worker 数已达上限 (${active_workers}/${max_workers})"
+    fi
+
+    if [ "$once" = true ] || [ "$dry_run" = true ]; then
+      break
+    fi
+
+    echo "  ⟳ watcher 休眠 ${poll_interval}s，等待下一轮轮询..."
+    sleep "$poll_interval"
+  done
+}
+
 case "${1:-}" in
-  init)    cmd_init ;;
+  init)    shift; cmd_init "$@" ;;
   status)  cmd_status ;;
   upgrade) cmd_upgrade ;;
   version) cmd_version ;;
   update)  cmd_update ;;
   run)     cmd_run ;;
+  issue)   shift; cmd_issue "$@" ;;
+  watch-issues) shift; cmd_watch_issues "$@" ;;
   scan)    cmd_scan "${2:-}" ;;
   replan)  cmd_replan ;;
+  migrate) shift; cmd_migrate "$@" ;;
+  __issue-worker) shift; cmd_issue_worker "$@" ;;
   *)       usage ;;
 esac
 TEAM_SCRIPT
@@ -817,8 +3115,21 @@ else
   echo "    3. Fill in api_key for your provider"
 fi
 
-# Copy install.sh itself so `team update` works
+# Copy install.sh, scripts, and agent sources for `team init` / `team migrate`
 cp "$REPO_DIR/install.sh" "$TEMPLATES_DST/install.sh" 2>/dev/null || true
+mkdir -p "$TEMPLATES_DST/scripts"
+cp "$REPO_DIR/scripts/build-agents.py" "$TEMPLATES_DST/scripts/" 2>/dev/null || true
+cp "$REPO_DIR/scripts/migrate-to-platform.sh" "$TEMPLATES_DST/scripts/" 2>/dev/null || true
+
+# Agent sources (canonical CC definitions) — used by transpiler at init/migrate time
+mkdir -p "$TEMPLATES_DST/agents"
+for f in "$REPO_DIR/agents/"*.md; do
+  [ -f "$f" ] && cp "$f" "$TEMPLATES_DST/agents/$(basename "$f")"
+done
+if [ -d "$REPO_DIR/agents/platforms" ]; then
+  cp -r "$REPO_DIR/agents/platforms" "$TEMPLATES_DST/agents/platforms" 2>/dev/null || true
+fi
+echo "  ✓ Agent sources installed to $TEMPLATES_DST/agents/"
 
 # ── PATH check ──────────────────────────────────────────────────────
 echo ""
@@ -877,15 +3188,19 @@ sys.exit(0 if ep.get('$PLUGIN_KEY') == True else 1)
 " 2>/dev/null; then
     echo "  ✓ $plugin (enabled)"
   else
-    # Enable the plugin
+    # Enable the plugin (atomic write: tmp → mv)
     python3 -c "
-import json
-s = json.load(open('$SETTINGS_FILE'))
+import json, os, tempfile
+sf = '$SETTINGS_FILE'
+s = json.load(open(sf))
 if 'enabledPlugins' not in s:
     s['enabledPlugins'] = {}
 s['enabledPlugins']['$PLUGIN_KEY'] = True
-with open('$SETTINGS_FILE', 'w') as f:
+d = os.path.dirname(sf)
+fd, tmp = tempfile.mkstemp(dir=d, suffix='.tmp')
+with os.fdopen(fd, 'w') as f:
     json.dump(s, f, indent=2)
+os.replace(tmp, sf)
 " 2>/dev/null
     if [ $? -eq 0 ]; then
       echo "  ✓ $plugin (auto-enabled)"
@@ -909,7 +3224,13 @@ echo "║  ✅  Installation complete!                          ║"
 echo "║                                                      ║"
 echo "║  Quick start:                                        ║"
 echo "║    cd your-project                                   ║"
-echo "║    team init                                         ║"
-echo "║    claude --dangerously-skip-permissions --agent pilot  ║"
+echo "║    team init                  # CC (default)         ║"
+echo "║    team init --platform codex # or codex/cursor/oc   ║"
+echo "║    team run                   # start pipeline       ║"
+echo "║                                                      ║"
+echo "║  Switch platform for a repo:                         ║"
+echo "║    team migrate <cc|codex|cursor|opencode>           ║"
+echo "║                                                      ║"
+echo "║  Agents are stored per-repo in .pipeline/agents/     ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""
