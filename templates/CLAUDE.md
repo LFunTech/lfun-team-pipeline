@@ -99,7 +99,7 @@ Mark Completed  → 标记提案完成，循环取下一个
 | `requirement_completeness.min_words` | 需求文档最小字数 | `200` |
 | `testing.coverage_tool` | 测试覆盖率工具 | `nyc` |
 | `testing.coverage_threshold` | 覆盖率阈值（百分比） | `80` |
-| `issue_automation.inbox_label` | 待处理 Issue 标签 | `pipeline` |
+| `issue_automation.source_labels` | Issue 来源筛选标签，留空表示扫描所有 open issue | `""` |
 | `issue_automation.max_workers` | Issue watcher 最大 worker 数 | `1` |
 
 ## 模型路由（Model Routing）

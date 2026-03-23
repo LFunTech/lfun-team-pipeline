@@ -462,7 +462,7 @@ AGENTS.md                ← 流水线上下文 + Pilot 指令（Codex/OpenCode 
 | `model_routing.cli_backend` | CLI 后端（`auto` / `claude` / `codex` / `opencode`） | `auto` |
 | `opencode.interaction_mode` | OpenCode 交互模式（`hybrid` / `tui` / `run`） | `hybrid` |
 | `issue_automation.repo` | Issue watcher 默认监听的 GitHub 仓库（留空则取当前 repo） | `""` |
-| `issue_automation.inbox_label` | 待处理 Issue 标签 | `pipeline` |
+| `issue_automation.source_labels` | Issue 来源筛选标签，留空表示扫描所有 open issue | `""` |
 | `issue_automation.max_workers` | Issue watcher 最大 worker 数（非自治或非 OpenCode 自动降为 1） | `1` |
 | `model_routing.providers` | 外部 LLM 提供商配置 | `glm5`, `ollama` |
 | `model_routing.routes` | Agent → Provider 映射表 | 见模板 |
@@ -486,6 +486,7 @@ team watch-issues --once
 - 自动生成 `.pipeline/artifacts/issue-context.md`、单提案 `proposal-queue.json` 与新的 `state.json`
 - Pilot 若发现 `issue-context.md`，会按“GitHub Issue 单提案交付模式”执行
 - OpenCode 下需要澄清的阶段会自动切回 TUI；自动阶段继续走 `run --continue`
+- watcher 默认直接扫描仓库中的 open issue；可用 `issue_automation.source_labels` 或 `--labels` 过滤来源
 - watcher 会用 label 标记 issue 状态：处理中 / 等待人工 / 已完成
 - `watch-issues` 会优先处理带 `urgent` / `critical` / `p0` / `bug` / `security` 等标签的 issue，再按创建时间排序
 - `watch-issues --dry-run` 会只预览本轮将处理哪些 issue，不实际执行
@@ -525,6 +526,8 @@ agents/*.md (CC 格式，canonical source)
 | 子 Agent 调用 | `Agent(name, prompt)` | `spawn_agent` / 自然语言 | `Task(subagent_type, prompt)` | `@name` 委派 |
 | Shell 工具 | `Bash()` | `bash()` | `Shell()` | `bash()` |
 | 权限模型 | `permissionMode` | `sandbox_mode` | `readonly` | 隐式 |
+
+**OpenCode 规则入口：** OpenCode 没有像 Cursor 一样单独的规则文件目录；项目入口是 `AGENTS.md`，实际 agent 定义保存在 `.pipeline/agents/*.md`，OpenCode 专用 Pilot 源定义在 `agents/platforms/opencode/pilot.md`。
 
 **Skill 依赖差异：**
 

@@ -456,7 +456,7 @@ AGENTS.md                ← Pipeline context + Pilot instructions (generated fo
 | `model_routing.cli_backend` | CLI backend (`auto` / `claude` / `codex` / `opencode`) | `auto` |
 | `opencode.interaction_mode` | OpenCode interaction mode (`hybrid` / `tui` / `run`) | `hybrid` |
 | `issue_automation.repo` | Default GitHub repo watched by the issue watcher (empty = current repo) | `""` |
-| `issue_automation.inbox_label` | Label used for queued issues | `pipeline` |
+| `issue_automation.source_labels` | Source label filter for watched issues; empty means all open issues | `""` |
 | `issue_automation.max_workers` | Max issue workers (auto-capped to 1 outside autonomous OpenCode mode) | `1` |
 | `model_routing.providers` | External LLM provider configs | `glm5`, `ollama` |
 | `model_routing.routes` | Agent → Provider mapping | see template |
@@ -480,6 +480,7 @@ team watch-issues --once
 - It generates `.pipeline/artifacts/issue-context.md`, a single-proposal `proposal-queue.json`, and a fresh `state.json`
 - When Pilot sees `issue-context.md`, it switches into GitHub-Issue single-proposal delivery mode
 - On OpenCode, clarification phases automatically switch back to TUI; automatic phases keep using `run --continue`
+- By default the watcher scans open issues directly; use `issue_automation.source_labels` or `--labels` to filter the source set
 - The watcher reflects progress back to GitHub with labels for processing / waiting-human / done
 - `watch-issues` prioritizes issues labeled `urgent` / `critical` / `p0` / `bug` / `security`, then falls back to creation time ordering
 - `watch-issues --dry-run` previews the current scheduling order without actually executing issues
@@ -519,6 +520,8 @@ agents/*.md (CC format, canonical source)
 | Sub-agent Invocation | `Agent(name, prompt)` | `spawn_agent` / natural language | `Task(subagent_type, prompt)` | `@name` delegation |
 | Shell Tool | `Bash()` | `bash()` | `Shell()` | `bash()` |
 | Permission Model | `permissionMode` | `sandbox_mode` | `readonly` | implicit |
+
+**OpenCode entrypoint:** OpenCode does not use a separate rules directory like Cursor. The project entrypoint is `AGENTS.md`, the concrete agent definitions live in `.pipeline/agents/*.md`, and the OpenCode-specific Pilot source lives at `agents/platforms/opencode/pilot.md`.
 
 **Skill Dependency Differences:**
 

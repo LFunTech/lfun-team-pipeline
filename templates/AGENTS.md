@@ -91,7 +91,7 @@ gate-e          → Auditor-QA ∥ Auditor-Tech（并行文档审核）
 | `autonomous_mode` | 自治模式 | `false` |
 | `max_attempts.default` | 最大重试次数 | `3` |
 | `testing.coverage_threshold` | 覆盖率阈值（百分比） | `80` |
-| `issue_automation.inbox_label` | 待处理 Issue 标签 | `pipeline` |
+| `issue_automation.source_labels` | Issue 来源筛选标签，留空表示扫描所有 open issue | `""` |
 | `issue_automation.max_workers` | Issue watcher 最大 worker 数 | `1` |
 
 ## 模型路由（Model Routing）
@@ -105,11 +105,13 @@ gate-e          → Auditor-QA ∥ Auditor-Tech（并行文档审核）
 # 将单个 issue 转成单提案流水线并执行
 team issue run 123
 
-# 持续轮询带 pipeline label 的 issue
+# 持续轮询 open issue（可通过 source_labels / --labels 过滤）
 team watch-issues
 
 # 只轮询一轮
 team watch-issues --once
+
+# OpenCode 无独立 rules 目录；入口看 AGENTS.md，实际 agent 定义在 .pipeline/agents/*.md
 
 # 继续执行流水线
 team run
