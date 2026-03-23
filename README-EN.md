@@ -525,6 +525,13 @@ agents/*.md (CC format, canonical source)
 
 **OpenCode entrypoint:** OpenCode's official project entrypoints are `opencode.json` and `.opencode/agents/`. This repo generates `opencode.json` with `"$schema": "https://opencode.ai/config.json"` and `"instructions": ["AGENTS.md"]` so shared project instructions are loaded the OpenCode-native way. The canonical pipeline agents still live in `.pipeline/agents/*.md` and are synced to `.opencode/agents/*.md`; the OpenCode-specific Pilot source lives at `agents/platforms/opencode/pilot.md`.
 
+**OpenCode compatibility notes:**
+
+- `opencode.json` must use `instructions`; do not generate the legacy `context` field
+- `.opencode/agents/*.md` frontmatter must render `description`, `mode`, `agent`, and `model` as valid string scalars; descriptions like `[Pipeline] ...` must be quoted so YAML does not parse them as arrays
+- OpenCode CLI routing/fallback paths should call `opencode run`, not the non-existent `opencode exec`
+- During OpenCode project upgrades, regenerate `.pipeline/agents/` first and sync `.opencode/agents/` afterward so stale agent files do not survive the upgrade
+
 **Skill Dependency Differences:**
 
 | Skill | Claude Code | Cursor | Codex | OpenCode |
