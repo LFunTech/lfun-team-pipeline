@@ -605,7 +605,7 @@ import os
 
 cfg = {
     'repo': '',
-    'inbox_label': 'pipeline',
+    'source_labels': '',
     'processing_label': 'pipeline:processing',
     'waiting_label': 'pipeline:waiting-user',
     'done_label': 'pipeline:done',
@@ -622,12 +622,14 @@ if os.path.exists(path):
             user_cfg = json.load(f).get('issue_automation', {})
         if isinstance(user_cfg, dict):
             cfg.update({k: user_cfg[k] for k in user_cfg if k in cfg})
+            if not cfg.get('source_labels') and user_cfg.get('inbox_label'):
+                cfg['source_labels'] = user_cfg['inbox_label']
     except Exception:
         pass
 
 print('|'.join([
     str(cfg.get('repo', '')),
-    str(cfg.get('inbox_label', 'pipeline')),
+    str(cfg.get('source_labels', '')),
     str(cfg.get('processing_label', 'pipeline:processing')),
     str(cfg.get('waiting_label', 'pipeline:waiting-user')),
     str(cfg.get('done_label', 'pipeline:done')),
@@ -1647,7 +1649,7 @@ def parse_github_repo(remote_url):
 def load_issue_cfg():
     cfg = {
         'repo': '',
-        'inbox_label': 'pipeline',
+        'source_labels': '',
         'processing_label': 'pipeline:processing',
         'waiting_label': 'pipeline:waiting-user',
         'done_label': 'pipeline:done',
@@ -1661,6 +1663,8 @@ def load_issue_cfg():
                 for key in cfg:
                     if key in issue_cfg:
                         cfg[key] = issue_cfg[key]
+                if not cfg.get('source_labels') and issue_cfg.get('inbox_label'):
+                    cfg['source_labels'] = issue_cfg['inbox_label']
         except Exception:
             pass
     return cfg
@@ -1684,7 +1688,6 @@ def query_issue_queue_counts(repo, cfg):
             'gh', 'issue', 'list',
             '--repo', repo,
             '--state', 'open',
-            '--label', cfg['inbox_label'],
             '--limit', '200',
             '--json', 'number,labels',
         ], text=True, stderr=subprocess.DEVNULL)
@@ -1692,9 +1695,13 @@ def query_issue_queue_counts(repo, cfg):
     except Exception:
         return None
 
+    source_labels = {x.strip().lower() for x in str(cfg.get('source_labels', '')).split(',') if x.strip()}
     queued = processing = waiting = done = 0
     for item in items:
         labels = {lbl.get('name', '') for lbl in item.get('labels', [])}
+        lower_labels = {x.lower() for x in labels}
+        if source_labels and not (source_labels & lower_labels):
+            continue
         if cfg['processing_label'] in labels:
             processing += 1
         elif cfg['waiting_label'] in labels:
@@ -2804,9 +2811,9 @@ cmd_issue() {
       ensure_gh_auth
       ensure_issue_runtime_dirs
 
-      local cfg repo inbox_label processing_label waiting_label done_label auto_close poll_interval max_workers worktree_dir
+      local cfg repo source_labels processing_label waiting_label done_label auto_close poll_interval max_workers worktree_dir
       cfg=$(load_issue_automation_config)
-      IFS='|' read -r repo inbox_label processing_label waiting_label done_label auto_close poll_interval max_workers worktree_dir <<< "$cfg"
+      IFS='|' read -r repo source_labels processing_label waiting_label done_label auto_close poll_interval max_workers worktree_dir <<< "$cfg"
       repo=$(resolve_issue_repo "$repo_override")
 
       ensure_issue_label "$repo" "$processing_label" "FBCA04" "流水线处理中"
@@ -2822,7 +2829,7 @@ cmd_issue() {
 
       if [ "$detached" = true ]; then
         local log_file="$root_dir/.pipeline/issues/logs/issue-${issue_number}.log"
-        nohup "$0" __issue-worker "$worktree" "$repo" "$issue_number" "$processing_label" "$waiting_label" "$done_label" "$inbox_label" "$auto_close" true "$root_dir" > "$log_file" 2>&1 &
+        nohup "$0" __issue-worker "$worktree" "$repo" "$issue_number" "$processing_label" "$waiting_label" "$done_label" "$source_labels" "$auto_close" true "$root_dir" > "$log_file" 2>&1 &
         local pid=$!
         python3 - "$root_dir/.pipeline/issues/watch-state.json" "$issue_number" "$pid" "$worktree" "$log_file" <<'PY'
 import json, os, sys
@@ -2844,7 +2851,7 @@ PY
         echo "  ✓ Issue #${issue_number} 已进入后台处理 (pid=${pid})"
         echo "    日志: ${log_file}"
       else
-        cmd_issue_worker "$worktree" "$repo" "$issue_number" "$processing_label" "$waiting_label" "$done_label" "$inbox_label" "$auto_close" false "$root_dir" "$log_file_override"
+        cmd_issue_worker "$worktree" "$repo" "$issue_number" "$processing_label" "$waiting_label" "$done_label" "$source_labels" "$auto_close" false "$root_dir" "$log_file_override"
       fi
       ;;
     *)
@@ -2888,9 +2895,9 @@ cmd_watch_issues() {
     shift || true
   done
 
-  local cfg repo inbox_label processing_label waiting_label done_label auto_close poll_interval max_workers worktree_dir
+  local cfg repo source_labels processing_label waiting_label done_label auto_close poll_interval max_workers worktree_dir
   cfg=$(load_issue_automation_config)
-  IFS='|' read -r repo inbox_label processing_label waiting_label done_label auto_close poll_interval max_workers worktree_dir <<< "$cfg"
+  IFS='|' read -r repo source_labels processing_label waiting_label done_label auto_close poll_interval max_workers worktree_dir <<< "$cfg"
 
   repo=$(resolve_issue_repo "$repo_override")
   [ -n "$interval_override" ] && poll_interval="$interval_override"
@@ -2918,9 +2925,14 @@ cmd_watch_issues() {
   echo ""
   echo "  ▶ 启动 Issue Watcher"
   echo "    repo: ${repo}"
-  echo "    inbox label: ${inbox_label}"
+  if [ -n "$source_labels" ]; then
+    echo "    source labels: ${source_labels}"
+  else
+    echo "    source labels: (all open issues)"
+  fi
   [ -n "$include_labels_override" ] && echo "    include labels: ${include_labels_override}"
   [ -n "$exclude_labels_override" ] && echo "    exclude labels: ${exclude_labels_override}"
+  [ -n "$include_labels_override" ] && echo "    note: --labels 是在 source labels 基础上的追加过滤"
   [ "$dry_run" = true ] && echo "    mode: dry-run（仅预览，不实际执行）"
   echo "    scheduling: urgent/bug/security 优先，其次按创建时间"
   echo "    max workers: ${max_workers}"
@@ -2960,14 +2972,15 @@ PY
 
     if [ "$slots" -gt 0 ]; then
       local candidates raw_issues
-      raw_issues=$(gh issue list --repo "$repo" --state open --label "$inbox_label" --limit 100 --json number,title,labels,createdAt,url)
+      raw_issues=$(gh issue list --repo "$repo" --state open --limit 100 --json number,title,labels,createdAt,url)
       candidates=$(printf '%s' "$raw_issues" | python3 -c '
 import json
 import sys
 
-processing, waiting, done, include_csv, exclude_csv = sys.argv[1:6]
+source_csv, processing, waiting, done, include_csv, exclude_csv = sys.argv[1:7]
 items = json.load(sys.stdin)
 
+source_labels = {x.strip().lower() for x in source_csv.split(",") if x.strip()}
 include_labels = {x.strip().lower() for x in include_csv.split(",") if x.strip()}
 exclude_labels = {x.strip().lower() for x in exclude_csv.split(",") if x.strip()}
 
@@ -2994,6 +3007,8 @@ for item in items:
     lower_labels = {x.lower() for x in labels}
     if processing in labels or waiting in labels or done in labels:
         continue
+    if source_labels and not (source_labels & lower_labels):
+        continue
     if include_labels and not (include_labels & lower_labels):
         continue
     if exclude_labels and (exclude_labels & lower_labels):
@@ -3010,7 +3025,7 @@ for item in items:
 candidates.sort(key=lambda x: (-x["score"], x["created_at"], x["number"]))
 for item in candidates:
     print(json.dumps(item, ensure_ascii=False))
-' "$processing_label" "$waiting_label" "$done_label" "$include_labels_override" "$exclude_labels_override")
+' "$source_labels" "$processing_label" "$waiting_label" "$done_label" "$include_labels_override" "$exclude_labels_override")
 
       if [ -n "$candidates" ]; then
         local candidate_line issue_number
@@ -3039,7 +3054,12 @@ for item in candidates:
           fi
         fi
       else
-        echo "  ℹ  当前没有待处理 issue（label=${inbox_label}）"
+        echo "  ℹ  当前没有待处理 issue"
+        if [ "$raw_issues" = "[]" ]; then
+          echo "  ℹ  该仓库当前没有 open issue"
+        elif [ -n "$source_labels" ]; then
+          echo "  ℹ  原因：没有 issue 匹配 source labels = ${source_labels}"
+        fi
       fi
     else
       echo "  ℹ  当前活跃 worker 数已达上限 (${active_workers}/${max_workers})"
