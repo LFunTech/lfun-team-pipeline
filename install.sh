@@ -1604,26 +1604,33 @@ cmd_status() {
     local cache_dir
     local proposals_expanded=false
     local issues_expanded=false
+    local proposals_page=1
+    local issues_page=1
     cache_dir=$(mktemp -d "${TMPDIR:-/tmp}/team-status.XXXXXX")
     trap 'rm -rf "$cache_dir"' RETURN
     render_status_view() {
       local target_view="$1"
       local expanded=""
       local target_file=""
+      local target_page=1
+      local term_lines=24
+      term_lines=$(tput lines 2>/dev/null || echo 24)
       case "$target_view" in
         proposals)
           [ "$proposals_expanded" = true ] && expanded="proposals"
-          target_file="$cache_dir/${target_view}.${proposals_expanded}.txt"
+          target_page="$proposals_page"
+          target_file="$cache_dir/${target_view}.${proposals_expanded}.${target_page}.txt"
           ;;
         issues)
           [ "$issues_expanded" = true ] && expanded="issues"
-          target_file="$cache_dir/${target_view}.${issues_expanded}.txt"
+          target_page="$issues_page"
+          target_file="$cache_dir/${target_view}.${issues_expanded}.${target_page}.txt"
           ;;
         *)
           target_file="$cache_dir/${target_view}.txt"
           ;;
       esac
-      TEAM_STATUS_INTERACTIVE_CHILD=1 TEAM_STATUS_EXPANDED="$expanded" "$0" status --view "$target_view" > "$target_file"
+      TEAM_STATUS_INTERACTIVE_CHILD=1 TEAM_STATUS_EXPANDED="$expanded" TEAM_STATUS_PAGE="$target_page" TEAM_STATUS_TERM_LINES="$term_lines" TEAM_STATUS_PAGINATE=1 "$0" status --view "$target_view" > "$target_file"
     }
     for i in "${!views[@]}"; do
       if [ "${views[$i]}" = "$status_view" ]; then
@@ -1644,15 +1651,15 @@ cmd_status() {
       local current_view="${views[$current_index]}"
       local cache_file="$cache_dir/${current_view}.txt"
       case "$current_view" in
-        proposals) cache_file="$cache_dir/${current_view}.${proposals_expanded}.txt" ;;
-        issues) cache_file="$cache_dir/${current_view}.${issues_expanded}.txt" ;;
+        proposals) cache_file="$cache_dir/${current_view}.${proposals_expanded}.${proposals_page}.txt" ;;
+        issues) cache_file="$cache_dir/${current_view}.${issues_expanded}.${issues_page}.txt" ;;
       esac
       if [ ! -f "$cache_file" ]; then
         echo "  ⟳ 正在加载 ${current_view} ..."
         render_status_view "$current_view"
       fi
       cat "$cache_file"
-      echo "  操作: Tab/右箭头=下一个  Shift-Tab/左箭头=上一个  q=退出  r=刷新当前视图  e=展开/收起清单"
+      echo "  操作: Tab/右箭头=下一个  Shift-Tab/左箭头=上一个  n/p=翻页  q=退出  r=刷新当前视图  e=展开/收起清单"
 
       local key=""
       IFS= read -rsn1 key || break
@@ -1666,10 +1673,24 @@ cmd_status() {
           case "$current_view" in
             proposals)
               proposals_expanded=$([ "$proposals_expanded" = true ] && echo false || echo true)
+              proposals_page=1
               ;;
             issues)
               issues_expanded=$([ "$issues_expanded" = true ] && echo false || echo true)
+              issues_page=1
               ;;
+          esac
+          ;;
+        n|N)
+          case "$current_view" in
+            proposals) proposals_page=$((proposals_page + 1)) ;;
+            issues) issues_page=$((issues_page + 1)) ;;
+          esac
+          ;;
+        p|P)
+          case "$current_view" in
+            proposals) [ "$proposals_page" -gt 1 ] && proposals_page=$((proposals_page - 1)) ;;
+            issues) [ "$issues_page" -gt 1 ] && issues_page=$((issues_page - 1)) ;;
           esac
           ;;
         $'\t') current_index=$(((current_index + 1) % ${#views[@]})) ;;
@@ -1876,9 +1897,9 @@ def query_issue_items(repo, cfg):
         raw = subprocess.check_output([
             'gh', 'issue', 'list',
             '--repo', repo,
-            '--state', 'open',
+            '--state', 'all',
             '--limit', '200',
-            '--json', 'number,title,labels,createdAt,url',
+            '--json', 'number,title,labels,createdAt,updatedAt,closedAt,state,url',
         ], text=True, stderr=subprocess.DEVNULL)
         items = json.loads(raw)
     except Exception:
@@ -1907,12 +1928,13 @@ def query_issue_items(repo, cfg):
         lower_labels = {x.lower() for x in labels}
         if source_labels and not (source_labels & lower_labels):
             continue
-        if cfg['processing_label'] in labels:
+        state_name = str(item.get('state', 'OPEN')).lower()
+        if state_name == 'closed' or cfg['done_label'] in labels:
+            state = 'resolved'
+        elif cfg['processing_label'] in labels:
             state = 'processing'
         elif cfg['waiting_label'] in labels:
             state = 'waiting'
-        elif cfg['done_label'] in labels:
-            state = 'done'
         else:
             state = 'queued'
         result.append({
@@ -1921,12 +1943,32 @@ def query_issue_items(repo, cfg):
             'url': item.get('url', ''),
             'labels': sorted(labels),
             'created_at': item.get('createdAt', ''),
+            'updated_at': item.get('updatedAt', ''),
+            'closed_at': item.get('closedAt', ''),
             'score': score(labels),
             'state': state,
         })
 
-    result.sort(key=lambda x: ({'queued': 0, 'processing': 1, 'waiting': 2, 'done': 3}.get(x['state'], 9), -x['score'], x['created_at'], x['number']))
-    return result
+    result.sort(key=lambda x: ({'waiting': 0, 'processing': 1, 'queued': 2, 'resolved': 3}.get(x['state'], 9), -(x['score'] if x['state'] != 'resolved' else 0), x['closed_at'] if x['state'] == 'resolved' else '', x['updated_at'] if x['state'] != 'resolved' else '', x['number']), reverse=False)
+    resolved = [x for x in result if x['state'] == 'resolved']
+    unresolved = [x for x in result if x['state'] != 'resolved']
+    resolved.sort(key=lambda x: (x['closed_at'] or x['updated_at'], x['number']), reverse=True)
+    unresolved.sort(key=lambda x: ({'waiting': 0, 'processing': 1, 'queued': 2}.get(x['state'], 9), -x['score'], x['updated_at'], x['number']))
+    return unresolved + resolved
+
+page_number = max(1, int(os.environ.get('TEAM_STATUS_PAGE', '1') or '1'))
+term_lines = max(20, int(os.environ.get('TEAM_STATUS_TERM_LINES', '24') or '24'))
+paginate_mode = os.environ.get('TEAM_STATUS_PAGINATE', '') == '1'
+
+def paginate_items(items, reserved_lines):
+    if not paginate_mode:
+        return items, 1, 1, len(items)
+    per_page = max(5, term_lines - reserved_lines)
+    total_pages = max(1, (len(items) + per_page - 1) // per_page)
+    current_page = min(page_number, total_pages)
+    start = (current_page - 1) * per_page
+    end = start + per_page
+    return items[start:end], current_page, total_pages, per_page
 
 # ── Load state.json ────────────────────────────────────────────────
 state = json.load(open(".pipeline/state.json"))
@@ -2018,11 +2060,16 @@ if os.path.exists(queue_file):
     visible_proposals = []
     unfinished = [p for p in proposals if p.get("status") != "completed"]
     completed = [p for p in proposals if p.get("status") == "completed"]
-    proposal_limit = len(proposals) if is_expanded('proposals') else MAX_PROPOSAL_ITEMS
-    if unfinished:
-        visible_proposals.extend(unfinished[:proposal_limit])
+    proposal_pool = unfinished if unfinished else completed
+    if is_expanded('proposals') and wants('proposals'):
+        visible_proposals, proposal_page, proposal_total_pages, _ = paginate_items(proposal_pool, reserved_lines=18)
     else:
-        visible_proposals.extend(completed[:(len(completed) if is_expanded('proposals') else min(len(completed), 3))])
+        proposal_limit = len(proposals) if is_expanded('proposals') else MAX_PROPOSAL_ITEMS
+        if unfinished:
+            visible_proposals.extend(unfinished[:proposal_limit])
+        else:
+            visible_proposals.extend(completed[:(len(completed) if is_expanded('proposals') else min(len(completed), 3))])
+        proposal_page, proposal_total_pages = 1, 1
 
     for p in visible_proposals:
         pid    = p.get("id", "?")
@@ -2046,6 +2093,8 @@ if os.path.exists(queue_file):
         proposal_lines.append(c(DIM, f"  ... 另有 {hidden_proposals} 个 proposal，避免状态页过长未展开"))
     elif wants('proposals') and is_expanded('proposals'):
         proposal_lines.append(c(DIM, "  已展开全部 proposal；按 e 可收起"))
+    if wants('proposals') and is_expanded('proposals') and proposal_total_pages > 1:
+        proposal_lines.append(c(DIM, f"  第 {proposal_page}/{proposal_total_pages} 页；按 n/p 翻页"))
 
     if wants('proposals'):
         print_panel("Proposals", proposal_lines)
@@ -2077,18 +2126,26 @@ if queue_counts is not None:
     )
 if issue_queue_items and wants('issues'):
     issue_lines.append(f"{c(BOLD, 'Open List:')}  {len(issue_queue_items)} issue(s)")
-    issue_item_limit = len(issue_queue_items) if is_expanded('issues') else min(len(issue_queue_items), MAX_PROPOSAL_ITEMS)
+    if is_expanded('issues'):
+        visible_issue_items, issue_page, issue_total_pages, _ = paginate_items(issue_queue_items, reserved_lines=24)
+    else:
+        visible_issue_items = issue_queue_items[:min(len(issue_queue_items), MAX_PROPOSAL_ITEMS)]
+        issue_page, issue_total_pages = 1, 1
+    issue_item_limit = len(visible_issue_items)
     state_color = {'queued': BLUE, 'processing': CYAN, 'waiting': YELLOW, 'done': GREEN}
-    for item in issue_queue_items[:issue_item_limit]:
+    state_color['resolved'] = GREEN
+    for item in visible_issue_items:
         labels_preview = ','.join(item.get('labels', [])[:3])
         labels_suffix = f" [{labels_preview}]" if labels_preview else ''
         issue_lines.append(
             f"  {c(state_color.get(item['state'], DIM), item['state']):>10}  #{item['number']} {item['title']}{c(DIM, labels_suffix)}"
         )
-    if len(issue_queue_items) > issue_item_limit:
-        issue_lines.append(c(DIM, f"  ... 另有 {len(issue_queue_items) - issue_item_limit} 个 open issue 未展开"))
+    if len(issue_queue_items) > len(visible_issue_items) and not is_expanded('issues'):
+        issue_lines.append(c(DIM, f"  ... 另有 {len(issue_queue_items) - len(visible_issue_items)} 个 open issue 未展开"))
     elif is_expanded('issues'):
-        issue_lines.append(c(DIM, "  已展开 open issue 完整清单；按 e 可收起"))
+        issue_lines.append(c(DIM, "  已展开 open/resolved issue 清单；按 e 可收起"))
+    if is_expanded('issues') and issue_total_pages > 1:
+        issue_lines.append(c(DIM, f"  第 {issue_page}/{issue_total_pages} 页；按 n/p 翻页"))
 if os.path.exists(watch_file):
     try:
         watch = json.load(open(watch_file))
