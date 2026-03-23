@@ -2060,7 +2060,13 @@ if os.path.exists(queue_file):
     visible_proposals = []
     unfinished = [p for p in proposals if p.get("status") != "completed"]
     completed = [p for p in proposals if p.get("status") == "completed"]
-    proposal_pool = unfinished if unfinished else completed
+    proposal_pool = sorted(
+        proposals,
+        key=lambda p: (
+            {"running": 0, "pending": 1, "completed": 2}.get(p.get("status", "pending"), 9),
+            p.get("id", ""),
+        ),
+    )
     if is_expanded('proposals') and wants('proposals'):
         visible_proposals, proposal_page, proposal_total_pages, _ = paginate_items(proposal_pool, reserved_lines=18)
     else:
