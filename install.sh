@@ -908,6 +908,11 @@ bootstrap_issue_workspace() {
 
   [ -f "$root_dir/AGENTS.md" ] && cp "$root_dir/AGENTS.md" "$worktree/AGENTS.md"
   [ -f "$root_dir/CLAUDE.md" ] && cp "$root_dir/CLAUDE.md" "$worktree/CLAUDE.md"
+  [ -f "$root_dir/opencode.json" ] && cp "$root_dir/opencode.json" "$worktree/opencode.json"
+  if [ -d "$root_dir/.opencode" ]; then
+    mkdir -p "$worktree/.opencode"
+    cp -R "$root_dir/.opencode/." "$worktree/.opencode/"
+  fi
   if [ -d "$root_dir/.cursor/rules" ]; then
     mkdir -p "$worktree/.cursor/rules"
     cp -R "$root_dir/.cursor/rules/." "$worktree/.cursor/rules/"
@@ -1064,6 +1069,31 @@ if instructions:
   fi
 }
 
+sync_opencode_project_files() {
+  mkdir -p .opencode/agents
+  rm -f .opencode/agents/*.md 2>/dev/null || true
+  cp -R .pipeline/agents/. .opencode/agents/
+  echo "  ✓ .opencode/agents/ synced from .pipeline/agents/"
+
+  if [ ! -f "opencode.json" ]; then
+    python3 - <<'PY'
+import json
+
+cfg = {
+    "$schema": "https://opencode.ai/config.schema.json",
+    "context": ["AGENTS.md"],
+}
+
+with open('opencode.json', 'w', encoding='utf-8') as f:
+    json.dump(cfg, f, ensure_ascii=False, indent=2)
+    f.write('\n')
+PY
+    echo "  ✓ opencode.json"
+  else
+    echo "  ⚠  opencode.json already exists, skipping"
+  fi
+}
+
 cmd_init() {
   if [ ! -d "$TEAM_HOME/.pipeline" ]; then
     echo "❌ Team pipeline not installed. Run: bash install.sh"
@@ -1203,6 +1233,10 @@ except Exception:
       ;;
   esac
 
+  if [ "$platform" = "opencode" ]; then
+    sync_opencode_project_files
+  fi
+
   case "$platform" in
     cursor)
       if [ -d "$TEAM_HOME/.cursor/rules" ]; then
@@ -1223,10 +1257,11 @@ except Exception:
     cc)       echo "        Or: claude --dangerously-skip-permissions --agent pilot" ;;
     codex)    echo "        Or: codex --full-auto" ;;
     cursor)   echo "        Or: Cursor Agent mode → /pilot" ;;
-    opencode) echo "        Or: opencode run --agent build" ;;
+    opencode) echo "        Or: opencode run --agent build  (uses opencode.json + .opencode/agents/)" ;;
   esac
   echo ""
   echo "     Platform agents saved to: .pipeline/agents/"
+  [ "$platform" = "opencode" ] && echo "     OpenCode project files: opencode.json, .opencode/agents/"
   echo "     Switch platform: team migrate <codex|cursor|opencode>"
   echo ""
 
@@ -1403,6 +1438,8 @@ else:
   [ -f ".pipeline/llm-router.sh" ] && cp .pipeline/llm-router.sh "$BACKUP_DIR/" 2>/dev/null || true
   [ -f "CLAUDE.md" ] && cp CLAUDE.md "$BACKUP_DIR/CLAUDE.md.bak" 2>/dev/null || true
   [ -f "AGENTS.md" ] && cp AGENTS.md "$BACKUP_DIR/AGENTS.md.bak" 2>/dev/null || true
+  [ -f "opencode.json" ] && cp opencode.json "$BACKUP_DIR/opencode.json.bak" 2>/dev/null || true
+  [ -d ".opencode" ] && cp -r .opencode "$BACKUP_DIR/opencode-dir" 2>/dev/null || true
   [ -d ".pipeline/agents" ] && cp -r .pipeline/agents "$BACKUP_DIR/agents" 2>/dev/null || true
 
   # ── Phase 5: Upgrade template files ───────────────────────────────
@@ -1448,6 +1485,10 @@ print(c.get('model_routing',{}).get('cli_backend','cc'))
       fi
       ;;
   esac
+
+  if [ "$upgrade_platform" = "opencode" ]; then
+    sync_opencode_project_files
+  fi
 
   if [ -d "$TEAM_HOME/.cursor/rules" ]; then
     mkdir -p .cursor/rules
@@ -2019,7 +2060,7 @@ cmd_run() {
         while true; do
           oc_round=$((oc_round + 1))
           print_opencode_banner "OpenCode 第 ${oc_round} 轮"
-          echo "  (AGENTS.md 已包含 Pilot 指令，opencode 自动加载)"
+          echo "  (OpenCode 通过 .opencode/agents/ 加载 Agent，AGENTS.md 作为项目上下文)"
           print_opencode_state "本轮开始前"
 
 	          local oc_mode
@@ -2484,6 +2525,20 @@ cmd_migrate() {
       cp "$snap/config.json" .pipeline/config.json
       echo "  ✓ config.json 已恢复"
     fi
+    if [ -f "$snap/opencode.json" ]; then
+      cp "$snap/opencode.json" opencode.json
+      echo "  ✓ opencode.json 已恢复"
+    elif [ -f "opencode.json" ]; then
+      rm -f opencode.json
+      echo "  ✓ opencode.json 已移除（迁移前不存在）"
+    fi
+    rm -rf .opencode
+    if [ -d "$snap/opencode-dir" ]; then
+      cp -r "$snap/opencode-dir" .opencode
+      echo "  ✓ .opencode/ 已恢复"
+    else
+      echo "  ✓ .opencode/ 已移除（迁移前不存在）"
+    fi
     local old_platform="unknown"
     if [ -f "$snap/config.json" ]; then
       old_platform=$(python3 -c "
@@ -2580,6 +2635,12 @@ print(c.get('model_routing',{}).get('cli_backend','cc'))
   if [ -f ".pipeline/config.json" ]; then
     cp ".pipeline/config.json" "$snap/config.json"
   fi
+  if [ -f "opencode.json" ]; then
+    cp "opencode.json" "$snap/opencode.json"
+  fi
+  if [ -d ".opencode" ]; then
+    cp -r ".opencode" "$snap/opencode-dir"
+  fi
   echo "  ✓ 快照已保存 (team migrate --rollback 可回滚)"
 
   # --- Generate new agents ---
@@ -2644,6 +2705,10 @@ os.replace(tmp, sf)
       generate_agents_md_with_pilot "$platform"
       ;;
   esac
+
+  if [ "$platform" = "opencode" ]; then
+    sync_opencode_project_files
+  fi
 
   if [ "$platform" = "cursor" ]; then
     if [ -d "$TEAM_HOME/.cursor/rules" ]; then

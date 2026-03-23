@@ -65,7 +65,7 @@ Mark Done     Mark proposal completed, auto-loop to next
 | [Claude Code](https://claude.ai/code) | `claude --agent pilot` | `.md` | Native support, CLI-driven |
 | [Codex](https://openai.com/codex) | `codex --full-auto` | `.toml` | AGENTS.md auto-loads pilot instructions |
 | [Cursor](https://cursor.sh) | Agent mode → `/pilot` | `.md` | IDE built-in Agent mode |
-| [OpenCode](https://opencode.ai) | `opencode run --agent build` | `.md` | AGENTS.md auto-loads pilot instructions |
+| [OpenCode](https://opencode.ai) | `opencode run --agent build` | `.md` | Uses `opencode.json` + `.opencode/agents/`, with `AGENTS.md` as shared context |
 
 The same project can seamlessly switch between platforms — `state.json` format is fully compatible.
 
@@ -403,6 +403,8 @@ bash scripts/rollback.sh ~/.local/share/team-pipeline-backup-20260322_215623
 └── history/             ← Past proposal artifact archives
 CLAUDE.md                ← Pipeline context (generated for CC/Cursor platforms)
 AGENTS.md                ← Pipeline context + Pilot instructions (generated for Codex/OpenCode)
+opencode.json            ← OpenCode project config (generated for OpenCode)
+.opencode/agents/        ← OpenCode project-level agent definitions (generated for OpenCode)
 .cursor/rules/pipeline.md ← Cursor IDE pipeline rules (generated for Cursor platform)
 ```
 
@@ -521,7 +523,7 @@ agents/*.md (CC format, canonical source)
 | Shell Tool | `Bash()` | `bash()` | `Shell()` | `bash()` |
 | Permission Model | `permissionMode` | `sandbox_mode` | `readonly` | implicit |
 
-**OpenCode entrypoint:** OpenCode does not use a separate rules directory like Cursor. The project entrypoint is `AGENTS.md`, the concrete agent definitions live in `.pipeline/agents/*.md`, and the OpenCode-specific Pilot source lives at `agents/platforms/opencode/pilot.md`.
+**OpenCode entrypoint:** OpenCode's official project entrypoints are `opencode.json` and `.opencode/agents/`. This repo also generates `AGENTS.md` as shared context. The canonical pipeline agents still live in `.pipeline/agents/*.md` and are synced to `.opencode/agents/*.md`; the OpenCode-specific Pilot source lives at `agents/platforms/opencode/pilot.md`.
 
 **Skill Dependency Differences:**
 

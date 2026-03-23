@@ -12,7 +12,7 @@ team run
 # Claude Code:  claude --dangerously-skip-permissions --agent pilot
 # Codex:        codex --full-auto     (AGENTS.md 自动加载 Pilot 指令)
 # Cursor:       Agent 模式中输入 /pilot
-# OpenCode:     opencode run --agent build "读取 AGENTS.md 并执行流水线"
+# OpenCode:     opencode run --agent build  # 使用 opencode.json + .opencode/agents/，AGENTS.md 作为上下文
 
 # 查看当前状态
 team status

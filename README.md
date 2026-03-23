@@ -65,7 +65,7 @@ Mark Done     标记提案完成，自动循环执行下一个
 | [Claude Code](https://claude.ai/code) | `claude --agent pilot` | `.md` | 原生支持，CLI 驱动 |
 | [Codex](https://openai.com/codex) | `codex --full-auto` | `.toml` | AGENTS.md 自动加载 Pilot 指令 |
 | [Cursor](https://cursor.sh) | Agent 模式 → `/pilot` | `.md` | IDE 内置 Agent 模式 |
-| [OpenCode](https://opencode.ai) | `opencode run --agent build` | `.md` | AGENTS.md 自动加载 Pilot 指令 |
+| [OpenCode](https://opencode.ai) | `opencode run --agent build` | `.md` | 使用 `opencode.json` + `.opencode/agents/`，并复用 `AGENTS.md` 作为上下文 |
 
 同一个项目可以在不同平台间无缝切换，`state.json` 格式完全兼容。
 
@@ -409,6 +409,8 @@ bash scripts/rollback.sh ~/.local/share/team-pipeline-backup-20260322_215623
 └── history/             ← 历次提案产物归档
 CLAUDE.md                ← 流水线上下文（CC/Cursor 平台时生成）
 AGENTS.md                ← 流水线上下文 + Pilot 指令（Codex/OpenCode 平台时生成）
+opencode.json            ← OpenCode 项目配置（OpenCode 平台时生成）
+.opencode/agents/        ← OpenCode 项目级 Agent 定义（OpenCode 平台时生成）
 .cursor/rules/pipeline.md ← Cursor IDE 流水线规则（Cursor 平台时生成）
 ```
 
@@ -527,7 +529,7 @@ agents/*.md (CC 格式，canonical source)
 | Shell 工具 | `Bash()` | `bash()` | `Shell()` | `bash()` |
 | 权限模型 | `permissionMode` | `sandbox_mode` | `readonly` | 隐式 |
 
-**OpenCode 规则入口：** OpenCode 没有像 Cursor 一样单独的规则文件目录；项目入口是 `AGENTS.md`，实际 agent 定义保存在 `.pipeline/agents/*.md`，OpenCode 专用 Pilot 源定义在 `agents/platforms/opencode/pilot.md`。
+**OpenCode 规则入口：** OpenCode 官方项目入口是 `opencode.json` 与 `.opencode/agents/`；本仓库同时生成 `AGENTS.md` 作为共享上下文。流水线内部 canonical agent 仍保存在 `.pipeline/agents/*.md`，并同步到 `.opencode/agents/*.md`；OpenCode 专用 Pilot 源定义在 `agents/platforms/opencode/pilot.md`。
 
 **Skill 依赖差异：**
 

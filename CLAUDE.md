@@ -15,7 +15,7 @@ team run
 # 或直接调用平台 CLI
 claude --dangerously-skip-permissions --agent pilot  # Claude Code
 codex --full-auto                                    # Codex (AGENTS.md 自动加载)
-opencode                                             # OpenCode (AGENTS.md 自动加载)
+opencode                                             # OpenCode (opencode.json + .opencode/agents/，AGENTS.md 作为上下文)
 
 # 查看当前状态
 team status
