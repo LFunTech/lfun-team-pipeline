@@ -33,6 +33,8 @@ team status
 - `.pipeline/config.json` — 项目配置
 - `.pipeline/state.json` — 运行时状态（Pilot 管理）
 - `.pipeline/playbook.md` — 阶段手册（Pilot 按需加载）
+- `.pipeline/project-memory.json` — 长期项目约束
+- `.pipeline/micro-changes.json` — 非 proposal 业务小改记录
 - `.pipeline/artifacts/` — 各阶段产物
 - `.pipeline/autosteps/` — AutoStep 脚本
 - `.worktrees/` — 3.build 阶段的临时 worktree

@@ -28,6 +28,7 @@ team status
 ├── config.json          ← 流水线配置（编辑此文件以自定义行为）
 ├── playbook.md          ← 阶段执行手册（Pilot 按需加载，勿手动修改）
 ├── project-memory.json  ← 项目记忆（跨流水线约束清单，自动维护）
+├── micro-changes.json   ← 非提案业务小改记录（最小需求事实）
 ├── agents/              ← ★ 平台特定的 Agent 定义（team init 时生成，勿手动修改）
 ├── history/             ← 历次流水线产物归档（按需查阅）
 ├── state.json           ← 运行时状态（Pilot 自动管理，勿手动修改）
@@ -255,6 +256,8 @@ for e in s.get('execution_log', []):
 
 流水线自动维护 `.pipeline/project-memory.json`，存储跨流水线的项目约束。
 
+未进入 proposal 的业务小改会先记录到 `.pipeline/micro-changes.json`，再在 `memory-consolidation` 阶段提炼为长期约束。
+
 ```bash
 # 查看当前约束
 python3 -c "
@@ -270,6 +273,12 @@ for c in m.get('constraints', []):
 
 # 查看历次运行
 ls .pipeline/history/
+
+# 查看尚未固化到项目记忆的小改
+PIPELINE_DIR=.pipeline bash .pipeline/autosteps/list-micro-changes.sh --pending
+
+# 在状态面板中查看 micro-change 摘要
+team status --view changes
 ```
 
 约束在每次流水线成功完成（7.monitor NORMAL）后自动提取，经用户确认后写入。

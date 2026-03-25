@@ -1127,6 +1127,69 @@ PY
   fi
 }
 
+list_missing_runtime_guard_state_fields() {
+  if [ ! -f ".pipeline/state.json" ]; then
+    return 0
+  fi
+
+  python3 - <<'PY'
+import json
+from pathlib import Path
+
+path = Path('.pipeline/state.json')
+required = [
+    'phase_3_wave_bases',
+    'phase_3_conflict_files',
+    'parallel_precheck_report',
+]
+
+try:
+    state = json.loads(path.read_text(encoding='utf-8'))
+except Exception:
+    print('__invalid__')
+    raise SystemExit(0)
+
+missing = [key for key in required if key not in state]
+print(','.join(missing))
+PY
+}
+
+backfill_runtime_guard_state_fields() {
+  if [ ! -f ".pipeline/state.json" ]; then
+    return 0
+  fi
+
+  python3 - <<'PY'
+import json
+from pathlib import Path
+
+path = Path('.pipeline/state.json')
+defaults = {
+    'phase_3_wave_bases': {},
+    'phase_3_conflict_files': [],
+    'parallel_precheck_report': None,
+}
+
+try:
+    state = json.loads(path.read_text(encoding='utf-8'))
+except Exception as exc:
+    print(f'  ⚠  state.json is invalid JSON, skipping runtime guard schema backfill: {exc}')
+    raise SystemExit(0)
+
+added = []
+for key, value in defaults.items():
+    if key not in state:
+        state[key] = value
+        added.append(key)
+
+if added:
+    path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    print('  ✓ state.json: added runtime guard fields (' + ', '.join(added) + ')')
+else:
+    print('  ✓ state.json: runtime guard fields already compatible')
+PY
+}
+
 cmd_init() {
   if [ ! -d "$TEAM_HOME/.pipeline" ]; then
     echo "❌ Team pipeline not installed. Run: bash install.sh"
@@ -1467,6 +1530,8 @@ else:
     echo "  ✓ Phase names: already migrated"
   fi
 
+  backfill_runtime_guard_state_fields
+
   # ── Phase 4: Snapshot before overwriting files ─────────────────────
   # Ensure BACKUP_DIR exists even if migration was skipped
   if [ -z "${BACKUP_DIR:-}" ]; then
@@ -1610,6 +1675,7 @@ cmd_repair() {
 
   [ -f ".pipeline/playbook.md" ] && cp .pipeline/playbook.md "$BACKUP_DIR/" 2>/dev/null || true
   [ -f ".pipeline/llm-router.sh" ] && cp .pipeline/llm-router.sh "$BACKUP_DIR/" 2>/dev/null || true
+  [ -f ".pipeline/state.json" ] && cp .pipeline/state.json "$BACKUP_DIR/" 2>/dev/null || true
   [ -d ".pipeline/autosteps" ] && cp -r .pipeline/autosteps "$BACKUP_DIR/autosteps" 2>/dev/null || true
   [ -d ".pipeline/agents" ] && cp -r .pipeline/agents "$BACKUP_DIR/agents" 2>/dev/null || true
   [ -f "CLAUDE.md" ] && cp CLAUDE.md "$BACKUP_DIR/CLAUDE.md.bak" 2>/dev/null || true
@@ -1688,14 +1754,18 @@ print(p if p not in ('auto', '') else 'cc')
     sync_opencode_project_files
   fi
 
+  backfill_runtime_guard_state_fields
+
   echo ""
   echo "  Preserved (not modified):"
   echo "    .pipeline/config.json"
   echo "    .pipeline/project-memory.json"
   echo "    .pipeline/micro-changes.json"
   echo "    .pipeline/proposal-queue.json"
-  echo "    .pipeline/state.json"
   echo "    .pipeline/artifacts/*"
+  echo ""
+  echo "  Conditionally updated:"
+  echo "    .pipeline/state.json (only if runtime guard fields were missing)"
   echo ""
   echo "  Backup saved to: $BACKUP_DIR"
   echo "  ✅ Repair complete"
@@ -1723,6 +1793,17 @@ cmd_doctor() {
     echo ""
     echo "  ✅ Runtime guard files are present and look current."
     return 0
+  fi
+
+  local missing_state_fields
+  missing_state_fields="$(list_missing_runtime_guard_state_fields 2>/dev/null || true)"
+  if [ "$missing_state_fields" = "__invalid__" ]; then
+    echo ""
+    echo "  ℹ  .pipeline/state.json is invalid JSON; repair will preserve it, so fix JSON first or restore from backup."
+  elif [ -n "$missing_state_fields" ]; then
+    echo ""
+    echo "  ℹ  Detected state schema drift in .pipeline/state.json: $missing_state_fields"
+    echo "     team repair now backfills these runtime guard fields automatically."
   fi
 
   echo ""
