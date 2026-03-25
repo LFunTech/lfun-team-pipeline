@@ -222,6 +222,8 @@ bash("bash .pipeline/llm-router.sh builder-dba '...' --cwd .worktrees/builder-db
 例外 1：`gate-c.code-review` 在 Resolver 已成功提交修复并更新 `phase_3_base_sha` 后，视为新的审查轮次。Pilot 必须先将本轮将要重跑的后处理链 `3.0b.build-verify`、`3.0d.duplicate-detect`、`3.1.static-analyze`、`3.2.diff-validate`、`3.3.regression-guard`、`3.5.simplify`、`3.6.simplify-verify`、`gate-c.code-review` 的 `attempt_counts` 全部重置为 `0`，再重新进入 `3.0b.build-verify`。因此这些计数只用于“Resolver 修复不完整/无进展”的连续失败，不用于惩罚已经产出有效修复的新一轮审查。
 
 例外 2：`gate-c.code-review FAIL → 3.build` 的第一次跳转，本质上是 Resolver 修复入口，不是普通 Builder 重做轮次。只要 Pilot 仍在执行 Resolver 驱动的修复流程、且尚未决定重新起 Builder worktree，**不得递增 `attempt_counts["3.build"]`**，也不得仅因主工作区存在 Resolver 修复改动就按普通 3.build 脏工作区规则进入 ESCALATION。只有当 Resolver 明确要求重新执行真实 3.build 时，才恢复普通 `3.build` 计数语义。
+
+低风险执行原则：遇到可逆且边界清晰的流水线维护动作，直接执行，不要反复向用户确认。尤其是 `3.build`/并行提案阶段由流水线自己创建的 `.worktrees/*`、临时分支、`phase_3_*` / `parallel_*` 运行态清理，属于系统现场恢复，应按 playbook 自动处理。只有当操作会触碰主工作区中可能属于用户的未提交业务改动（例如 stash、回退源码、删除未跟踪业务文件、重排混杂 diff）时，才进入 ESCALATION 或一次性向用户说明阻塞点。
 conditional_agents 赋值：gate-a.design-review PASS 后从 proposal.md 读取条件标记写入。
 
 ## 阶段路由表

@@ -538,6 +538,8 @@ output: .pipeline/artifacts/contract-semantic-report.json
 
 ## 3.build — 并行实现（Worktree 隔离）
 
+**低风险执行原则**：Pilot 对可逆且边界清晰的流水线维护动作应直接执行，不因“担心误操作”而默认停下来等待用户确认。尤其是流水线自己创建的 `.worktrees/*`、对应临时分支、`phase_3_*` / `parallel_*` 运行态清理，属于系统现场恢复，应按本手册自动处理；只有当操作会触碰主工作区中可能属于用户的未提交业务改动（如 stash、源码回退、删除未跟踪业务文件、重排混杂 diff）时，才进入 ESCALATION 或一次性说明阻塞点。
+
 ### 3.build Step 0 — Worktree 初始化（3.build 内部步骤，无独立路由条目）
 
 检查 `state.json.phase_3_base_sha` 是否为 null：
