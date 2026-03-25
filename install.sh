@@ -199,6 +199,8 @@ usage() {
   echo "    watch-issues [--repo <owner/repo>] [--interval <sec>] [--max-workers <n>] [--labels a,b] [--exclude-labels x,y] [--dry-run] [--once]"
   echo "              轮询 GitHub Issue 队列并自动调度处理"
   echo "    upgrade   Upgrade playbook + autosteps in-place (preserves state)"
+  echo "    repair    Restore pipeline runtime files in-place (preserves state/artifacts)"
+  echo "    doctor    Check whether runtime guard files are up to date"
   echo "    replan    Re-plan the proposal queue (keeps completed work)"
   echo "    scan      Scan codebase for components and detect duplicates"
   echo "    version   Print version"
@@ -827,6 +829,8 @@ state = {
     'phase_3_base_sha': None,
     'phase_3_worktrees': {},
     'phase_3_branches': {},
+    'phase_3_wave_bases': {},
+    'phase_3_conflict_files': [],
     'phase_3_main_branch': None,
     'phase_3_merge_order': [],
     'github_repo_created': False,
@@ -839,6 +843,7 @@ state = {
     'parallel_branches': {},
     'parallel_merge_order': [],
     'parallel_completed': [],
+    'parallel_precheck_report': None,
     'issue_context': {
         'repo': repo,
         'number': number,
@@ -901,6 +906,7 @@ bootstrap_issue_workspace() {
   cp "$root_dir/.pipeline/config.json" "$worktree/.pipeline/config.json"
   cp "$root_dir/.pipeline/playbook.md" "$worktree/.pipeline/playbook.md"
   cp "$root_dir/.pipeline/project-memory.json" "$worktree/.pipeline/project-memory.json"
+  [ -f "$root_dir/.pipeline/micro-changes.json" ] && cp "$root_dir/.pipeline/micro-changes.json" "$worktree/.pipeline/micro-changes.json"
   [ -f "$root_dir/.pipeline/llm-router.sh" ] && cp "$root_dir/.pipeline/llm-router.sh" "$worktree/.pipeline/llm-router.sh"
   mkdir -p "$worktree/.pipeline/autosteps" "$worktree/.pipeline/history" "$worktree/.pipeline/artifacts" "$worktree/.pipeline/agents"
   cp -R "$root_dir/.pipeline/autosteps/." "$worktree/.pipeline/autosteps/"
@@ -1190,6 +1196,13 @@ cmd_init() {
   else
     cp "$TEAM_HOME/.pipeline/project-memory.json" .pipeline/project-memory.json
     echo "  ✓ .pipeline/project-memory.json"
+  fi
+
+  if [ -f ".pipeline/micro-changes.json" ]; then
+    echo "  ⚠  .pipeline/micro-changes.json already exists, skipping"
+  else
+    cp "$TEAM_HOME/.pipeline/micro-changes.json" .pipeline/micro-changes.json
+    echo "  ✓ .pipeline/micro-changes.json"
   fi
 
   STEP_COUNT=0
@@ -1563,6 +1576,7 @@ print(p if p not in ('auto', '') else 'cc')
   echo "  Preserved (not modified):"
   echo "    .pipeline/config.json"
   echo "    .pipeline/project-memory.json"
+  echo "    .pipeline/micro-changes.json"
   echo "    .pipeline/proposal-queue.json"
   echo "    .pipeline/state.json"
   echo "    .pipeline/artifacts/*"
@@ -1572,6 +1586,148 @@ print(p if p not in ('auto', '') else 'cc')
   echo ""
   echo "  Run 'team run' to continue from current phase."
   echo ""
+}
+
+cmd_repair() {
+  if [ ! -d "$TEAM_HOME/.pipeline" ]; then
+    echo "❌ Team pipeline not installed. Run: bash install.sh"
+    exit 1
+  fi
+
+  if [ ! -d ".pipeline" ]; then
+    echo "❌ No .pipeline/ directory found. Run: team init"
+    exit 1
+  fi
+
+  echo ""
+  echo "  Repairing lfun-team-pipeline in: $(pwd)"
+  echo ""
+
+  local BACKUP_TS
+  BACKUP_TS=$(date +%Y%m%d%H%M%S)
+  local BACKUP_DIR=".pipeline/.repair-backup-${BACKUP_TS}"
+  mkdir -p "$BACKUP_DIR"
+
+  [ -f ".pipeline/playbook.md" ] && cp .pipeline/playbook.md "$BACKUP_DIR/" 2>/dev/null || true
+  [ -f ".pipeline/llm-router.sh" ] && cp .pipeline/llm-router.sh "$BACKUP_DIR/" 2>/dev/null || true
+  [ -d ".pipeline/autosteps" ] && cp -r .pipeline/autosteps "$BACKUP_DIR/autosteps" 2>/dev/null || true
+  [ -d ".pipeline/agents" ] && cp -r .pipeline/agents "$BACKUP_DIR/agents" 2>/dev/null || true
+  [ -f "CLAUDE.md" ] && cp CLAUDE.md "$BACKUP_DIR/CLAUDE.md.bak" 2>/dev/null || true
+  [ -f "AGENTS.md" ] && cp AGENTS.md "$BACKUP_DIR/AGENTS.md.bak" 2>/dev/null || true
+  [ -f "opencode.json" ] && cp opencode.json "$BACKUP_DIR/opencode.json.bak" 2>/dev/null || true
+  [ -d ".opencode" ] && cp -r .opencode "$BACKUP_DIR/opencode-dir" 2>/dev/null || true
+
+  mkdir -p .pipeline/autosteps .pipeline/artifacts .pipeline/history
+
+  cp "$TEAM_HOME/.pipeline/playbook.md" .pipeline/playbook.md
+  echo "  ✓ .pipeline/playbook.md repaired"
+
+  for ext in sh py; do cp "$TEAM_HOME/.pipeline/autosteps/"*."$ext" .pipeline/autosteps/ 2>/dev/null || true; done
+  find .pipeline/autosteps -type f \( -name "*.sh" -o -name "*.py" \) -exec chmod +x {} + 2>/dev/null || true
+  AUTOSTEP_COUNT=$(ls .pipeline/autosteps/*.sh .pipeline/autosteps/*.py 2>/dev/null | wc -l)
+  echo "  ✓ $AUTOSTEP_COUNT autosteps repaired"
+
+  if [ -f "$TEAM_HOME/.pipeline/llm-router.sh" ]; then
+    cp "$TEAM_HOME/.pipeline/llm-router.sh" .pipeline/llm-router.sh
+    chmod +x .pipeline/llm-router.sh
+    echo "  ✓ .pipeline/llm-router.sh repaired"
+  fi
+
+  local repair_platform="cc"
+  if [ -f ".pipeline/config.json" ]; then
+    repair_platform=$(python3 -c "
+import json
+c = json.load(open('.pipeline/config.json'))
+p = c.get('model_routing', {}).get('cli_backend', 'auto')
+print(p if p not in ('auto', '') else 'cc')
+" 2>/dev/null || echo "cc")
+  fi
+  if [ "$repair_platform" = "cc" ] && ls .pipeline/agents/*.toml &>/dev/null; then
+    repair_platform="codex"
+  fi
+  local label
+  label=$(platform_label "$repair_platform")
+
+  if [ -d ".pipeline/agents" ]; then
+    local agent_count
+    agent_count=$(generate_agents_for_platform "$repair_platform" ".pipeline/agents")
+    if [ -n "$agent_count" ] && [ "$agent_count" -gt 0 ] 2>/dev/null; then
+      echo "  ✓ .pipeline/agents/ repaired ($agent_count agents for $label)"
+    else
+      echo "  ⚠  Agent repair failed — preserving current .pipeline/agents/"
+    fi
+  else
+    echo "  ℹ  No .pipeline/agents/ found (legacy project, using global agents)"
+  fi
+
+  if [ -f "$TEAM_HOME/CLAUDE.md" ]; then
+    cp "$TEAM_HOME/CLAUDE.md" CLAUDE.md
+    echo "  ✓ CLAUDE.md repaired"
+  fi
+
+  case "$repair_platform" in
+    codex|opencode)
+      generate_agents_md_with_pilot "$repair_platform"
+      echo "  ✓ AGENTS.md repaired"
+      ;;
+    *)
+      if [ -f "$TEAM_HOME/AGENTS.md" ]; then
+        cp "$TEAM_HOME/AGENTS.md" AGENTS.md
+        echo "  ✓ AGENTS.md repaired"
+      fi
+      ;;
+  esac
+
+  if [ -d "$TEAM_HOME/.cursor/rules" ]; then
+    mkdir -p .cursor/rules
+    cp "$TEAM_HOME/.cursor/rules/pipeline.md" .cursor/rules/pipeline.md 2>/dev/null || true
+    echo "  ✓ .cursor/rules/pipeline.md repaired"
+  fi
+
+  if [ "$repair_platform" = "opencode" ]; then
+    sync_opencode_project_files
+  fi
+
+  echo ""
+  echo "  Preserved (not modified):"
+  echo "    .pipeline/config.json"
+  echo "    .pipeline/project-memory.json"
+  echo "    .pipeline/micro-changes.json"
+  echo "    .pipeline/proposal-queue.json"
+  echo "    .pipeline/state.json"
+  echo "    .pipeline/artifacts/*"
+  echo ""
+  echo "  Backup saved to: $BACKUP_DIR"
+  echo "  ✅ Repair complete"
+  echo ""
+  echo "  Run 'team status' or 'team run' to continue."
+  echo ""
+}
+
+cmd_doctor() {
+  if [ ! -d ".pipeline" ]; then
+    echo "  ❌ .pipeline/ not found. Run: team init"
+    return 1
+  fi
+
+  local checker=".pipeline/autosteps/runtime-guard-check.py"
+  if [ ! -f "$checker" ]; then
+    echo "  ❌ $checker missing"
+    echo "     Run: team repair"
+    return 1
+  fi
+
+  echo "  🔎 Checking runtime guard files..."
+  echo ""
+  if PIPELINE_DIR=.pipeline python3 "$checker"; then
+    echo ""
+    echo "  ✅ Runtime guard files are present and look current."
+    return 0
+  fi
+
+  echo ""
+  echo "  ⚠  Runtime guard check failed. Recommended: team repair"
+  return 1
 }
 
 cmd_replan() {
@@ -2081,6 +2237,7 @@ def print_panel(title, lines):
 MAX_PROPOSAL_ITEMS = 8
 MAX_WAITING_ITEMS = 3
 MAX_RECENT_ISSUES = 3
+MAX_CHANGE_ITEMS = 5
 status_view = os.environ.get('TEAM_STATUS_VIEW', 'overview')
 expanded_flags = {x for x in os.environ.get('TEAM_STATUS_EXPANDED', '').split(',') if x}
 
@@ -2114,6 +2271,7 @@ tab_items = [
     ('overview', 'Overview'),
     ('proposals', 'Proposals'),
     ('issues', 'Issues'),
+    ('changes', 'Changes'),
     ('execution', 'Execution'),
     ('retries', 'Retries'),
 ]
@@ -2127,7 +2285,7 @@ for key, label in tab_items:
         tab_line.append(c(DIM, label))
 overview_lines.append(f"{c(BOLD, 'Views:')}     {' | '.join(tab_line)}")
 if status_view == 'overview':
-    overview_lines.append(c(DIM, "提示: team status --view proposals|issues|execution|retries|all"))
+    overview_lines.append(c(DIM, "提示: team status --view proposals|issues|changes|execution|retries|all"))
 
 print_panel(f"Pipeline Status — {project}", overview_lines)
 
@@ -2363,6 +2521,80 @@ elif status_view == 'overview':
     else:
         issue_summary.append(c(DIM, '使用 `team status --view issues` 查看 issue 明细'))
     print_panel("Issues", issue_summary)
+
+# ── Micro-changes panel ────────────────────────────────────────────
+changes_file = ".pipeline/micro-changes.json"
+change_lines = []
+if os.path.exists(changes_file):
+    try:
+        changes_data = json.load(open(changes_file))
+        changes = changes_data.get('changes', [])
+        pending_changes = [cng for cng in changes if cng.get('memory_candidate') and not cng.get('consumed_by_memory')]
+        change_lines.append(f"{c(BOLD, 'Total:')}     {len(changes)}")
+        change_lines.append(f"{c(BOLD, 'Pending:')}   {c(YELLOW if pending_changes else DIM, str(len(pending_changes)))}")
+
+        visible_changes = []
+        change_pool = sorted(
+            changes,
+            key=lambda item: (
+                0 if item.get('memory_candidate') and not item.get('consumed_by_memory') else 1,
+                item.get('date', ''),
+                item.get('id', ''),
+            ),
+            reverse=True,
+        )
+        if wants('changes') and is_expanded('changes'):
+            visible_changes, change_page, change_total_pages, _ = paginate_items(change_pool, reserved_lines=18)
+        else:
+            change_limit = len(change_pool) if is_expanded('changes') else MAX_CHANGE_ITEMS
+            visible_changes = change_pool[:change_limit]
+            change_page, change_total_pages = 1, 1
+
+        for item in visible_changes:
+            pending = item.get('memory_candidate') and not item.get('consumed_by_memory')
+            icon = c(YELLOW + BOLD, '●') if pending else c(DIM, '○')
+            domain_text = ','.join(item.get('domains') or []) or '-'
+            change_lines.append(
+                f"  {icon} [{item.get('id', '?')}] {item.get('normalized_change', '')} {c(DIM, f'(domains={domain_text})')}"
+            )
+            if pending and item.get('proposed_constraint'):
+                change_lines.append(f"    {c(DIM, 'constraint:')} {item.get('proposed_constraint')}")
+
+        hidden_changes = max(0, len(change_pool) - len(visible_changes))
+        if hidden_changes:
+            change_lines.append(c(DIM, f"  ... 另有 {hidden_changes} 条 micro-change 未展开"))
+        elif wants('changes') and is_expanded('changes'):
+            change_lines.append(c(DIM, '  已展开全部 micro-change；按 e 可收起'))
+        if wants('changes') and is_expanded('changes') and change_total_pages > 1:
+            change_lines.append(c(DIM, f"  第 {change_page}/{change_total_pages} 页；按 n/p 翻页"))
+    except Exception as ex:
+        change_lines.append(f"{c(RED, 'micro-changes 读取失败')} {c(DIM, str(ex))}")
+else:
+    change_lines.append(c(DIM, '暂无 micro-change 记录'))
+
+if wants('changes'):
+    print_panel("Changes", change_lines)
+elif status_view == 'overview':
+    pending_changes = []
+    total_changes = 0
+    if os.path.exists(changes_file):
+        try:
+            changes_data = json.load(open(changes_file))
+            changes = changes_data.get('changes', [])
+            total_changes = len(changes)
+            pending_changes = [cng for cng in changes if cng.get('memory_candidate') and not cng.get('consumed_by_memory')]
+        except Exception:
+            pass
+    change_summary = [
+        f"{c(BOLD, 'Total:')}     {total_changes}",
+        f"{c(BOLD, 'Pending:')}   {c(YELLOW if pending_changes else DIM, str(len(pending_changes)))}",
+    ]
+    if pending_changes:
+        latest_pending = pending_changes[:3]
+        for item in latest_pending:
+            change_summary.append(f"  {c(YELLOW, '●')} [{item.get('id', '?')}] {item.get('normalized_change', '')}")
+    change_summary.append(c(DIM, '使用 `team status --view changes` 查看 micro-change 明细'))
+    print_panel("Changes", change_summary)
 
 # ── Step execution log ─────────────────────────────────────────────
 index_file = ".pipeline/artifacts/logs/pipeline.index.json"
@@ -3596,6 +3828,8 @@ case "${1:-}" in
   init)    shift; cmd_init "$@" ;;
   status)  shift; cmd_status "$@" ;;
   upgrade) cmd_upgrade ;;
+  repair)  cmd_repair ;;
+  doctor)  cmd_doctor ;;
   version) cmd_version ;;
   update)  cmd_update ;;
   run)     cmd_run ;;

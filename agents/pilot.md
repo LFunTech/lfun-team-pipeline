@@ -44,6 +44,36 @@ permissionMode: bypassPermissions
 2. 批次内 rollback：目标在批次内 → 重试；目标在其他批次 → 更新 state.json，退出
 3. 批次完成 → 更新 state.json，输出 `[EXIT] 请运行 claude --agent pilot 继续`
 
+## 非提案变更分流
+
+当用户提出的请求未进入正式 proposal 队列时，Pilot 必须先做变更分级，再决定直接实现、记录 `micro-change` 还是升级 proposal。
+
+1. 若请求仅涉及重构、样式、文案、测试、日志、代码清理，且不改变业务语义，判定为 `implementation-only`。
+2. 若请求改变用户可见行为、默认值、阈值、校验、权限、通知语义、状态流转等业务语义，先视为 `business-small-change` 候选。
+3. 若命中任一条件，直接判定为 `proposal-needed`：
+   - API contract 变更
+   - 数据库 schema / migration 变更
+   - 跨两个及以上业务 domain
+   - 涉及支付、计费、风控、合规、安全边界
+   - 涉及权限体系重构或核心流程改造
+   - 需求信息不足，无法安全落地
+   - 明显需要架构设计或多角色协作
+4. 若未命中 `proposal-needed`，则做轻量评分：
+   - 默认值/阈值/校验变化 +1
+   - 用户可见行为变化 +1
+   - 单模块权限规则变化 +1
+   - 通知语义变化 +1
+   - 单模块状态流转变化 +1
+   - 会形成长期规则 +1
+   - 影响多个页面或组件 +1
+   - 需要补充验收口径才能避免歧义 +1
+5. 评分 0 分 → `implementation-only`
+6. 评分 1-2 分 → `business-small-change`
+7. 评分 3 分及以上 → `proposal-needed`
+8. 对 `business-small-change`，Pilot 必须先生成一条 `micro-change` 记录，再执行实现。优先调用：`PIPELINE_DIR=.pipeline bash .pipeline/autosteps/record-micro-change.sh --raw "<用户原话>" --normalized "<归一化描述>" [--domain "<领域>"] [--memory-candidate true|false] [--constraint "<长期规则候选>"]`。
+9. 若该小改表达长期稳定规则，则标记 `memory_candidate=true`；否则仅记录，不进入长期记忆。
+10. 若无法判断且会实质影响执行路径，只允许发起一个最小澄清问题。
+
 ### 并行执行规则
 
 > **核心原则**：无依赖关系的步骤**必须**在同一条响应中发起多个 tool call 并行执行，以最大化吞吐量。
@@ -63,6 +93,7 @@ permissionMode: bypassPermissions
 |------|------|
 | pick-next-proposal 发现同一 parallel_group 内 ≥2 个可执行提案 | 进入多提案并行模式 |
 | 每个并行提案在独立 worktree 中运行完整流水线 | 各自独立 state.json |
+| 进入并行前必须先跑 `parallel-proposal-detector.py` | 检测到重叠风险 → 降级为单提案模式 |
 | 所有提案完成后按 parallel_merge_order 顺序合并 | 冲突 → ESCALATION |
 
 **并行结果处理：**
@@ -71,6 +102,7 @@ permissionMode: bypassPermissions
 - WARN 级别步骤（3.0d/3.2/3.3）的 FAIL 不阻断，记录日志后继续
 - 阻断级步骤（3.1）FAIL 时，即使 WARN 级已 PASS，仍执行 rollback
 - 并行提案合并冲突 → ESCALATION，保留 worktree 供人工解决
+- **3.build 强制规则**：不得在 Step 0 一次性为所有 Builder 从同一 `BASE_SHA` 创建 worktree；每个波次/子波次都必须先检查 `tasks.json` 文件重叠，再基于当时最新 `HEAD` 创建 worktree。同波次若有文件重叠，必须串行化后再继续。
 
 ## 模型路由（Model Routing）
 
@@ -185,10 +217,11 @@ Bash("bash .pipeline/llm-router.sh builder-dba '...' --cwd .worktrees/builder-db
 3. 读 `.pipeline/proposal-queue.json`（不存在 → System Planning；为空 → 同；解析失败/循环依赖 → ESCALATION）
 4. 确定 current_phase 所属批次 → 读 playbook 章节 → 执行
 5. **检查 `.pipeline/llm-router.sh` 是否存在**，若存在则在控制台输出 `[Pipeline] 模型路由脚本就绪（具体路由由 llm-router.sh 按全局+项目配置决定）`
+6. 当进入 `memory-consolidation` 且 `.pipeline/micro-changes.json` 存在时，先执行 `PIPELINE_DIR=.pipeline bash .pipeline/autosteps/sync-micro-changes-to-memory.sh`，再继续按 playbook 做约束确认与归档
 
 ## state.json 关键字段
 
-`pipeline_id`, `project_name`, `current_phase`, `last_completed_phase`, `status`(running/escalation), `attempt_counts`(每阶段计数+per_builder), `conditional_agents`(migrator/optimizer/translator), `phase_5_mode`, `new_test_files[]`, `phase_3_base_sha`, `phase_3_worktrees{}`, `phase_3_branches{}`, `phase_3_main_branch`, `phase_3_merge_order[]`, `github_repo_created`, `github_repo_url`, `execution_log[]`(含 model 字段), `parallel_proposals[]`, `parallel_base_sha`, `parallel_base_branch`, `parallel_worktrees{}`, `parallel_branches{}`, `parallel_merge_order[]`, `parallel_completed[]`, `issue_context{}`(Issue 模式元数据，存在时必须联动校验 `artifacts/issue-context.md`)
+`pipeline_id`, `project_name`, `current_phase`, `last_completed_phase`, `status`(running/escalation), `attempt_counts`(每阶段计数+per_builder), `conditional_agents`(migrator/optimizer/translator), `phase_5_mode`, `new_test_files[]`, `phase_3_base_sha`, `phase_3_worktrees{}`, `phase_3_branches{}`, `phase_3_wave_bases{}`, `phase_3_conflict_files[]`, `phase_3_main_branch`, `phase_3_merge_order[]`, `github_repo_created`, `github_repo_url`, `execution_log[]`(含 model 字段), `parallel_proposals[]`, `parallel_base_sha`, `parallel_base_branch`, `parallel_worktrees{}`, `parallel_branches{}`, `parallel_merge_order[]`, `parallel_completed[]`, `parallel_precheck_report`, `issue_context{}`(Issue 模式元数据，存在时必须联动校验 `artifacts/issue-context.md`)
 
 每次进入新阶段递增 attempt_counts。超 max_attempts(默认 3) → ESCALATION。
 conditional_agents 赋值：gate-a.design-review PASS 后从 proposal.md 读取条件标记写入。

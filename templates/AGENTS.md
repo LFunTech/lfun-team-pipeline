@@ -25,6 +25,7 @@ team status
 ├── config.json          ← 流水线配置（编辑此文件以自定义行为）
 ├── playbook.md          ← 阶段执行手册（Pilot 按需加载，勿手动修改）
 ├── project-memory.json  ← 项目记忆（跨流水线约束清单，自动维护）
+├── micro-changes.json   ← 非提案业务小改记录（最小需求事实）
 ├── history/             ← 历次流水线产物归档（按需查阅）
 ├── state.json           ← 运行时状态（Pilot 自动管理，勿手动修改）
 ├── autosteps/           ← AutoStep Shell 脚本（20 个）
@@ -53,7 +54,7 @@ team status
 
 ```
 System Planning → 系统规划（交互式拆解系统为提案队列 + 并行拓扑计算）
-Pick Proposal   → 选取下一个/组待执行提案（同 parallel_group 可并行）
+Pick Proposal   → 选取下一个/组待执行提案（同 parallel_group 先预检查，安全时才并行）
 Memory Load     → 项目记忆加载（注入约束给 Clarifier/Architect）
 0.clarify       → Clarifier（需求澄清，最多 5 轮）
 0.5             → Requirement Completeness Checker（AutoStep）
@@ -66,7 +67,7 @@ gate-a          → Auditor-Gate（四视角方案审核）
 gate-b          → Auditor-Gate（四视角任务审核）
 2.5             → Contract Formalizer（契约形式化）
 2.6 ∥ 2.7      → 契约验证（并行 AutoStep）
-3.build         → Builders 波次内并行实现
+3.build         → Builders 波次内并行实现（先做文件冲突检测；冲突则自动串行化）
 3.0b            → Build Verifier（AutoStep，编译验证）
 3.0d ∥ 3.1 ∥ 3.2 ∥ 3.3 → 构建后分析（并行 AutoStep）
 3.5             → Simplifier（代码精简）
@@ -118,6 +119,12 @@ team run
 
 # 查看状态
 team status
+
+# 查看 micro-change 明细
+team status --view changes
+
+# 查看尚未固化到项目记忆的小改
+PIPELINE_DIR=.pipeline bash .pipeline/autosteps/list-micro-changes.sh --pending
 
 # 手动回退到指定阶段
 # 编辑 .pipeline/state.json 修改 current_phase 和 status

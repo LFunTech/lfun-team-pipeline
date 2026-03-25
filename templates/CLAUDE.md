@@ -22,6 +22,7 @@ cat .pipeline/state.json | python3 -c "import json,sys; s=json.load(sys.stdin); 
 ├── config.json          ← 流水线配置（编辑此文件以自定义行为）
 ├── playbook.md          ← 阶段执行手册（Pilot 按需加载，勿手动修改）
 ├── project-memory.json  ← 项目记忆（跨流水线约束清单，自动维护）
+├── micro-changes.json   ← 非提案业务小改记录（最小需求事实）
 ├── history/             ← 历次流水线产物归档（按需查阅）
 ├── state.json           ← 运行时状态（Pilot 自动管理，勿手动修改）
 ├── autosteps/           ← AutoStep Shell 脚本（20 个）
@@ -51,7 +52,7 @@ cat .pipeline/state.json | python3 -c "import json,sys; s=json.load(sys.stdin); 
 
 ```
 System Planning → 系统规划（交互式拆解系统为提案队列 + 并行拓扑计算）
-Pick Proposal   → 选取下一个/组待执行提案（同 parallel_group 可并行）
+Pick Proposal   → 选取下一个/组待执行提案（同 parallel_group 先预检查，安全时才并行）
 Memory Load     → 项目记忆加载（注入约束给 Clarifier/Architect）
 0.clarify    → Clarifier（需求澄清，最多 5 轮）
 0.5.requirement-check  → Requirement Completeness Checker（AutoStep）
@@ -64,7 +65,7 @@ gate-a.design-review     → Auditor-Gate（四视角方案审核）
 gate-b.plan-review     → Auditor-Gate（四视角任务审核）
 2.5.contract-formalize  → Contract Formalizer（契约形式化）
 2.6.contract-validate-semantic ∥ 2.7.contract-validate-schema → 契约验证（并行 AutoStep）
-3.build    → Builders 波次内并行实现（Frontend/Backend/DBA/Security/Infra）
+3.build    → Builders 波次内并行实现（先做文件冲突检测；冲突则自动串行化）
              + 条件角色（Migrator/Translator）
 3.0b.build-verify → Build Verifier（AutoStep，编译验证）
 3.0d.duplicate-detect ∥ 3.1.static-analyze ∥ 3.2.diff-validate ∥ 3.3.regression-guard → 构建后分析（并行 AutoStep）
@@ -300,6 +301,8 @@ for e in s.get('execution_log', []):
 
 流水线自动维护 `.pipeline/project-memory.json`，存储跨流水线的项目约束。
 
+未进入 proposal 的业务小改会先记录到 `.pipeline/micro-changes.json`，再在 `memory-consolidation` 阶段提炼为长期约束。
+
 ```bash
 # 查看当前约束
 python3 -c "
@@ -315,6 +318,12 @@ for c in m.get('constraints', []):
 
 # 查看历次运行
 ls .pipeline/history/
+
+# 查看尚未固化到项目记忆的小改
+PIPELINE_DIR=.pipeline bash .pipeline/autosteps/list-micro-changes.sh --pending
+
+# 在状态面板中查看 micro-change 摘要
+team status --view changes
 ```
 
 约束在每次流水线成功完成（7.monitor NORMAL）后自动提取，经用户确认后写入。

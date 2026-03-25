@@ -337,6 +337,32 @@ team run
 - **实现足迹**：记录每个提案实现的 API、数据库表、关键文件
 - **冲突检测**：新提案与已有约束冲突时，Clarifier 和 Architect 会主动提醒
 
+对于未进入正式 proposal 的日常业务小改，Pilot 会先做“非提案变更分流”：
+
+- **纯实现调整**（重构、样式、文案、测试等）直接实现，不进入需求记忆
+- **业务型小改** 先沉淀到 `.pipeline/micro-changes.json`，记录一句话级别的“最小需求事实”
+- **长期规则** 再由 Memory Consolidation 提炼进入 `.pipeline/project-memory.json`
+- **高风险或跨边界变更**（API、Schema、安全、计费、跨域流程等）直接升级为 proposal
+
+一句话级别的小改也可以直接记录：
+
+```bash
+PIPELINE_DIR=.pipeline bash .pipeline/autosteps/record-micro-change.sh \
+  --raw "这里默认改成7天吧" \
+  --normalized "将导出链接默认有效期调整为7天" \
+  --domain "导出" \
+  --memory-candidate true \
+  --constraint "导出链接默认有效期必须为7天"
+
+PIPELINE_DIR=.pipeline bash .pipeline/autosteps/sync-micro-changes-to-memory.sh
+
+PIPELINE_DIR=.pipeline bash .pipeline/autosteps/list-micro-changes.sh --pending
+```
+
+第一条命令将对话沉淀到 `.pipeline/micro-changes.json`，第二条命令把已确认的长期规则同步到 `.pipeline/project-memory.json`，第三条命令查看尚未固化到项目记忆的小改。
+
+正式流水线跑到 `memory-consolidation` 阶段时，Pilot 也会自动先执行这一步同步，再继续做约束确认与归档。
+
 项目记忆确保多次提案之间的业务规则、技术决策保持一致，不会前后矛盾。
 
 ## CLI 命令
@@ -349,8 +375,10 @@ team run
 | `team watch-issues [--once] [--interval <sec>] [--max-workers <n>] [--labels a,b] [--exclude-labels x,y] [--dry-run]` | 轮询带指定 label 的 GitHub Issue，自动领取并调度处理 |
 | `team migrate <cc\|codex\|cursor\|opencode> [--force]` | 切换平台（重新生成 `.pipeline/agents/`，自动创建快照） |
 | `team migrate --rollback` | 回滚到上次迁移前的状态 |
-| `team status` | 显示流水线执行进度（彩色面板：总览、Proposals、Issues、执行日志；Issues 面板含 GitHub queued 统计、状态汇总与语义化 phase） |
+| `team status` | 显示流水线执行进度（彩色面板：总览、Proposals、Issues、Changes、执行日志；Changes 面板显示 micro-change 待固化摘要） |
 | `team upgrade` | 原地升级 playbook + autosteps + agents（保留 state.json、产物、提案队列） |
+| `team repair` | 原地修复 playbook + autosteps + llm-router + agents（保留 config、state、artifacts、proposal-queue） |
+| `team doctor` | 检查当前 repo 的并行防护运行时文件是否齐全且为新版 |
 | `team replan` | 重新规划提案队列（保留已完成的工作） |
 | `team scan` | 手动触发项目扫描（组件注册表） |
 | `team version` | 显示版本号 |
@@ -370,6 +398,10 @@ team run
 ```
 
 `team upgrade` 会覆盖 `playbook.md`、`autosteps/` 并用当前平台重新生成 `agents/`，同时保留 `config.json`、`state.json`、`artifacts/` 和 `proposal-queue.json`，确保升级不中断正在执行的流水线。
+
+当项目只是出现脚本缺失、模板漂移、`llm-router.sh`/`autosteps` 损坏、agent 文件不一致等运行时问题，而不需要做版本迁移时，优先使用 `team repair`。它会重建运行时文件并保留当前 `state.json`、`artifacts/` 与提案队列，适合“当前 repo 先修好再继续跑”。
+
+如果你怀疑当前 repo 仍在使用旧版并行逻辑，可先运行 `team doctor`。它会检查 `.pipeline/playbook.md`、关键 autostep 以及 `state.json` 是否已经包含 Builder 文件冲突检测、提案并行预检查和新的运行时字段；若失败，再执行 `team repair`。
 
 ## 安全机制与回滚
 
@@ -403,6 +435,7 @@ bash scripts/rollback.sh ~/.local/share/team-pipeline-backup-20260322_215623
 ├── playbook.md          ← 阶段执行手册（Pilot 按需加载）
 ├── llm-router.sh        ← 多平台模型路由调度脚本
 ├── project-memory.json  ← 项目记忆（跨流水线约束清单）
+├── micro-changes.json   ← 非提案业务小改记录（最小需求事实）
 ├── agents/              ← ★ 平台特定的 Agent 定义（team init 时生成）
 ├── autosteps/           ← 20 个自动化脚本（平台无关）
 ├── artifacts/           ← 运行时产物（自动生成）
@@ -610,18 +643,18 @@ $PIPELINE_CLI_BACKEND 环境变量（仅当前终端）
 **批次内并行：**
 
 同一批次内无依赖关系的步骤自动并行执行：
-- Phase 3：同波次 Builder 并行实现（Backend ∥ Frontend ∥ DBA ∥ Security ∥ Infra）
+- Phase 3：同波次 Builder 先做文件级冲突检测；无重叠才并行，有重叠则自动降级为串行子波次，并且后一子波次基于前一子波次合并后的最新 HEAD
 - Phase 2.6 ∥ 2.7：契约 Schema 验证 ∥ 语义验证
 - Phase 3.0d ∥ 3.1 ∥ 3.2 ∥ 3.3：构建后分析并行
 - Gate E：auditor-qa ∥ auditor-tech 并行审核
 
 **提案级并行：**
 
-系统规划时自动计算提案间的依赖拓扑。无依赖的提案被分配到同一 `parallel_group`，在独立 worktree 中并行执行完整流水线，完成后按 `parallel_merge_order` 顺序合并。
+系统规划时自动计算提案间的依赖拓扑。无依赖的提案会先进入同一 `parallel_group` 候选集合，但真正并行前还要经过 `parallel-proposal-detector.py` 预检查：若提案缺少 detail/domains，或在 API、数据实体、共享基础设施关键词上存在重叠，则自动降级为单提案模式，避免把潜在冲突留到最终 merge。
 
 ```
 P-001 ──┐
-P-002 ──┼── parallel_group: 1 → 并行执行 → 按序合并
+P-002 ──┼── parallel_group: 1 → 预检查 PASS 后并行 → 按序合并
 P-003 ──┘
 P-004 ────── parallel_group: 2 → 等待 group 1 完成后执行
 ```

@@ -331,6 +331,30 @@ The pipeline automatically maintains `.pipeline/project-memory.json`, recording 
 - **Implementation footprint**: Records APIs, database tables, and key files implemented by each proposal
 - **Conflict detection**: When a new proposal conflicts with existing constraints, the Clarifier and Architect proactively flag the issue
 
+For day-to-day business tweaks that do not go through a full proposal, Pilot now performs a lightweight non-proposal triage first:
+
+- **Implementation-only tweaks** (refactors, styling, copy edits, tests) are applied directly and do not enter requirement memory
+- **Business small changes** are first recorded in `.pipeline/micro-changes.json` as one-line "minimum requirement facts"
+- **Long-lived rules** are then promoted into `.pipeline/project-memory.json` during Memory Consolidation
+- **High-risk or cross-boundary changes** (API, schema, security, billing, cross-domain workflows) are escalated into full proposals
+
+You can also record a one-line business tweak manually:
+
+```bash
+PIPELINE_DIR=.pipeline bash .pipeline/autosteps/record-micro-change.sh \
+  --raw "Set export links to 7 days by default" \
+  --normalized "Change the default export link TTL to 7 days" \
+  --domain "Export" \
+  --memory-candidate true \
+  --constraint "Export links must default to a 7-day TTL"
+
+PIPELINE_DIR=.pipeline bash .pipeline/autosteps/sync-micro-changes-to-memory.sh
+
+PIPELINE_DIR=.pipeline bash .pipeline/autosteps/list-micro-changes.sh --pending
+```
+
+The first command appends a micro-change record, the second promotes durable rules into project memory, and the third lists pending memory candidates that have not yet been consumed.
+
 Project memory ensures that business rules and technical decisions remain consistent across multiple proposals, preventing contradictions.
 
 ## CLI Commands
@@ -343,8 +367,10 @@ Project memory ensures that business rules and technical decisions remain consis
 | `team watch-issues [--once] [--interval <sec>] [--max-workers <n>] [--labels a,b] [--exclude-labels x,y] [--dry-run]` | Poll labeled GitHub Issues and dispatch them automatically |
 | `team migrate <cc\|codex\|cursor\|opencode> [--force]` | Switch platform (regenerates `.pipeline/agents/`, auto-snapshots) |
 | `team migrate --rollback` | Rollback to pre-migration state |
-| `team status` | Show pipeline execution progress (color panels: overview, Proposals, Issues, execution log; Issues includes GitHub queued counts, status summary, and human-friendly phases) |
+| `team status` | Show pipeline execution progress (color panels: overview, Proposals, Issues, Changes, execution log; Changes shows pending micro-change summaries waiting for memory consolidation) |
 | `team upgrade` | In-place upgrade of playbook + autosteps + agents (preserves state, artifacts, proposal queue) |
+| `team repair` | In-place repair of playbook + autosteps + llm-router + agents (preserves config, state, artifacts, proposal queue) |
+| `team doctor` | Check whether the repo runtime already includes the new parallel safety guards |
 | `team replan` | Re-plan proposal queue (preserves completed work) |
 | `team scan` | Manually trigger project scan (component registry) |
 | `team version` | Print version |
@@ -364,6 +390,10 @@ team run
 ```
 
 `team upgrade` overwrites `playbook.md`, `autosteps/`, and regenerates `agents/` for the current platform, while preserving `config.json`, `state.json`, `artifacts/`, and `proposal-queue.json`, ensuring upgrades don't interrupt a running pipeline.
+
+When a project only has runtime drift or broken pipeline files - for example missing scripts, stale templates, a broken `llm-router.sh`, or inconsistent project-local agents - prefer `team repair`. It restores the runnable pipeline files in place while keeping the current `state.json`, `artifacts/`, and proposal queue intact.
+
+If you suspect the current repo is still running with the old parallel behavior, run `team doctor` first. It checks `.pipeline/playbook.md`, the key autosteps, and `state.json` for the Builder file-conflict guard, proposal parallel precheck, and the newer runtime fields; if it fails, follow up with `team repair`.
 
 ## Safety & Rollback
 
@@ -397,6 +427,7 @@ bash scripts/rollback.sh ~/.local/share/team-pipeline-backup-20260322_215623
 ├── playbook.md          ← Phase execution playbook (loaded on-demand by Pilot)
 ├── llm-router.sh        ← Multi-platform model routing dispatcher
 ├── project-memory.json  ← Project memory (cross-pipeline constraint registry)
+├── micro-changes.json   ← Non-proposal business tweak records (minimum requirement facts)
 ├── agents/              ← ★ Platform-specific agent definitions (generated at init time)
 ├── autosteps/           ← 20 automated scripts (platform-agnostic)
 ├── artifacts/           ← Runtime outputs (auto-generated)
@@ -604,18 +635,18 @@ The pipeline supports parallelism at two levels:
 **Within-batch parallelism:**
 
 Steps with no dependencies within a batch run concurrently:
-- Phase 3: Same-wave builders (Backend ∥ Frontend ∥ DBA ∥ Security ∥ Infra)
+- Phase 3: Same-wave builders first pass a file-overlap check; they only run in parallel when their file sets do not overlap, otherwise the wave is downgraded into serialized sub-waves and each later sub-wave starts from the latest merged HEAD
 - Phase 2.6 ∥ 2.7: Schema validation ∥ Semantic validation
 - Phase 3.0d ∥ 3.1 ∥ 3.2 ∥ 3.3: Post-build analysis
 - Gate E: auditor-qa ∥ auditor-tech
 
 **Proposal-level parallelism:**
 
-During System Planning, the pipeline computes a dependency topology across proposals. Proposals with no mutual dependencies are assigned to the same `parallel_group` and execute in separate worktrees concurrently. After completion, they merge in `parallel_merge_order`.
+During System Planning, the pipeline computes a dependency topology across proposals. Proposals with no mutual dependencies first become candidates for the same `parallel_group`, but actual parallel execution is gated by `parallel-proposal-detector.py`: if a proposal lacks detail/domains, or overlaps on API surface, data entities, or shared infrastructure keywords, the group is downgraded to single-proposal execution before any worktree is spawned.
 
 ```
 P-001 ──┐
-P-002 ──┼── parallel_group: 1 → run concurrently → merge in order
+P-002 ──┼── parallel_group: 1 → precheck PASS -> run concurrently -> merge in order
 P-003 ──┘
 P-004 ────── parallel_group: 2 → waits for group 1
 ```
