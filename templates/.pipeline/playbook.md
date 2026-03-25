@@ -798,24 +798,40 @@ input: 代码 + 所有 3.build 报告
 output: .pipeline/artifacts/gate-c.code-review.json
 ```
 Inspector 调用前，Pilot 在 spawn 消息中追加 `simplifier_verified: true`（当 3.6.simplify-verify Post-Simplification Verifier PASS 时）或 `simplifier_verified: false`（当 3.6.simplify-verify 未执行或 FAIL 时）。此字段通过 spawn 消息传递，不存储在 state.json 或独立文件中。
-FAIL → rollback_to: 3.build（重新经过 3.0b→3.1→3.2→3.3→3.5→3.6→gate-c.code-review）
+FAIL → rollback_to: 3.build（先进入 Resolver 驱动的修复入口；Resolver 成功后重新经过 3.0b→3.1→3.2→3.3→3.5→3.6→gate-c.code-review）
 1. 激活 Resolver 修复 Inspector 报告的 CRITICAL/MAJOR 问题（Resolver 直接在主分支上提交修复）。
-2. Resolver 完成后，**必须更新 `phase_3_base_sha`**（Bug #15 修复）：
+   - 这一入口是 `gate-c` 派生出的“Resolver 修复轮次”，不是普通 Builder 重做轮次。
+   - 因此在 Resolver 已接管、且尚未判定需要真正重开 Builder worktree 之前，**不得递增 `attempt_counts["3.build"]`**，也不得因主工作区存在 Resolver 产生的未提交改动而直接按普通 3.build 脏工作区规则进入 ESCALATION。
+   - 只有当 Resolver 明确要求回到真实 Builder 重做（例如回退到 `3.build` 且需要重新起 worktree）时，才按普通 3.build 重试语义计数。
+2. Resolver 完成后，**必须更新 `phase_3_base_sha`，并将当前审查轮次涉及的后处理阶段计数统一重置为 0**（Bug #15 修复 + 重试计数修复）：
    ```bash
    NEW_SHA=$(git rev-parse HEAD)
    python3 -c "
    import json
    s = json.load(open('.pipeline/state.json'))
    s['phase_3_base_sha'] = '$NEW_SHA'
-   json.dump(s, open('.pipeline/state.json', 'w'), indent=2)
-   "
+    attempts = s.setdefault('attempt_counts', {})
+    for key in [
+        '3.0b.build-verify',
+        '3.0d.duplicate-detect',
+        '3.1.static-analyze',
+        '3.2.diff-validate',
+        '3.3.regression-guard',
+        '3.5.simplify',
+        '3.6.simplify-verify',
+        'gate-c.code-review',
+    ]:
+        attempts[key] = 0
+    json.dump(s, open('.pipeline/state.json', 'w'), indent=2)
+    "
    ```
-   此更新确保后续 3.2.diff-validate Diff Scope Validator 以 Resolver 修复后的 HEAD 为基准，避免将 Resolver 合法修复误报为未授权变更。
+   此更新确保后续 3.2.diff-validate Diff Scope Validator 以 Resolver 修复后的 HEAD 为基准，避免将 Resolver 合法修复误报为未授权变更；同时避免 `3.0b.build-verify → 3.6.simplify-verify → gate-c.code-review` 这整条复审链在 Resolver 已产出有效修复时，因重新进站被重复累计到超 max_attempts 而误触发 ESCALATION。
 3. 重新运行 3.0b.build-verify → 3.1 → 3.2 → 3.3 → 3.5 → 3.6 → gate-c.code-review。
 
 **Resolver 退出条件**：
-- Resolver 成功修复所有 CRITICAL/MAJOR 问题 → 更新 `phase_3_base_sha`，重新进入 3.0b.build-verify
-- Resolver 修复不完整（仍有 CRITICAL 问题）→ 计入 `gate-c.code-review` attempt_count，超过 max_attempts 时 ESCALATION
+- Resolver 成功修复所有 CRITICAL/MAJOR 问题 → 更新 `phase_3_base_sha`，重置当前复审链 `3.0b/3.0d/3.1/3.2/3.3/3.5/3.6/gate-c` 的 `attempt_counts` 为 `0`，重新进入 3.0b.build-verify
+- Resolver 修复不完整（仍有 CRITICAL/MAJOR 问题，或未形成可验证进展）→ 计入 `gate-c.code-review` attempt_count，超过 max_attempts 时 ESCALATION
+- Resolver 判断问题需重新分配/重做 Builder 实现 → 保持 `rollback_to: 3.build`，此时才进入普通 3.build 重试语义并递增 `attempt_counts["3.build"]`
 - Resolver 判断问题需架构变更（超出 3.build 范围）→ 输出 `rollback_to: 1.design`，Pilot 执行深度回滚
 
 

@@ -224,6 +224,10 @@ Bash("bash .pipeline/llm-router.sh builder-dba '...' --cwd .worktrees/builder-db
 `pipeline_id`, `project_name`, `current_phase`, `last_completed_phase`, `status`(running/escalation), `attempt_counts`(每阶段计数+per_builder), `conditional_agents`(migrator/optimizer/translator), `phase_5_mode`, `new_test_files[]`, `phase_3_base_sha`, `phase_3_worktrees{}`, `phase_3_branches{}`, `phase_3_wave_bases{}`, `phase_3_conflict_files[]`, `phase_3_main_branch`, `phase_3_merge_order[]`, `github_repo_created`, `github_repo_url`, `execution_log[]`(含 model 字段), `parallel_proposals[]`, `parallel_base_sha`, `parallel_base_branch`, `parallel_worktrees{}`, `parallel_branches{}`, `parallel_merge_order[]`, `parallel_completed[]`, `parallel_precheck_report`
 
 每次进入新阶段递增 attempt_counts。超 max_attempts(默认 3) → ESCALATION。
+
+例外 1：`gate-c.code-review` 在 Resolver 已成功提交修复并更新 `phase_3_base_sha` 后，视为新的审查轮次。Pilot 必须先将本轮将要重跑的后处理链 `3.0b.build-verify`、`3.0d.duplicate-detect`、`3.1.static-analyze`、`3.2.diff-validate`、`3.3.regression-guard`、`3.5.simplify`、`3.6.simplify-verify`、`gate-c.code-review` 的 `attempt_counts` 全部重置为 `0`，再重新进入 `3.0b.build-verify`。因此这些计数只用于“Resolver 修复不完整/无进展”的连续失败，不用于惩罚已经产出有效修复的新一轮审查。
+
+例外 2：`gate-c.code-review FAIL → 3.build` 的第一次跳转，本质上是 Resolver 修复入口，不是普通 Builder 重做轮次。只要 Pilot 仍在执行 Resolver 驱动的修复流程、且尚未决定重新起 Builder worktree，**不得递增 `attempt_counts["3.build"]`**，也不得仅因主工作区存在 Resolver 修复改动就按普通 3.build 脏工作区规则进入 ESCALATION。只有当 Resolver 明确要求重新执行真实 3.build 时，才恢复普通 `3.build` 计数语义。
 conditional_agents 赋值：gate-a.design-review PASS 后从 proposal.md 读取条件标记写入。
 
 ## 阶段路由表
@@ -243,7 +247,7 @@ system-planning → pick-next-proposal → memory-load → 0.clarify → 0.5.req
 - 3.0b.build-verify FAIL → 3.build（禁止 Pilot 自行修复）
 - 3.0d.duplicate-detect ∥ 3.1 ∥ 3.2 ∥ 3.3（并行）：3.1 FAIL → 3.build；3.0d/3.2/3.3 FAIL → WARN 不阻断
 - 3.6.simplify-verify FAIL → 3.5.simplify
-- gate-c.code-review FAIL → 3.build（先激活 Resolver）
+- gate-c.code-review FAIL → 3.build（先激活 Resolver；该入口不计入普通 `3.build` attempt。若 Resolver 成功修复并提交，则重置当前复审链 `3.0b/3.0d/3.1/3.2/3.3/3.5/3.6/gate-c` 的 `attempt_counts` 为 `0` 后再重跑 3.0b→gate-c；若 Resolver 明确要求真实 Builder 重做，才恢复普通 `3.build` attempt 计数）
 - 3.7.contract-compliance FAIL → 3.build
 - 4a.test FAIL → 4a.1.test-failure-map, 然后 HIGH/LOW confidence 均 → 3.build
 - 4.2.coverage-check PASS → 4b.optimize(若 optimizer=true) 或 gate-d.test-review

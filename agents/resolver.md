@@ -58,7 +58,11 @@ model: inherit
 - **判断依据**：gate-c.code-review 场景下只有一个审查者（Inspector），无多方冲突需仲裁。此时不输出 `conflict_parties` / `conflict_summary`，只需修复代码
 - **完成标志**：所有 CRITICAL/MAJOR issues 已修复并提交
 
-> 注：gate-c.code-review 修复完成后，Pilot 会自动更新 `phase_3_base_sha` 并重跑 3.0b.build-verify → gate-c.code-review 流程。
+> 注：gate-c.code-review 修复完成后，Pilot 会自动更新 `phase_3_base_sha`，并将本轮将要重跑的 `3.0b.build-verify`、`3.0d.duplicate-detect`、`3.1.static-analyze`、`3.2.diff-validate`、`3.3.regression-guard`、`3.5.simplify`、`3.6.simplify-verify`、`gate-c.code-review` 的 `attempt_counts` 统一重置为 `0`，再重跑 3.0b.build-verify → gate-c.code-review 流程。
+
+若你判断当前问题本质上需要重新分配/重做 Builder 实现，而不是在主分支上做小范围修补，请明确让 Pilot 进入真实 `3.build` 重做轮次；此时才应恢复普通 `3.build` 重试语义。
+
+若你判断当前问题本质上是需求/方案缺口而非代码修补可解（例如缺少整块业务能力、契约方向错误、需要重做架构拆分），不要反复做局部打补丁；应明确输出需要更深回滚的信息，交由 Pilot 回退到 `2.plan` 或 `1.design`，避免在 `3.build ↔ gate-c` 之间空转直至 ESCALATION。
 
 ## 约束
 
