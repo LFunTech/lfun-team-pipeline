@@ -21,6 +21,8 @@
    - 每个提案是一个可独立交付的增量
    - 明确 `depends_on`（依赖哪些前序提案）和 `scope`（包含/不包含什么）
    - `domains`（可选但推荐）：该提案涉及的业务领域列表，从已有约束的 domain 值中选取或新建简短中文领域名
+   - **强制做 proposal hardening**：先给每个提案标注类型、隐性耦合点、真相源、禁改边界、预检包，再决定是否拆分
+   - 若一个提案同时命中以下任意 2 项，默认必须拆分，或在 `detail.split_recommendation` 中明确说明为何可不拆：API/错误契约变更、数据库 schema/migration/legacy 兼容、权限/安全边界/ready-health、异步 fan-out/补偿/重试、外部系统集成、前端 UI 与后端规则同时落地
    - 第一个提案应包含基础框架搭建（脚手架、CI、认证基础设施）
 5. 将蓝图中的技术栈和共享约定写入 `project-memory.json` 的 `constraints`（自动分配 id）
 6. 展示蓝图和提案队列给用户确认，用户可调整顺序、范围、增删提案
@@ -61,17 +63,40 @@
   "depends_on": [], "status": "pending",
   "parallel_group": 0,
   "detail": {
+    "proposal_classification": ["domain-model", "migration-compatibility"],
+    "hidden_coupling": ["统一错误体", "legacy 双写", "在线写入与回填竞争"],
     "user_stories": ["管理员可以创建/编辑/禁用用户账号"],
     "business_rules": ["密码最少 8 位，包含大小写和数字"],
     "acceptance_criteria": ["POST /api/auth/login 返回 200 + JWT Token"],
     "api_overview": ["POST /api/auth/login — 登录"],
     "data_entities": ["users(id, email, password_hash, name, role, status, created_at)"],
-    "non_functional": ["API 响应时间 p95 < 200ms"]
+    "non_functional": ["API 响应时间 p95 < 200ms"],
+    "source_of_truth": ["用户登录状态以 users + sessions 表为准，缓存仅做派生加速"],
+    "contract_matrix": ["POST /api/auth/login: 200/400/401；401 仅用于未认证，403 不适用于该接口"],
+    "state_rule_matrix": ["用户状态 disabled 时禁止登录，返回 USER_DISABLED"],
+    "migration_compatibility": ["若涉及 legacy 字段，必须列出真实历史来源列、缺列回退策略、回填后一致性断言"],
+    "forbidden_changes": ["不修改现有 session cookie 格式", "不顺手调整其他认证接口响应结构"],
+    "pre_gate_test_bundle": ["contract suite: login 200/400/401", "migration snapshot suite: legacy users"],
+    "split_recommendation": "若登录契约、session 持久化与 MFA 联动同时落地，则拆为认证接口、session 管理、MFA 三个 proposal"
   }
 }
 ```
 
 细化流程（仅 `autonomous_mode = true`）：蓝图确认后逐个提案展示 detail 草案请用户审阅修改，确认后写入 proposal-queue.json。交互模式下 detail 字段可选。
+
+### Proposal Hardening（System Planning 第 4 步的强制检查）
+
+1. **先分类再落笔**：每个提案至少标注一个 `proposal_classification`，可选值包括：`ui-only`、`domain-model`、`validation-rules`、`workflow-state-machine`、`migration-compatibility`、`external-integration`、`observability-ops`。
+2. **红旗判定**：若一个提案同时包含以下任意两类风险，Pilot 不得直接输出“单提案可执行”结论，必须拆分或写明不拆理由：
+   - API / error contract 变化
+   - 数据库 schema / migration / legacy 兼容
+   - 安全边界、权限语义、`/ready` / `/health`
+   - 异步 fan-out、补偿、重试、任务状态机
+   - 外部系统（如 Keycloak、支付网关、第三方平台）
+   - 前端 UI 与后端规则/校验同时落地
+3. **矩阵先行**：命中红旗的提案，`detail` 中必须补齐：`source_of_truth`、`contract_matrix`、`state_rule_matrix`、`migration_compatibility`（如适用）、`forbidden_changes`、`pre_gate_test_bundle`。
+4. **禁止空泛边界**：不得只写“统一”“兼容”“补 migration”“优化体验”；必须明确到路径、状态码、字段、旧列来源、失败语义或禁止行为。
+5. **拆分优先级**：优先把 `UI 收口`、`后端规则`、`migration/兼容`、`外部系统同步`、`ready/安全契约` 拆成独立 proposal；若保留在一个 proposal 内，必须显式说明共享真相源和验证边界。
 
 ### 并行拓扑计算（System Planning 第 4 步之后执行）
 
@@ -194,6 +219,10 @@ P-005（订单系统） depends_on: ["P-002","P-003"] domains: ["订单"] → gr
    - `user_stories` → `## 用户故事`、`business_rules` → `## 业务规则`
    - `acceptance_criteria` → `## 验收标准`、`api_overview` → `## API 概览`
    - `data_entities` → `## 数据实体`、`non_functional` → `## 非功能需求`
+   - `proposal_classification` / `hidden_coupling` / `source_of_truth` → `## 方案约束补充`
+   - `contract_matrix` → `## 契约矩阵`、`state_rule_matrix` → `## 状态与规则矩阵`
+   - `migration_compatibility` → `## 迁移与兼容矩阵`、`forbidden_changes` → `## 禁改边界`
+   - `pre_gate_test_bundle` / `split_recommendation` → `## 预检与拆分建议`
    - 文件头：`# <title>`、`> 范围: <scope>`。无 detail 的字段跳过，不确定项标注 `[ASSUMED]`
 
 ---
@@ -397,7 +426,7 @@ input: 用户原始需求文本
 output: .pipeline/artifacts/requirement.md
 ```
 **交互模式**（`autonomous_mode = false`）：Clarifier 最多 5 轮澄清（每轮暂停展示问题给用户，等待用户回答后传回）。
-**自治模式**（`autonomous_mode = true`）：**不 spawn Clarifier**。Pilot 直接将提案 detail 字段转写为 requirement.md（章节映射：user_stories→用户故事，business_rules→业务规则，acceptance_criteria→验收标准，api_overview→API概览，data_entities→数据实体，non_functional→非功能需求）。不确定项标注 `[ASSUMED]`。
+**自治模式**（`autonomous_mode = true`）：**不 spawn Clarifier**。Pilot 直接将提案 detail 字段转写为 requirement.md（章节映射：user_stories→用户故事，business_rules→业务规则，acceptance_criteria→验收标准，api_overview→API概览，data_entities→数据实体，non_functional→非功能需求，proposal_classification/hidden_coupling/source_of_truth→方案约束补充，contract_matrix→契约矩阵，state_rule_matrix→状态与规则矩阵，migration_compatibility→迁移与兼容矩阵，forbidden_changes→禁改边界，pre_gate_test_bundle/split_recommendation→预检与拆分建议）。不确定项标注 `[ASSUMED]`。
 完成后检查 requirement.md 存在且非空。
 
 ---

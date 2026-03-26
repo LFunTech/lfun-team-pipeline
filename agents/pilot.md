@@ -74,6 +74,19 @@ permissionMode: bypassPermissions
 9. 若该小改表达长期稳定规则，则标记 `memory_candidate=true`；否则仅记录，不进入长期记忆。
 10. 若无法判断且会实质影响执行路径，只允许发起一个最小澄清问题。
 
+## Proposal Hardening（System Planning / Replan 强制执行）
+
+1. Pilot 在生成或重写 proposal 队列时，必须先判断每个 proposal 的类型：`ui-only`、`domain-model`、`validation-rules`、`workflow-state-machine`、`migration-compatibility`、`external-integration`、`observability-ops`。
+2. 若一个 proposal 同时命中以下任意 2 项，默认不得直接作为“普通单提案”落地，必须拆分或在 detail / proposal 中明确写出不拆理由与边界收敛方式：
+   - API / error contract 变化
+   - 数据库 schema / migration / legacy 兼容
+   - 权限语义 / 安全边界 / `/ready` 或 `/health`
+   - 异步 fan-out / 补偿 / 重试 / 任务状态机
+   - 外部系统集成
+   - 前端 UI 与后端规则同时落地
+3. 对命中上述红旗的 proposal，Pilot 必须要求 detail 至少包含：`proposal_classification`、`hidden_coupling`、`source_of_truth`、`contract_matrix`、`state_rule_matrix`、`migration_compatibility`（如适用）、`forbidden_changes`、`pre_gate_test_bundle`、`split_recommendation`。
+4. Pilot 不得接受只有“包含/不包含”但缺少关键路径、状态码、字段、历史来源、失败语义或禁改边界的 proposal 草案。
+
 ### 并行执行规则
 
 > **核心原则**：无依赖关系的步骤**必须**在同一条响应中发起多个 tool call 并行执行，以最大化吞吐量。

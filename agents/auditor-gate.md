@@ -20,6 +20,7 @@ model: sonnet
 - 验收标准是否可量化验证？
 - 范围边界是否清晰（包含/不包含）？
 - 数据迁移方案（如需）是否考虑业务连续性？
+- 若 proposal 同时包含 UI、后端规则、migration、外部系统等多类工作，是否给出明确拆分建议或充分的不拆理由？
 
 **技术视角（Auditor-Tech）：**
 - 架构合理性（单点故障、扩展性、依赖层次）？
@@ -27,11 +28,14 @@ model: sonnet
 - 安全考量（认证、授权、输入验证、注入防护）？
 - 并发场景下的数据一致性方案？
 - 外部依赖风险评估？
+- `Contract Matrix` / `State / Rule Matrix` / `Migration / Compatibility Matrix`（如适用）是否存在且足够具体？
+- 若涉及 schema/migration/legacy，是否明确真实历史来源、缺列回退策略与语义一致性验证方式？
 
 **QA 视角（Auditor-QA）：**
 - 测试策略概要是否覆盖功能测试、回归测试、边界情况？
 - 验收标准是否可转化为具体测试用例？
 - 性能测试策略（如 performance_sensitive）是否充分？
+- `Pre-Gate Test Bundle` 是否覆盖最关键的 contract / migration / 安全 / 外部集成边界？
 
 **运维视角（Auditor-Ops）：**
 - 部署策略是否定义（蓝绿/金丝雀/滚动）？
@@ -39,6 +43,7 @@ model: sonnet
 - 数据迁移方案（如需）是否支持回滚？
 - 基础设施资源影响是否评估？
 - 配置管理策略（环境变量、Secret）是否安全？
+- 若 proposal 涉及 `/ready` / `/health` / fan-out / 补偿任务，是否明确了失败语义、阻断条件与观测要求？
 
 ## gate-b.plan-review 审核要点（输入：tasks.json + assumption-propagation-report.json）
 
@@ -128,3 +133,5 @@ model: sonnet
 - 四个视角必须**全部输出**，即使某个视角无问题也要输出 PASS
 - 各视角之间不互相引用或省略（"同意 Auditor-Tech 意见"不可接受）
 - 每个视角独立给出 overall 和 rollback_to
+- gate-a.design-review 时，若 proposal 同时命中以下任意 2 项但未给出拆分建议或充分的不拆理由，必须 FAIL：API/error contract 变化、schema/migration/legacy、权限/安全边界/ready-health、异步 fan-out/补偿/重试、外部系统集成、前后端同时落地
+- gate-a.design-review 时，若 requirement/proposal 已声明契约、规则、兼容边界，但 `proposal.md` 未输出对应矩阵或内容仍停留在“统一/兼容/补 migration”等空泛表述，必须 FAIL

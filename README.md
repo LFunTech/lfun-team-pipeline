@@ -116,6 +116,8 @@ $EDITOR .pipeline/config.json
 team run
 ```
 
+> Proposal 质量加固建议：涉及契约、migration、外部系统、ready/安全边界或前后端联动的提案，先参考 `docs/proposal-hardening.md` 做拆分和矩阵补齐。
+
 ### `team run` 各平台行为
 
 | 平台 | 执行方式 | 批次循环 |

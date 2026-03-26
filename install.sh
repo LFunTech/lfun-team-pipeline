@@ -1891,9 +1891,66 @@ cmd_status() {
     local proposals_page=1
     local issues_page=1
     local execution_page=1
+    local execution_page_initialized=false
     local retries_page=1
     cache_dir=$(mktemp -d "${TMPDIR:-/tmp}/team-status.XXXXXX")
     trap 'rm -rf "$cache_dir"' RETURN
+    compute_execution_default_page() {
+      local term_lines="$1"
+      TEAM_STATUS_TERM_LINES="$term_lines" python3 - <<'PY'
+import json, os
+
+PROPOSAL_PHASE_ORDER = [
+    'pick-next-proposal', 'memory-load', '0.clarify', '0.5.requirement-check', '1.design',
+    'gate-a.design-review', '2.0a.repo-setup', '2.0b.depend-collect', '2.plan',
+    '2.1.assumption-check', 'gate-b.plan-review', '2.5.contract-formalize',
+    '2.6.contract-validate-semantic', '2.7.contract-validate-schema', '3.build',
+    '3.0b.build-verify', '3.0d.duplicate-detect', '3.1.static-analyze', '3.2.diff-validate',
+    '3.3.regression-guard', '3.5.simplify', '3.6.simplify-verify', 'gate-c.code-review',
+    '3.7.contract-compliance', '4a.test', '4a.1.test-failure-map', '4.2.coverage-check',
+    '4b.optimize', 'gate-d.test-review', 'api-change-detect', '5.document',
+    '5.1.changelog-check', 'gate-e.doc-review', '5.9.ci-push', '6.0.deploy-readiness',
+    '6.deploy', '7.monitor', 'memory-consolidation', 'mark-proposal-completed'
+]
+
+def get_current_proposal_steps(all_steps, proposal_id, pipeline_id):
+    if not all_steps:
+        return []
+    last_completed_idx = -1
+    for i in range(len(all_steps) - 1, -1, -1):
+        if all_steps[i].get('step') == 'mark-proposal-completed':
+            last_completed_idx = i
+            break
+    candidate_steps = all_steps[last_completed_idx + 1:] or all_steps
+    if not proposal_id and not pipeline_id:
+        return candidate_steps
+    marker_idx = None
+    for i, entry in enumerate(candidate_steps):
+        note = str(entry.get('note') or '')
+        if (proposal_id and proposal_id in note) or (pipeline_id and pipeline_id in note):
+            marker_idx = i
+            if entry.get('step') == 'pick-next-proposal':
+                break
+    return candidate_steps[marker_idx:] if marker_idx is not None else candidate_steps
+
+state = json.load(open('.pipeline/state.json'))
+steps = get_current_proposal_steps(
+    state.get('execution_log', []),
+    state.get('current_proposal_id'),
+    state.get('pipeline_id'),
+)
+current_phase = state.get('current_phase')
+current_status = state.get('status', 'running')
+anchor_index = len(steps)
+if current_status == 'running' and current_phase in PROPOSAL_PHASE_ORDER:
+    last_step = steps[-1].get('step') if steps else None
+    if current_phase != last_step:
+        anchor_index += 1
+per_page = max(5, max(20, int(os.environ.get('TEAM_STATUS_TERM_LINES', '24') or '24')) - 16)
+page = max(1, (max(anchor_index, 1) + per_page - 1) // per_page)
+print(page)
+PY
+    }
     render_status_view() {
       local target_view="$1"
       local expanded=""
@@ -1914,6 +1971,10 @@ cmd_status() {
           ;;
         execution)
           [ "$execution_expanded" = true ] && expanded="execution"
+          if [ "$execution_page_initialized" = false ]; then
+            execution_page=$(compute_execution_default_page "$term_lines")
+            execution_page_initialized=true
+          fi
           target_page="$execution_page"
           target_file="$cache_dir/${target_view}.${execution_expanded}.${target_page}.txt"
           ;;
@@ -1979,7 +2040,6 @@ cmd_status() {
               ;;
             execution)
               execution_expanded=$([ "$execution_expanded" = true ] && echo false || echo true)
-              execution_page=1
               ;;
             retries)
               retries_expanded=$([ "$retries_expanded" = true ] && echo false || echo true)
@@ -2089,6 +2149,48 @@ PHASE_LABELS = {
     'mark-proposal-completed': '提案完成标记',
     'ALL-COMPLETED': '全部完成',
 }
+
+PROPOSAL_PHASE_ORDER = [
+    'pick-next-proposal',
+    'memory-load',
+    '0.clarify',
+    '0.5.requirement-check',
+    '1.design',
+    'gate-a.design-review',
+    '2.0a.repo-setup',
+    '2.0b.depend-collect',
+    '2.plan',
+    '2.1.assumption-check',
+    'gate-b.plan-review',
+    '2.5.contract-formalize',
+    '2.6.contract-validate-semantic',
+    '2.7.contract-validate-schema',
+    '3.build',
+    '3.0b.build-verify',
+    '3.0d.duplicate-detect',
+    '3.1.static-analyze',
+    '3.2.diff-validate',
+    '3.3.regression-guard',
+    '3.5.simplify',
+    '3.6.simplify-verify',
+    'gate-c.code-review',
+    '3.7.contract-compliance',
+    '4a.test',
+    '4a.1.test-failure-map',
+    '4.2.coverage-check',
+    '4b.optimize',
+    'gate-d.test-review',
+    'api-change-detect',
+    '5.document',
+    '5.1.changelog-check',
+    'gate-e.doc-review',
+    '5.9.ci-push',
+    '6.0.deploy-readiness',
+    '6.deploy',
+    '7.monitor',
+    'memory-consolidation',
+    'mark-proposal-completed',
+]
 
 def fmt_phase(value):
     if value in (None, '', '?', '-'):
@@ -2680,35 +2782,138 @@ elif status_view == 'overview':
 # ── Step execution log ─────────────────────────────────────────────
 index_file = ".pipeline/artifacts/logs/pipeline.index.json"
 ex_log = state.get("execution_log", [])
+current_pipeline_id = state.get("pipeline_id")
+current_proposal_id = state.get("current_proposal_id")
 
-steps = []
-if os.path.exists(index_file):
-    idx = json.load(open(index_file))
-    steps = idx.get("steps", [])
-elif ex_log:
-    steps = ex_log
+def get_current_proposal_steps(all_steps, proposal_id, pipeline_id):
+    if not all_steps:
+        return []
 
-if steps:
-    exec_lines = [f"{c(BOLD, 'Execution Log:')}  ({len(steps)} steps)"]
+    last_completed_idx = -1
+    for i in range(len(all_steps) - 1, -1, -1):
+        if all_steps[i].get("step") == "mark-proposal-completed":
+            last_completed_idx = i
+            break
 
-    RESULT_COLOR = {"PASS": GREEN, "WARN": YELLOW, "FAIL": RED, "SKIP": DIM, "ERROR": RED}
+    candidate_steps = all_steps[last_completed_idx + 1:]
+    if not candidate_steps:
+        candidate_steps = all_steps
 
-    # Show all steps; mark rollbacks
-    for i, s in enumerate(steps):
-        step   = s.get("step", "?")
-        result = s.get("result", "?")
-        attempt = s.get("attempt", 1)
-        rollback_to = s.get("caused_rollback_to") or s.get("rollback_to")
-        triggered_by = s.get("rollback_triggered_by")
+    if not proposal_id and not pipeline_id:
+        return candidate_steps
 
-        rc = RESULT_COLOR.get(result, WHITE)
+    marker_idx = None
+    for i, entry in enumerate(candidate_steps):
+        note = str(entry.get("note") or "")
+        if (proposal_id and proposal_id in note) or (pipeline_id and pipeline_id in note):
+            marker_idx = i
+            if entry.get("step") == "pick-next-proposal":
+                break
+
+    if marker_idx is not None:
+        return candidate_steps[marker_idx:]
+
+    return candidate_steps
+
+def build_execution_items(executed_steps, current_phase, current_status):
+    items = []
+    executed_names = [entry.get("step") for entry in executed_steps]
+    last_executed_name = executed_names[-1] if executed_names else None
+
+    for entry in executed_steps:
+        items.append({
+            "kind": "executed",
+            "step": entry.get("step", "?"),
+            "result": entry.get("result", "?"),
+            "attempt": entry.get("attempt", 1),
+            "rollback_to": entry.get("caused_rollback_to") or entry.get("rollback_to"),
+            "triggered_by": entry.get("rollback_triggered_by"),
+        })
+
+    current_in_order = current_phase in PROPOSAL_PHASE_ORDER
+    if current_in_order and current_status == 'running' and current_phase != last_executed_name:
+        items.append({
+            "kind": "current",
+            "step": current_phase,
+        })
+
+    start_pending = False
+    if current_in_order:
+        for phase_name in PROPOSAL_PHASE_ORDER:
+            if phase_name == current_phase:
+                start_pending = True
+                continue
+            if not start_pending:
+                continue
+            if phase_name in executed_names:
+                continue
+            items.append({
+                "kind": "pending",
+                "step": phase_name,
+            })
+
+    return items
+
+def render_execution_line(item, result_colors, seq=None):
+    seq_str = f"{seq:02d}" if isinstance(seq, int) else "--"
+    seq_prefix = c(DIM, f"{seq_str}")
+    if item.get("kind") == "executed":
+        step = item.get("step", "?")
+        result = item.get("result", "?")
+        attempt = item.get("attempt", 1)
+        rollback_to = item.get("rollback_to")
+        triggered_by = item.get("triggered_by")
+        rc = result_colors.get(result, WHITE)
+        retry_str = c(YELLOW, f" [RETRY #{attempt}]") if attempt > 1 else ""
         attempt_str = c(DIM, f" ×{attempt}") if attempt > 1 else ""
         rollback_str = c(YELLOW, f" → rollback to {rollback_to}") if rollback_to else ""
         triggered_str = c(DIM, f" [by {triggered_by}]") if triggered_by else ""
-        exec_lines.append(f"{c(rc + BOLD, result):>6}  {step}{attempt_str}{rollback_str}{triggered_str}")
+        return f"{seq_prefix} {c(rc + BOLD, result):>6}  {step}{retry_str}{attempt_str}{rollback_str}{triggered_str}"
+    if item.get("kind") == "current":
+        return f"{seq_prefix} {c(CYAN + BOLD, 'RUN'):>6}  {item.get('step', '?')}"
+    return f"{seq_prefix} {c(DIM + BOLD, 'PEND'):>6}  {item.get('step', '?')}"
+
+steps = []
+if os.path.exists(index_file):
+    try:
+        idx = json.load(open(index_file))
+    except Exception:
+        idx = {}
+    idx_steps = idx.get("steps", [])
+    idx_pipeline_id = idx.get("pipeline_id")
+    if idx_steps and idx_pipeline_id == current_pipeline_id:
+        steps = idx_steps
+    elif ex_log:
+        steps = get_current_proposal_steps(ex_log, current_proposal_id, current_pipeline_id)
+    else:
+        steps = idx_steps
+elif ex_log:
+    steps = get_current_proposal_steps(ex_log, current_proposal_id, current_pipeline_id)
+
+execution_items = build_execution_items(steps, phase, state.get("status", "running"))
+
+if execution_items:
+    executed_count = len([item for item in execution_items if item.get("kind") == "executed"])
+    pending_count = len([item for item in execution_items if item.get("kind") != "executed"])
+    exec_lines = [f"{c(BOLD, 'Execution Log (Current Proposal):')}  ({executed_count} done, {pending_count} remaining)"]
+
+    RESULT_COLOR = {"PASS": GREEN, "WARN": YELLOW, "FAIL": RED, "SKIP": DIM, "ERROR": RED}
+
+    for idx, item in enumerate(execution_items, start=1):
+        exec_lines.append(render_execution_line(item, RESULT_COLOR, idx))
 
     if wants('execution'):
-        if is_expanded('execution'):
+        if paginate_mode:
+            visible_exec_lines, exec_page, exec_total_pages, _ = paginate_items(exec_lines[1:], reserved_lines=16)
+            exec_panel_lines = [exec_lines[0]] + visible_exec_lines
+            if is_expanded('execution'):
+                exec_panel_lines.append(c(DIM, "  已展开 execution 清单；按 e 可收起"))
+            else:
+                exec_panel_lines.append(c(DIM, "  execution 清单支持翻页；按 e 可切换展开模式"))
+            if exec_total_pages > 1:
+                exec_panel_lines.append(c(DIM, f"  第 {exec_page}/{exec_total_pages} 页；按 n/p 翻页"))
+            print_panel("Execution", exec_panel_lines)
+        elif is_expanded('execution'):
             visible_exec_lines, exec_page, exec_total_pages, _ = paginate_items(exec_lines[1:], reserved_lines=16)
             exec_panel_lines = [exec_lines[0]] + visible_exec_lines
             exec_panel_lines.append(c(DIM, "  已展开 execution 清单；按 e 可收起"))
@@ -2718,13 +2923,12 @@ if steps:
         else:
             print_panel("Execution", exec_lines)
     elif status_view == 'overview':
-        exec_summary = [f"{c(BOLD, 'Execution Log:')}  ({len(steps)} steps)"]
-        for s in steps[-5:]:
-            step = s.get('step', '?')
-            result = s.get('result', '?')
-            rc = RESULT_COLOR.get(result, WHITE)
-            exec_summary.append(f"{c(rc + BOLD, result):>6}  {step}")
-        if len(steps) > 5:
+        exec_summary = [f"{c(BOLD, 'Execution Log (Current Proposal):')}  ({executed_count} done, {pending_count} remaining)"]
+        summary_items = execution_items[-5:]
+        summary_start = len(execution_items) - len(summary_items) + 1
+        for offset, item in enumerate(summary_items, start=summary_start):
+            exec_summary.append(render_execution_line(item, RESULT_COLOR, offset))
+        if len(execution_items) > 5:
             exec_summary.append(c(DIM, '使用 `team status --view execution` 查看完整执行记录'))
         print_panel("Execution", exec_summary)
 

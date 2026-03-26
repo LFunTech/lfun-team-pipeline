@@ -44,15 +44,27 @@ permissionMode: bypassPermissions
 - 涉及外部依赖/API:
 - 潜在风险点:
 
+## Proposal Classification
+- proposal_classification:
+- hidden_coupling:
+- source_of_truth:
+
 ## 技术方案
 ### 方案描述
 ### 备选方案（如有）
 ### 选型理由
 
+## Contract Matrix
+## State / Rule Matrix
+## Migration / Compatibility Matrix（仅涉及 schema/migration/legacy/外部兼容时必填）
+
 ## 数据模型变更
 ## 数据迁移方案（仅 data_migration_required: true 时）
 ## 接口设计草案
 ## 测试策略概要
+## Forbidden Changes / Non-goals
+## Pre-Gate Test Bundle
+## Split Recommendation
 ## 部署策略概要
 
 **必填运维 Checklist（auditor-ops 强制验证）：**
@@ -93,6 +105,11 @@ permissionMode: bypassPermissions
 
 - `条件角色激活标记` 部分必须存在（Pilot 机械解析）
 - adr-draft.md 必须非空（Pilot 验证）
+- 若 `requirement.md` 中包含 `契约矩阵`、`状态与规则矩阵`、`迁移与兼容矩阵`、`禁改边界`、`预检与拆分建议`，`proposal.md` 必须保留并细化，不得在设计阶段省略
+- 当一个需求同时命中以下任意 2 项：API/error contract 变化、schema/migration/legacy、权限/安全边界/ready-health、异步 fan-out/补偿/重试、外部系统集成、前端 UI 与后端规则同时落地，必须在 `Split Recommendation` 中明确给出拆分建议；若选择不拆，必须写出边界收敛理由与预检包
+- `Contract Matrix` 不得只写“统一错误体/兼容现有接口”；必须明确路径、状态码、错误码或关键字段语义
+- `Migration / Compatibility Matrix` 不得假设历史列必然存在；必须写明真实历史来源、缺列回退策略、升级前后语义一致性验证方式
+- `Forbidden Changes / Non-goals` 必须写清禁止顺手修改的模块、接口、页面或协议，避免实现期范围漂移
 - 收到 `=== Project Memory ===` 块时，必须遵守已有约束：
   - 新方案不得违反 `constraints` 中任何一条，除非在 proposal.md 中明确声明 `推翻 [C-xxx]: <理由>`
   - 技术选型应沿用已有项目的技术栈（如已有约束涉及 Axum/Express 等框架，不得无故切换）
